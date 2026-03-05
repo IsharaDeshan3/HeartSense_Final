@@ -113,7 +113,7 @@ if not exist "%SVC_DIR%" (
     exit /b 1
 )
 
-:: Check if service-local .venv exists
+:: Check if service-local .venv exists and is usable
 if not exist "%SVC_DIR%\.venv\Scripts\activate.bat" (
     echo  [%SVC_NAME%] Creating virtual environment ...
     %PY_CMD% -m venv "%SVC_DIR%\.venv"
@@ -121,6 +121,19 @@ if not exist "%SVC_DIR%\.venv\Scripts\activate.bat" (
         echo  [%SVC_NAME%] ERROR: Failed to create venv
         exit /b 1
     )
+) else if not exist "%SVC_DIR%\.venv\Scripts\python.exe" (
+    echo  [%SVC_NAME%] Detected broken venv (python.exe missing). Recreating ...
+    rmdir /s /q "%SVC_DIR%\.venv"
+    %PY_CMD% -m venv "%SVC_DIR%\.venv"
+    if errorlevel 1 (
+        echo  [%SVC_NAME%] ERROR: Failed to recreate venv
+        exit /b 1
+    )
+)
+
+if not exist "%SVC_DIR%\.venv\Scripts\python.exe" (
+    echo  [%SVC_NAME%] ERROR: venv python not found after setup
+    exit /b 1
 )
 
 echo  [%SVC_NAME%] Checking/upgrading pip in service venv ...
@@ -131,22 +144,16 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: Install dependencies only on first-time venv creation
-if not exist "%SVC_DIR%\.venv\.deps_installed" (
-    echo  [%SVC_NAME%] Installing requirements ...
-    if exist "%SVC_REQ%" (
-        "%SVC_DIR%\.venv\Scripts\python.exe" -m pip install -r "%SVC_REQ%" -q
-        if errorlevel 1 (
-            echo  [%SVC_NAME%] ERROR: Dependency installation failed
-            exit /b 1
-        )
-    ) else (
-        echo  [%SVC_NAME%] WARNING: Requirements file not found: %SVC_REQ%
+echo  [%SVC_NAME%] Syncing service requirements ...
+if exist "%SVC_REQ%" (
+    "%SVC_DIR%\.venv\Scripts\python.exe" -m pip install -r "%SVC_REQ%" -q
+    if errorlevel 1 (
+        echo  [%SVC_NAME%] ERROR: Dependency installation failed
+        exit /b 1
     )
-    type nul > "%SVC_DIR%\.venv\.deps_installed"
-    echo  [%SVC_NAME%] Setup complete!
+    echo  [%SVC_NAME%] Dependencies ready.
 ) else (
-    echo  [%SVC_NAME%] Dependencies already installed. Skipping install.
+    echo  [%SVC_NAME%] WARNING: Requirements file not found: %SVC_REQ%
 )
 
 :: Launch in a new cmd window with the venv activated

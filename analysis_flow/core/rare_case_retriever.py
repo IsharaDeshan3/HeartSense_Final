@@ -15,6 +15,7 @@ from typing import Dict, List, Optional
 
 import faiss
 import numpy as np
+import torch
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +78,7 @@ class RareCaseRetriever:
         index_path: str | Path = _DEFAULT_INDEX,
         metadata_path: str | Path = _DEFAULT_META,
         model_name: str = _DEFAULT_MODEL,
-        device: str = "cuda",           # "cuda" or "cpu"
+        device: str = "auto",           # "auto", "cuda" or "cpu"
     ):
         index_path = Path(index_path)
         metadata_path = Path(metadata_path)
@@ -96,12 +97,31 @@ class RareCaseRetriever:
             self._raw_meta: Dict[str, Dict] = json.load(f)
         logger.info("Rare-case metadata loaded: %d entries", len(self._raw_meta))
 
+        # ----- Resolve embedding device -----
+        requested_device = (device or "auto").lower()
+        if requested_device == "auto":
+            resolved_device = "cuda" if torch.cuda.is_available() else "cpu"
+        elif requested_device == "cuda" and not torch.cuda.is_available():
+            logger.warning("CUDA requested but unavailable; falling back to CPU")
+            resolved_device = "cpu"
+        else:
+            resolved_device = requested_device
+
         # ----- Load embedding model (lazy import keeps startup fast) -----
         from sentence_transformers import SentenceTransformer
-        logger.info("Loading rare-case embedding model: %s (device=%s)", model_name, device)
-        self.model = SentenceTransformer(model_name, device=device)
+        logger.info("Loading rare-case embedding model: %s (device=%s)", model_name, resolved_device)
+        try:
+            self.model = SentenceTransformer(model_name, device=resolved_device)
+        except Exception as exc:
+            if resolved_device != "cpu":
+                logger.warning("Model load failed on %s (%s). Retrying on CPU.", resolved_device, exc)
+                self.model = SentenceTransformer(model_name, device="cpu")
+                resolved_device = "cpu"
+            else:
+                raise
+        self.device = resolved_device
         self._dim = self.model.get_sentence_embedding_dimension()
-        logger.info("Model ready — dim=%d", self._dim)
+        logger.info("Model ready — dim=%d, device=%s", self._dim, self.device)
 
     # ------------------------------------------------------------------
     #  Embed
