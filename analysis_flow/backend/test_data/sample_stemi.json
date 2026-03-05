@@ -1,0 +1,36 @@
+{
+    "name": "Anterior STEMI",
+    "description": "58yo male with classic anterior ST-elevation myocardial infarction",
+    "severity": "critical",
+    "symptoms": {
+        "text": "58-year-old male with sudden onset severe substernal chest pain radiating to left arm for 45 minutes. Diaphoresis, nausea, and shortness of breath. History of hypertension, diabetes mellitus type 2, and smoking (30 pack-years). Family history of MI in father at age 52.",
+        "age": 58,
+        "sex": "M",
+        "chief_complaint": "Severe substernal chest pain radiating to left arm"
+    },
+    "ecg": {
+        "status": "present",
+        "rhythm": "Normal sinus rhythm",
+        "heart_rate": 95,
+        "st_segment": "ST-segment elevation in V1-V4 with reciprocal depression in II, III, aVF",
+        "interpretation": "Acute anterior STEMI with reciprocal changes",
+        "findings": [
+            "ST-segment elevation V1-V4",
+            "Reciprocal ST depression",
+            "Hyperacute T-waves"
+        ]
+    },
+    "labs": {
+        "status": "present",
+        "troponin": 2.45,
+        "bnp": 890,
+        "creatinine": 1.1,
+        "hemoglobin": 14.2,
+        "findings": [
+            "Significantly elevated troponin",
+            "Elevated BNP",
+            "Normal renal function"
+        ]
+    },
+    "experience_level": "seasoned"
+}

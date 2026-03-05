@@ -1,0 +1,80 @@
+# ==============================
+# Root gitignore for Full Integration monorepo
+# ==============================
+
+# --- Secrets / credentials ---
+.env
+.env.*
+*.pem
+*.key
+*service-account*.json
+transcript-generation-project-16b1d3bf7ca8.json
+
+# --- Python caches / envs ---
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.nox/
+**/.tox/
+**/.ipynb_checkpoints/
+**/.venv/
+**/venv/
+**/env/
+**/ENV/
+**/*.egg-info/
+
+# --- Node / Next.js ---
+**/node_modules/
+**/.next/
+**/out/
+**/.turbo/
+**/.pnpm-store/
+**/coverage/
+**/*.tsbuildinfo
+
+# --- Build / runtime outputs ---
+**/build/
+**/dist/
+**/tmp/
+**/temp/
+**/logs/
+**/*.log
+
+# --- Local DB / cache files ---
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/*.db-journal
+**/*.db-wal
+**/*.db-shm
+
+# --- ML / vector / model artifacts (heavy) ---
+**/*.faiss
+**/*.index
+**/*.safetensors
+**/*.pt
+**/*.pth
+**/*.onnx
+**/*.ckpt
+**/*.bin
+**/*.pkl
+**/*.joblib
+
+# --- Workspace/project-specific generated folders ---
+analysis_flow/recycle/
+analysis_flow/knowledge_base/faiss_index/
+analysis_flow/knowledge_base/vector_index.faiss
+analysis_flow/knowledge_base/vector_db_metadata.pkl
+analysis_flow/backend/database/*.db
+analysis_flow/sessions.db
+analysis_flow/tmp_hf_spaces/
+
+# --- IDE / OS files ---
+.vscode/
+.idea/
+**/.DS_Store
+**/Thumbs.db
+**/desktop.ini

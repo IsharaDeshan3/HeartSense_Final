@@ -1,0 +1,26 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../ecg_backend"
+		},
+		{
+			"path": "../../lab_backend"
+		},
+		{
+			"path": "../../data_extraction"
+		},
+		{
+			"path": "../../data_extraction_frontend_v01"
+		},
+		{
+			"path": "../../lab_frontend_v01"
+		},
+		{
+			"path": "../../diagnostic_processor"
+		}
+	],
+	"settings": {}
+}

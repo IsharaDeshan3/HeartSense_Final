@@ -1,0 +1,38 @@
+:root {
+  --medical-primary: 210 100% 50%; /* Deep Clinical Blue */
+  --medical-accent: 160 84% 39%; /* Vitality Green */
+  --medical-warning: 38 92% 50%; /* Alert Amber */
+  --medical-critical: 0 84% 60%; /* Emergency Red */
+  --glass-bg: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --card-radius: 2.5rem;
+}
+
+.dark {
+  --medical-primary: 210 100% 60%;
+}
+
+.medical-glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--card-radius);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+.glow-vital {
+  box-shadow: 0 0 20px -5px hsl(var(--medical-accent) / 0.5);
+}
+
+.glow-primary {
+  box-shadow: 0 0 30px -10px hsl(var(--medical-primary) / 0.6);
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(0.98); }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 3s infinite ease-in-out;
+}

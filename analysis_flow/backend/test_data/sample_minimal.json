@@ -1,0 +1,14 @@
+{
+    "name": "Minimal Input (Symptoms Only)",
+    "description": "45yo male with chest pain — no ECG or labs available. Tests pipeline with minimal data.",
+    "severity": "moderate",
+    "symptoms": {
+        "text": "45-year-old male with intermittent substernal chest pressure for 2 days, worse with exertion, associated with mild dyspnea. No radiation. Smoker, sedentary lifestyle.",
+        "age": 45,
+        "sex": "M",
+        "chief_complaint": "Intermittent chest pressure with exertion"
+    },
+    "ecg": null,
+    "labs": null,
+    "experience_level": "expert"
+}

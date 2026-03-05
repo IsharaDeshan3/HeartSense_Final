@@ -1,0 +1,1509 @@
+---
+title: "Diagnosis: the art of being a doctor"
+chapter: 1
+authors: 
+  - "David Randall"
+  - "Adam Feather"
+  - "Mona Waterhouse"
+page_range: "1–12"
+subjects: 
+  - "Clinical Medicine"
+  - "Diagnostic Reasoning"
+  - "Doctor-Patient Communication"
+keywords: 
+  - "Medical consultation"
+  - "History taking"
+  - "Physical examination"
+  - "Clinical reasoning"
+  - "Diagnostic error"
+  - "Patient safety"
+  - "Artificial Intelligence (AI)"
+summary: "An introduction to the principles of medical diagnosis, covering the consultation process, information gathering, diagnostic reasoning models, communication skills, and the evolving role of technology in medicine."
+---
+
+1
+ DIAGNOSIS IN THE CLINICAL 
+CONSULTATION
+In many patient interactions, the forming of a diagnosis stands as 
+a turning point in the therapeutic journey: the focus shifts from the 
+gathering of information and the performance of tests to planning 
+of treatment and discussion of outcomes.
+Forming a diagnosis is 
+a complex process, which always starts with taking a history.
+The 
+initial patient story is first developed into a set of problems, which in 
+turn becomes a list of differential diagnoses.
+Data- gathering, further 
+information, initial treatment and the passage of time help to form 
+and confirm a definitive diagnosis.
+Fig. 1.1 shows how diagnosis is often an iterative process, in 
+which information is gathered, interpreted and integrated to form a 
+working diagnosis, and then communicated and acted on through 
+treatment;
+all the time the working diagnosis is refined or revised 
+using newly gathered information, including the patient’s response 
+to treatment.
+THE MEDICAL CONSULTATION
+The initial interaction – forming a rapport
+First impressions matter.
+A clinical interaction that begins badly 
+often runs into problems later on.
+Patients need to be able to share 
+their most intimate and worrying problems and this will be impos -
+sible if they cannot develop confidence and trust in their clinicians.
+The clinician should always ask, ‘How would I wish my own doctor 
+to behave?’ The physical environment can also be improved to help 
+the interaction go well: always ensure patients’ privacy, dignity and 
+comfort, treating them and their carers with respect.
+A warm greeting is always worthwhile. Introduce yourself (and 
+any other health professionals present), explaining your role and the 
+purpose of the encounter.
+A healthcare system is generally busy 
+and confusing, so help patients understand where they are in their 
+journey through it.
+The ‘Hello, my name is ...’ campaign, supported 
+by the Department of Health in the UK, highlights the importance of 
+basic introductions on the part of staff members ( Box 1.1).
+Further 
+1
+Diagnosis: the art of being a 
+doctor
+David Randall, Adam Feather and Mona Waterhouse
+Diagnosis in the clinical consultation 1
+The medical consultation 1
+The initial interaction – forming a rapport 1
+Information- gathering 2
+Discussion and negotiation around investigations 5
+Clinical diagnostic reasoning 6
+Models of diagnosis 6
+Diagnostic error and patient safety 6
+Strategies for avoiding bias  6
+Levels of diagnostic depth 7
+The role of watchful waiting 7
+When not to investigate 8
+Diagnostic criteria  8
+Overdiagnosis 8
+Communicating a diagnosis 9
+Explaining diagnoses to patients 9
+Breaking bad news 10
+Team communication 10
+Shared decision- making 11
+Managing uncertainty 11
+Diagnosis, artificial intelligence and  
+the future of medicine 11
+CORE SKILLS AND KNOWLEDGE
+Being a doctor 
+is a privilege; our patients allow us to share in 
+their troubles and triumphs, and place their faith in our judge -
+ment and skill.
+In the 21st century, professional roles and responsibilities are 
+rapidly changing, and so defining what it means to be a doctor 
+is difficult.
+Healthcare is provided by teams, not individuals, and 
+other healthcare professionals now perform tasks in assessing 
+and managing patients that were previously carried out exclu -
+sively by doctors.
+The use of artificial intelligence, which applies 
+vast, unsorted clinical and academic datasets to produce algo -
+rithms that can inform diagnostic and management questions, 
+provides a fundamental challenge to the historically crucial role 
+of doctors in these areas.
+While the process of diagnosis will be increasingly aug -
+mented by artificial intelligence, it is unlikely ever to be replaced 
+by it because at the centre of any diagnostic conundrum is 
+a human being.
+Working out what is wrong with a patient 
+involves not just technical skills, such as the assimilation of 
+information, interpretation of data and use of clinical reasoning 
+to reach a diagnosis.
+It also requires compassion, empathy, 
+trust, respect and humour: the stuff that makes up a relation -
+ship between human beings.
+And it brings into play an ethi -
+cal code developed to ensure that the great power of medical 
+knowledge is used for the good of individual patients and of 
+society as a whole.
+Once a diagnosis is made, the human tasks continue. Doc -
+tors tailor their explanations to the needs and understanding of 
+their patients.
+They negotiate a management strategy and share 
+clinical decision- making with the person under their care.
+How -
+ever medicine evolves in the future, at the centre of everything 
+we do must remain the huge privilege and pleasure of caring for, 
+supporting, empowering and helping people so that their health 
+and social needs are optimally met.
+1
+ 2 Diagnosis: the art of being a doctor
+comments expressing empathy, support or care for the patient at 
+this point can be very helpful in ensuring that a good rapport is 
+established, before proceeding to talk about the problem that has 
+led the patient to seek medical help (Box 1.2).
+Information- gathering
+Once a rapport has been established, the consultation is generally 
+divided into three parts: history, examination and investigations/
+management.
+Depending on the context and the acuity of the situ-
+ation, these may occur in isolation, follow on from one another or, in 
+severely ill patients, happen synchronously.
+The history
+In the construction of an accurate diagnosis, nothing is more 
+important than taking a full history from the patient.
+It is estimated 
+that up to 80% of the diagnosis can be made on the basis of a 
+careful history alone.
+In addition to information- gathering, eliciting 
+the history is key to the therapeutic relationship.
+If it goes well, the 
+patient knows they have been listened to, has had an opportunity 
+to convey all of their concerns, and knows that the clinician cares 
+for them and will act as their advocate.
+This builds mutual trust 
+and respect, and helps the patient to undergo invasive or intimate 
+procedures and adhere to therapeutic interventions in the future.
+A meeting of two experts
+It has been said that a medical consultation is a meeting of two 
+experts.
+A good consultation is based on mutual respect, rejecting 
+a traditional paternalistic view of medicine (‘doctor knows best’), 
+and assisting joint exploration of the biomedical and the patient 
+perspectives on the problem.
+This will lead to shared understand -
+ing, where clinician and patient jointly grasp what is wrong, what 
+impact it is having on the patient’s life, what the patient expects 
+from medical intervention, and which options would be best for 
+investigating and treating the problem (see Fig. 5.1).
+The golden minute
+At the start of the consultation the clinician should avoid inter -
+rupting the patient for as long as possible.
+Patients often men -
+tally rehearse a script relating to the symptoms or problems they 
+wish to describe.
+An early interruption may throw them off course 
+and cause them to forget key points, leaving them feeling dis -
+satisfied with the interaction.
+The term ‘ the golden minute ’ has 
+been coined to encourage clinicians to allow patients to tell their 
+story uninterrupted for at least 1 minute.
+This gives them time to 
+describe their symptoms as they have experienced them, includ -
+ing information that might be missed if the clinician jumps in too 
+soon with closed, focused questions.
+Allowing the patient freedom to tell their own story aids clini -
+cians in achieving their primary objective of making a diagnosis, 
+but ultimately forms and reinforces the therapeutic relationship 
+and increases both patient and clinician satisfaction.
+Box 1.3 sum-
+marizes some techniques that can be used to help patients share 
+information in a way that is accurate and comprehensive.
+Some will 
+Time
+Clinical
+history and
+interview
+Physical
+examination Communication
+of the diagnosis Treatment Outcomes
+The explanation of
+the health problem
+that is communicated
+to the patient
+The planned path of
+care based on the
+diagnosis
+Patient and
+system outcomes
+Learning from
+diagnostic errors,
+near misses and
+accurate, timely
+diagnoses
+Referral and
+consultation
+Diagnostic
+testing
+INFORMATION-
+GATHERING WORKING
+DIAGNOSIS
+INFORMATION INTEGRATIONINFORMATION INTEGRATION
+AND INTERPRETATION
+Has sufficient information been collected?
+Patient
+experiences
+a health
+problem
+Patient
+engages with
+healthcare
+system
+Fig. 1.1 A conceptualization of the diagnostic process.
+(From National Academies of Sciences, 
+ Engineering, and Medicine. Improving Diagnosis in Health Care. Washington, DC: The National Acad emies 
+Press; 2015. https://doi.org.10.17226/21794.)
+In 2011, geriatrician Dr Kate Granger was diagnosed with metastatic sarcoma, 
+from which she eventually died in 2016. Noticing that many of the healthcare 
+staff treating her during her illness failed to introduce themselves, she created 
+the ‘Hello, my name is ...’ campaign.
+Describing why an initial introduction is 
+so important, she said, ‘I firmly believe it is not just about common courtesy, 
+but it runs much deeper.
+Introductions are about making a human connection 
+between one human being who is suffering and vulnerable, and another 
+human being who wishes to help.
+They begin therapeutic relationships and 
+can instantly build trust in difficult circumstances.’
+3DXOLQH
+The campaign encourages healthcare staff to greet and introduce them -
+selves to patients and encourages the wearing of easy- to- read name badges 
+like this one.
+Box 1.1  The ‘Hello, my name is ...’ campaign
+1
+The medical consultation 3
+have given a lot of thought to their symptoms and come with a well- 
+thought- through story;
+others may not have reflected much on what 
+has been going on, and key information may need to be drawn out 
+by sensitive questioning.
+Structuring the medical history
+Over the last 150 years a formal structure for the recording of the 
+patient’s history has evolved.
+This has several subsections ( Box 
+1.4). While facts may be recorded in this very stylized manner, 
+the patient will rarely, if ever, present them in this structure.
+It 
+is up to the interviewing clinician to assimilate and interpret the 
+information fully and to form a considered diagnostic narrative, 
+so that when it is presented to others, either verbally or in writ -
+ten form, sense can be made of the diagnostic reasoning and 
+conclusions.
+History of the presenting complaint
+The aim is to provide a thorough account of the symptoms that led 
+the patient to seek medical attention.
+It is vital to listen closely to how 
+the symptoms are described and not to miss any clues that can be 
+followed up with direct questioning.
+For each symptom the patient 
+presents with, additional questioning should be used to identify:
+	• 		Time course: When did the problem begin?
+Does it come and 
+go? Is there anything that triggers it?
+Is there any variation in 
+the symptoms during the day or night?
+Has the patient ever had 
+anything like this in the past?
+Establishing the pattern in which 
+symptoms have developed is often one of the most helpful parts 
+of the history in helping to form a diagnosis (Box 1.5).
+• 		Associated symptoms: What else has the patient noticed? Be-
+gin with an open question, and then proceed to asking about 
+the presence or absence of relevant symptoms that may help to 
+determine the cause of the problem.
+• 		Severity, site, radiation and character of any pain: How would 
+the patient rate it on a scale from 1 to 10?
+Do they describe it 
+as tight, dull, electric or burning?
+Is it getting worse, staying the 
+same or starting to improve?
+• 		Responses: What has the patient done about the symptoms?
+Have they sought medical advice or used medication that they 
+have at home?
+The ‘Clinical skills’ sections at the beginning of many of the 
+chapters in this book present additional questioning techniques rel-
+evant to particular medical specialties.
+At this point, asking questions to form a review of 
+systems can be valuable in eliciting further symptoms that the 
+patient may not have mentioned or not thought relevant (Box 1.6).
+Past medical and surgical history
+This should include all significant medical conditions, including 
+hospital admissions, long- term conditions, life- threatening or life- 
+changing conditions, and important investigations, procedures and 
+therapeutic interventions (operations, endoscopies, biopsies and 
+significant courses of treatment such as chemo-  or radiotherapy).
+•		Allow	the	patient	to	tell	their	story,	without	jumping	in	prematurely	with	
+ questions.
+	 •		Ask	the	patient	specifically	about	their	ideas,	concerns	and	expectations	
+(ICE):
+	 •	  Ideas: What do they think might be going on?
+Have they done any reading 
+about their symptoms or asked anyone they know?
+	 •	  Concerns:	Are	they	feeling	anxious	or	worried	about	their	symptoms?	
+What	is	causing	them	concern?
+Are	there	any	particular	areas	where	their	
+symptoms might be making life difficult?
+	 •	 	Expectations: What are they hoping for from this consultation?
+	 •		Try	to	develop	an	understanding	of	who	the	patient	is	as	a	person.
+Where,	
+and with whom, do they live? What is their occupation? What things do they 
+enjoy?
+Moments of human connection, such as a shared interest in a place 
+or activity, can be powerful in building a relationship between clinician and 
+patient.
+•		Try	to	convey	empathy	and	concern,	reinforcing	to	the	patient	that	you	are	
+their advocate and will do your best to help them.
+Box 1.2  Good practice for using the medical history to build a therapeutic relationship
+	• 		Begin with open questions (‘Could you tell me more about the pain?’): do 
+this before moving to closed questions to help rule certain key problems in or 
+out (‘Did the pain get worse after eating?’).
+• 		Emphasize your active listening: maintain eye contact, nod, acknowledge 
+key points, and respond to comments the patient might make that are 
+humorous or sad.
+• 		Respond to the patient’s body language: note whether the patient 
+ becomes distressed or embarrassed.
+If so, acknowledge this and look for 
+ways to address it.
+•		Empathize: try to show the patient that you care about what they are going 
+through.
+Put yourself in their shoes: how might they be feeling?
+Communicate 
+this: ‘Thanks for sharing this – it must be difficult not knowing what is going on.’
+	• 		Summarize: run through what the patient has told you, to make sure nothing 
+has been missed out.
+• 		Signpost: explain what you have just covered and what you are now going 
+on to explore, and why.
+• 		Use plain English: avoid medical jargon or complicated vocabulary, unless it 
+is clear that the patient is able to understand this.
+Box 1.3  Strategies in history- taking
+	 •		Presenting	complaint:	why	has	the	patient	sought	medical	advice?
+	 •		History	of	the	presenting	complaint:	further	information	about	the	
+patient’s main problem
+	 •		Past	medical	and	surgical	history
+	 •		Drug	history	and	allergies
+	 •		Family	history
+	 •		Social	history:	information	on	the	patient’s	present	living	arrangements	
+and relevant risk factors
+Box 1.4  A structured approach to information- gathering 
+in the medical history
+Onset of symptoms Possible causes
+Immediate (seconds to 
+minutes)
+Vascular – thrombotic or embolic
+Anatomical – e.g.
+perforation of a viscus
+Electrical – e.g. dysrhythmias, seizures
+Hours to days Bacterial or viral infections
+Inflammatory and autoimmune diseases
+Weeks to months Malignant disease
+Inflammatory and autoimmune diseases
+Chronic infections, e.g.
+mycobacterial
+Months to years Degenerative conditions
+Fibrotic diseases
+Box 1.5  Using the time course of symptoms to suggest an 
+underlying cause
+1
+ 4 Diagnosis: the art of being a doctor
+If the patient has had any surgical interventions a comprehensive 
+anaesthetic history should be sought and recorded.
+Five good 
+questions to ask about chronic conditions are listed in Box 1.7.
+Drug history
+Document all medications the patient has been taking, including pre-
+scribed, over- the- counter and herbal or traditional treatments.
+Record 
+when each was started, along with the dosing regimen; ask about side- 
+effects and adherence to treatment.
+When you are unsure or ignorant 
+of a drug, it is essential to research and record the class, common 
+side- effects and interactions.
+Medication error is a common cause of 
+morbidity and mortality, and ignorance is no defence.
+Ask about and 
+record drug allergies, including the timing and nature of any reactions.
+Family history
+This is particularly relevant when assessing younger patients or 
+when the differential diagnosis includes possible genetic conditions.
+It is essential to record the structure of the patient’s family in detail, 
+including the patient’s and parents’ siblings, any ‘half- siblings’ 
+(genetically related to only one of the patient’s parents), and where 
+relevant, a history of consanguinity.
+Once this is completed, confirm 
+which of these relatives have been affected by a given condition or 
+by premature death (see p. 13).
+Social history
+The social history has two key purposes:
+	• 		Establishing whether there are any environmental factors  
+that may be causative or exacerbating the patient’s symptoms.
+Always ask about housing, occupation, tobacco smoking, alcohol 
+intake, and use of recreational and illicit drugs.
+Where relevant, 
+draw up a travel history, including animal and insect bites, a sex-
+ual history (if a sexually transmitted disease, including HIV infec-
+tion, is suspected), and hobbies, leisure activities and pets.
+• 		Understanding more about the lifestyle of the patient. Where 
+do they live? How active are they?
+Are they limited in any daily 
+activities by physical or mental health problems? Do they have 
+informal or formal carers?
+If so, how often do the carers attend 
+and what do they do for the patient?
+Physical examination
+The physical examination, including any objective observations, 
+should be used to confirm or refute the initial diagnosis/diagnoses 
+made from the history.
+It is a key part of all medical interactions but 
+its duration and extent will be guided by the patient’s history and the 
+acuity of the presentation.
+Even in the era of complex technological investigations a care -
+ful physical examination performs a number of key functions, 
+including:
+	 •		Providing	objective	evidence	(physical	signs)	to	complement	
+subjective evidence (symptoms) from the history.
+Sometimes a 
+Conducting a brief but comprehensive ‘review of systems’ may be a particularly 
+useful schema when the patient has non- specific symptoms, e.g.
+weight loss, 
+tiredness and weakness, or when someone reports ‘I just don’t feel right, doctor’.
+Respiratory
+Cough, sputum (volume, frequency, consistency, colour, offensive taste or smell), 
+haemoptysis (volume, frequency, consistency, colour, freshness, altered nature, 
+clots), shortness of breath, exercise tolerance, orthopnoea, wheeze, chest pain 
+Cardiovascular
+Chest pain, shortness of breath, cough, sputum, orthopnoea, swelling of ankles 
+(peripheral oedema) or abdomen (ascites), paroxysmal nocturnal dyspnoea, 
+palpitations 
+Gastrointestinal
+General – normal and present weight, appetite, oral intake
+Upper – dysphagia (level: high – base of neck, mid and lower chest),  consistency 
+of food tolerated/not tolerated), dyspepsia, odynophagia, upper abdominal pain, 
+early satiety, nausea/vomiting (volume, frequency,  consistency – unaltered 
+food (regurgitation), altered food, blood),  haematemesis (volume, frequency, 
+ consistency, colour, freshness, 
+altered nature, clots)
+Lower – lower abdominal pain, altered bowel habit, constipation, diarrhoea 
+(volume, frequency, consistency, colour), blood per rectum, mucus per 
+rectum, anal pain 
+Hepatobiliary and pancreatic
+Jaundice, associated pain, pruritus, symptoms of encephalopathy, abdominal 
+swelling (ascites) 
+Renal
+Urine (frequency, volume, colour, offensive odour), dysuria, haematuria (volume, 
+frequency, colour, freshness, clots), symptoms of bladder outflow tract 
+obstruction (hesitancy, frequency, small volume, terminal dribbling) 
+Musculoskeletal
+Bone pains, back pain and stiffness, joint stiffness, swelling, pain, erythema, 
+patterns of joints involved, muscular pain, weakness, acute pain suggesting 
+pathological or fragility fractures 
+Dermatological
+Rashes, blisters, ulcers 
+Endocrine
+Diabetic symptoms and complications, sexual function, menstruation, symptoms 
+of thyroid dysfunction 
+Neurological
+Seizures, muscle weakness, involuntary movements, loss 
+of sensation, altered 
+gait, speech and swallowing dysfunction 
+Ophthalmic
+Eye pain, redness, dryness or grittiness, changes in vision, flashing lights 
+Ear, nose and throat
+Changes in smell, taste or hearing, pain in ears, nose, throat or sinuses, nasal 
+discharge or crusting 
+Haematological
+Easy bleeding or bruising, tiredness, lymph node swelling, abdominal fullness 
+(splenomegaly) 
+Mental health
+Mood (suicidality when relevant), anxiety, altered perceptions (hallucinations), 
+abnormal beliefs (delusions) 
+Genitourinary
+Urethral or vaginal discharge, pain or itching, pain during sexual intercourse, 
+sexual function, in women – menstrual cycle, use of contraception, history of 
+pregnancies and childbirth
+Box 1.6  Review of systems
+ 1.  Diagnosis – HOW, WHY, WHERE and WHEN was your condition 
+first 
+diagnosed?
+ 2.  Progression – How has it progressed since?
+3.  Control – How do you monitor your condition? Which healthcare 
+professionals are involved with your care?
+When did you last have 
+a check- up? What medications do you take?
+What are your biggest 
+challenges in controlling your condition?
+ 4.  The good and the bad – What is the BEST and WORST your condition 
+has ever been?
+How does it have an impact on your life?
+ 5.  Today/recently – How have you been?
+If unwell, have you ever been 
+this unwell before? What happened when you were last this unwell?
+Box 1.7  Five questions for the patient with a long- term 
+condition
+1
+The medical consultation 5
+firm diagnosis can be made almost solely on the basis of exami-
+nation findings, such as in a number of skin disorders.
+•		Assessing	the	severity	or	extent	of	problems.
+	 •		Identifying	unexpected	findings	that	patients	themselves	have	
+not noticed.
+	 •		Building	rapport	with	patients.	The	value	of	performing	a	physi-
+cal examination can be significant in reinforcing to patients that 
+they have been dealt with thoroughly and compassionately.
+Typically a general assessment will be made as the history is 
+being elicited (Is the patient well or unwell? Are there any obvious 
+clinical signs?).
+This will be aided by a set of formal observations 
+(blood pressure, heart rate, oxygen saturation, respiratory rate, 
+level of consciousness, capillary blood glucose and temperature).
+A more detailed assessment is then carried out, including a ‘general 
+examination’ (hands, upper limbs, face and neck), examination of 
+the likely affected system(s) as suggested by the history, and finally 
+a wider examination of other organ systems.
+Fig. 1.2 outlines a typical general and systematic examination 
+routine suitable for use in patients presenting with a wide range of 
+medical conditions.
+The ‘Clinical skills’ sections at the beginning of 
+many of the chapters in this book offer tailored versions of this basic 
+routine relevant to patients with specific types of complaint.
+Discussion and negotiation around 
+investigations
+In the modern era, there are a huge number of investigations avail -
+able to the clinician, ranging from simple bedside tests such as spi-
+rometry or urine dipstick analysis, through to complex radiological 
+1. Initial impressions on approaching the 
+patient, or as they come into the 
+consultation area – the 'end of the bed’:
+• Establish whether the patient is well or 
+unwell.
+Why?
+• Perform observations (temperature, 
+heart rate, blood pressure, respiratory 
+rate, oxygen saturations, Glasgow Coma 
+Scale (GCS) or ACVPU score  – 
+combined into the National Early 
+Warning Score (NEWS-2, see p. 204)
+• Carry out a feet-to-face examination – 
+spend 30 seconds looking the patient up 
+and down, noting any striking 
+abnormalities – facial asymmetry, scars, 
+deformities, skin lesions, amputations, 
+sweating, breathlessness, discomfort
+• Look for clinical clues around the bed – 
+oxygen, intravenous fluids, sputum pot, 
+urinary catheter
+2. Hands:
+• Look for peripheral signs of 
+serious conditions like 
+infective endocarditis or 
+chronic liver disease
+• Feel the temperature of the 
+hands and 
+the volume of the 
+pulse to begin to assess the 
+patient’s volume status
+3. Face:
+• Assess for signs of systemic conditions, including pallor and 
+cyanosis
+• Inspect the mouth and standards of dental care
+• Consider the need for examination of some or all cranial nerves
+4. Neck:
+• Assess the jugular venous pressure (see p.
+1031)
+• Ensure that the trachea is central
+• Palpate for cervical and supraclavicular lymphadenopathy 
+or other masses
+5. Heart:
+• Palpate the apex beat and examine for heaves and thrills
+• Auscultate for heart sounds, performing additional 
+manœuvres as necessary
+6. Chest:
+• Examine for chest expansion and abnormal movement
+• Auscultate throughout both lung fields;
+consider other 
+manœuvres such as percussion note or vocal fremitus if 
+necessary
+7. Abdomen:
+• Inspect for obvious masses, distension or asymmetry, and for 
+signs of medical intervention such as operative scars or a 
+stoma bag
+• Palpate gently for tenderness and masses
+• Assess for organomegaly;
+assess other features (e.g. pulses, 
+bruits, ascites) as necessary
+8. Limbs:
+• Inspect for skin changes and deformity;
+assess the joints
+• Assess for peripheral oedema
+• Check peripheral pulses
+• Consider the need for formal examination of the peripheral 
+nervous system
+9. Functional assessment:
+• Note any difficulty the patient may have with: 
+1. Speech and language;
+swallowing problems
+2. Undressing and dressing during the examination
+3. Sit to stand, transfers and mobility – note any mobility aids 
+or assistance required
+Fig. 1.2 A basic approach to clinical examination.
+1
+ 6 Diagnosis: the art of being a doctor
+imaging and invasive procedures such as endoscopy or angiography.
+Some tests may combine both diagnostic and therapeutic potential. 
+Choosing appropriate and cost- effective interventions that maximize 
+diagnostic yield, while minimizing the burden on the patient and the 
+cost to providers, can be challenging, and each chapter in this book 
+will provide guidance in specific contexts.
+For any test that is being considered, a number of questions are 
+relevant:
+	• 		What question will this test help to answer?
+Only the most 
+basic of tests should be performed routinely.
+For all others, it 
+is helpful to have clear diagnostic questions in mind, and of -
+ten specialists, such as diagnostic radiologists, can help with 
+choosing the most appropriate investigation to answer the rel -
+evant question in a particular patient context.
+• 		What is the sensitivity and specificity of the test?
+A highly 
+sensitive test will correctly identify a high proportion of patients 
+with a given disease (true positives);
+a highly specific test will 
+correctly identify a high proportion of those who do not have the 
+disease (true negatives).
+For example, in the diagnosis of venous 
+thromboembolism (VTE, see Ch. 29 ), measurement of serum  
+D- dimer has a high sensitivity (a positive result picks out almost 
+all patients with VTE) but a low specificity (many of those with a 
+positive D- dimer do not have VTE).
+Since D- dimer measurement 
+is cheap, it is a useful screening test (because a negative test 
+effectively rules out VTE);
+a positive test is followed up by a high- 
+sensitivity test, such as venous Doppler ultrasound or computed 
+tomography pulmonary angiography (CTPA).
+• 		What are the risks of the test to the patient?
+All ionizing radia-
+tion carries a small risk of future malignant disease, and invasive 
+procedures may cause bleeding, infection or injury to internal or-
+gans.
+These dangers, along with the benefits of the investigation 
+result, need to be discussed with patients to help them make a 
+good decision.
+• 		How much certainty is needed?  Where highly burdensome 
+treatment is contemplated (such as surgery or chemotherapy 
+for cancer), it is usually necessary to obtain a formal histologi -
+cal  diagnosis by tissue biopsy before starting treatment.
+If such 
+treatment would not be appropriate, then undergoing invasive 
+diagnostic procedures may not be appropriate either.
+Further reading
+Department of Health. ‘Hello, my name is …’ Campaign. https://www.health- ni.go
+v.uk/articles/hello- my- name.
+Glynn M, Drake WM (eds).
+Hutchinson’s Clinical Methods: An Integrated 
+Approach to Clinical Practice. Edinburgh: Elsevier; 2018.
+Kurtz S, Silverman J, Benson J et al .
+Marrying content and process in clinical 
+method teaching: enhancing the Calgary- Cambridge guides. Acad Med 2003; 
+78:802–809.
+McKelvey I. The consultation hill: a new model to aid teaching consultation skills. 
+Br J Gen Pract 2010; 60:538–540.
+National Academies of Sciences, Engineering, and Medicine . Improving 
+Diagnosis in Health Care. Washington, DC: The National Academies Press;
+2015.  
+CLINICAL DIAGNOSTIC REASONING
+Forming a diagnosis involves a complex process of reasoning.
+Large 
+amounts of information gathered from the history, examination and 
+available investigation results need to be assimilated and synthe -
+sized into a working diagnosis.
+Each piece of evidence should be 
+weighed according to the degree of confidence you have in its 
+accuracy, and no significant findings should remain unexplained.
+If you, as the treating clinician, are unable to make sense of the 
+information presented to you, you should be humble and insightful 
+enough to seek help from others.
+Models of diagnosis
+A traditional model of medical diagnosis suggests that a clinician 
+should begin by considering all possible causes of a particular pre-
+senting symptom, and use information gathered from the diagnostic 
+process to include and exclude likely causes gradually, using proba-
+bilistic reasoning, until only one remains ( Fig. 1.3A).
+According to 
+the insights of the Nobel Prize- winning psychologist and economist 
+Daniel Kahneman, this is ‘type 2 thinking’, and the kind of thinking 
+we like to imagine that we carry out all the time: logical, deductive 
+and rational.
+An alternative model suggests that diagnosis proceeds instead 
+primarily by pattern recognition, the kind of ‘type 1 thinking’ that 
+allows humans to make quick judgements of new situations by 
+comparing them with similar situations encountered in the past.
+In 
+this form of diagnostic reasoning, clinicians rapidly compare the 
+patient presenting to them with many other patients they have seen 
+previously, subconsciously drawing on similarities and differences 
+to form an initial impression that is then tested as further information 
+becomes available (Fig. 1.3B).
+In reality, a combination of these two approaches gener -
+ally occurs: an initial rapid impression is formed, chiefly by type 
+1 thinking, which is subsequently revised by the slower, more 
+reason- based type 2 thinking where the initial diagnosis proves 
+inadequate.
+This ‘back to the drawing board’ approach, which 
+draws on the strengths of both types of thinking, has been sug -
+gested as the best model for safe diagnosis – where a working 
+diagnosis is continually re- evaluated as new evidence becomes 
+available (Fig. 1.3C).
+Type 1 thinking is prone to bias (see later), where it is assumed 
+that everything new must be similar to things seen before.
+It is cru -
+cial for doctors to re- evaluate an initial diagnosis actively in situ -
+ations where things ‘don’t quite fit’ rather than persisting with a 
+hastily formed assumption that may prove incorrect.
+Diagnostic error and patient safety
+It has been estimated that 10–15% of medical diagnoses are 
+wrong.
+Misdiagnosis or delayed diagnosis can be the cause of sig-
+nificant patient harm, including adverse effects from unnecessary 
+treatment or failure to receive an appropriate timely intervention.
+While misdiagnosis may occur as a result of inadequate clinical 
+knowledge or (particularly in resource- poor settings) through a 
+lack of diagnostic resources, it also arises as a direct result of one 
+or more cognitive biases.
+Box 1.8 lists a number of common cog -
+nitive biases, applied to the field of diagnostic reasoning, which 
+together form a key avoidable source of medical harm, termed 
+‘human error’.
+Strategies for avoiding bias
+Various strategies can be employed in order to reduce the chances 
+of making an incorrect diagnosis:
+	• 		Adopting an iterative approach, in which all previous diagno -
+ses are subjected to appropriate re- evaluation, especially if evi-
+dence appears that brings them into question.
+• 		Team discussions, where all team members are empowered to 
+challenge the reasoning of more senior clinicians.
+Multidisciplinary 
+team meetings bring clinicians from different specialties together 
+with allied healthcare professionals to ensure that all relevant 
+1
+Clinical diagnostic reasoning 7
+knowledge and expertise is shared in a collaborative environment.
+Leaders of healthcare teams have a particular responsibility to 
+‘flatten the authority gradient’ and empower more junior members 
+to contribute knowledge and ideas to team discussions.
+• 		Diagnostic criteria and guidelines , where robust standards 
+are outlined to ensure that potential diagnoses are correctly as -
+signed and similar conditions are differentiated from each other.
+• 		Considering patient problems in language devoid of as -
+sumption, as far as possible, seeking to describe a patient’s 
+problems succinctly and objectively without recourse to previ -
+ous diagnostic reasoning.
+• 		Using lists of disease classes to avoid jumping to conclu -
+sions: simple aides- mémoire encourage clinicians to consider, 
+for example, malignant, infectious, vascular, metabolic, inflam -
+matory and degenerative causes of a particular problem.
+Levels of diagnostic depth
+A clinical impression is formed by taking a comprehensive history 
+and undertaking a relevant physical examination.
+Drawing on the 
+information gathered, clinicians may typically assign a widely under-
+stood umbrella term to categorize a collection of signs and symp -
+toms into a clinical entity: for example, ‘acute coronary syndrome’, 
+‘delirium’, ‘upper respiratory tract infection’ or ‘sepsis’.
+Some 
+patient presentations do not fall neatly into boxes, and so sticking 
+with a narrative description of the patient’s problems is appropri -
+ate in some cases.
+However, naming a clinical impression in a few 
+simple words is often vital in moving towards a final diagnosis.
+An impression formed at the end of a clinical consultation can 
+often be refined by simple, quick and relatively non- invasive tests;
+but it might require complex, expensive or potentially hazardous 
+investigations to produce a definitive diagnosis.
+Likewise, additional 
+tests might be needed in order to demonstrate the extent, severity 
+or treatment-responsiveness of the condition (Fig. 1.4).
+Often, it is appropriate to stop at the level of a syndrome or clini-
+cal impression rather than continuing with investigations to demon-
+strate a precise histopathological cause.
+This might be the case if:
+	 •		the	patient	is	satisfied	with	this	level	of	explanation	and	declines	
+further diagnostic work- up
+	 •		the	problem	is	mild	or	self-	limiting
+	 •		further	investigation	is	unlikely	to	yield	a	specific	cause,	e.g.
+where	
+a patient with acute but resolving diarrhoea or vomiting is diag -
+nosed with likely viral gastroenteritis without a specified pathogen
+	 •		further	investigation	is	unlikely	to	influence	management,	e.g.
+if	
+none of the specific pathological processes that cause the con-
+dition is amenable to active management
+	 •		treatment	is	possible,	but	the	patient	is	very	frail	and	the	pro-
+posed investigations or treatments are felt, after discussion with 
+the patient, to be inappropriate.
+The role of watchful waiting
+All diseases have a natural history.
+Some progress inexorably, some 
+are self- limiting and some relapse and remit.
+Where there is diagnostic 
+uncertainty, there can be a role for waiting to see how events develop 
+before reaching for a diagnostic label.
+Indeed, this is sometimes 
+A patient presents with 
+a clinical problem
+Deductive reasoning based on progressive 
+evaluation of evidence reduces many potential 
+diagnoses to a final correct one (Type 2 thinking)
+The traditional model of diagnosis A
+B
+C
+This hypothesis is 
+subsequently tested 
+against further 
+findings, and either 
+confirmed or refuted
+Pattern-based diagnosis
+A combined approach
+A patient presents with 
+a clinical problem
+Early on in the consultation, one diagnosis (or more) 
+is considered likely by pattern recognition, based on 
+previous clinical experience (Type 1 thinking)
+A patient presents with 
+a clinical problem
+Often a diagnosis is readily apparent by 
+pattern recognition but sometimes the 
+presentation does not fully match 
+any 
+common or previously encountered 
+conditions
+Clinical information is re-evaluated 
+and alternative (perhaps rarer) 
+possibilities are considered
+Fig. 1.3 Approaches to diagnosis.
+(A) The traditional model of diagnosis. (B) Pattern- based 
+ diagnosis. (C) A combined approach.
+1
+ 8 Diagnosis: the art of being a doctor
+necessary, as the diagnostic criteria for some diseases stipulate that 
+symptoms must have been present for a certain length of time before 
+a diagnostic label can be assigned.
+For instance, in multiple sclerosis, 
+where an initial presentation with symptoms suggestive of a demyelin-
+ating illness is usually termed a ‘clinically isolated syndrome’, some 
+patients will suffer no further episodes while others will progress to 
+multiple sclerosis.
+In other cases, it is wise to defer risky or burden-
+some investigations until the clinical course of the disease makes it 
+clear that such investigations are justified.
+Watching and waiting can 
+be a valid approach only if, firstly, the patient’s clinical condition allows 
+it;
+and secondly, it does not involve withholding treatment that would 
+otherwise be of benefit (Box 1.9).
+Discussion with the patient is crucial. 
+When not to investigate
+Decisions about whether and how to pursue a formal diagnosis are 
+often complex and should be made in conjunction with the patient.
+Everyone is different and individuals differ in their willingness to tol-
+erate uncertainty, with some wanting to seek a firm diagnosis at all 
+costs, and others happy to accept a presumed diagnosis and run the 
+risk that this may be wrong.
+Clinicians can guide patients in making 
+complex decisions by helping them understand the likely or possible 
+outcomes of different decisions;
+often, offering ‘best-  and worst- case 
+scenarios’ for different potential courses of action is helpful.
+In gen-
+eral, investigations should be avoided where:
+	 •		the	patient	is	too	frail	to	derive	any	benefit	from	confirming	a	
+diagnosis
+	 •		the	patient	agrees	to	have	an	initial	investigation,	but	will	not	
+ accept intervention if the result is positive, e.g.
+the patient agrees 
+to a myocardial perfusion scan but would not want to undergo 
+subsequent coronary angiography or stenting
+	 •		the	treating	clinician	feels	that	investigation	is	not	deemed	to	be	
+in the patient’s best interests – patients can refuse investigation 
+or intervention, but cannot demand it.
+Diagnostic criteria
+Some conditions are diagnosed with a single pathognomonic inves-
+tigation result: for example, the presence of urate crystals on micro-
+scopic examination of synovial fluid is diagnostic of gout.
+In other 
+situations, confirming the diagnosis is far more complex and may 
+require a combination of symptoms, physical signs and investiga -
+tion results.
+For example, according to the 2018 diagnostic criteria 
+for systemic lupus erythematosus, published jointly by the Ameri -
+can College of Rheumatology and European League Against Rheu-
+matism, patients need to score ten or more points from different 
+domains, including symptoms, signs, haematological and immuno-
+logical blood tests, and histology (see p. 440).
+Diagnostic criteria have a range of functions beyond treat -
+ing individual patients, including a role in public health (in the 
+compil ation of statistics for monitoring trends in the incidence 
+and distribution of diseases), research (to allow study of diseases 
+and treatments in well- defined disease populations), and remu -
+neration or reimbursement (in many health systems, payment to 
+healthcare providers is on the basis of diagnostic codes assigned 
+to patients receiving care).
+The International Statistical Classifica -
+tion of Diseases  (ICD), now in its 11th edition, is produced by 
+the World Health Organization in order to provide a standardized 
+set of coding and diagnostic criteria across the world.
+Although 
+useful at a population level, and for the research and administra -
+tive purposes described, these criteria are rarely used in routine 
+clinical practice.
+Overdiagnosis
+Overdiagnosis refers to a diagnosis that is correctly assigned on 
+the basis of a screening programme, but is inappropriate because 
+it is unlikely ever to cause harm to the patient in question.
+It is the 
+inevitable result of population health screening and poses risks to 
+patients because of the potential for unnecessary further diagnostic 
+procedures, therapy, or insurance charges.
+For example, a frail 93- year- old man with dementia is visited at 
+home by his GP at the request of his daughter.
+A routine check 
+reveals a heart rate of 66 bpm and a blood pressure of 168/96 mmHg.
+A diagnosis of hypertension is made and the elderly man is started 
+on an antihypertensive.
+This diagnosis may be considered inappro-
+priate on a number of grounds:
+	 •		While	blood	pressure	rises	with	age,	‘normal’	blood	pressure	in	a	
+93- year- old is not clearly defined;
+neither is an acceptable target 
+blood pressure to guide intervention.
+• 		Anchoring: Relying too heavily on a piece of information offered early 
+as	a	potential	explanation.
+For	example,	a	elderly	patient	is	sent	to	
+hospital by their GP with a ‘suspected chest infection’ and the doctor 
+in the emergency department fails to consider other possible causes of 
+breathlessness, such as heart failure or pulmonary embolus.
+• 		Availability:	Assuming	that	because	certain	explanations	spring	easily	to	
+mind,	they	are	likely	to	be	correct.	For	example,	a	doctor	assumes	that	a	
+patient presenting with acute kidney injury is dehydrated and administers 
+intravenous fluids, even in the absence of evidence to support this, 
+because of unfamiliarity with less common causes of this presentation, 
+such as renal parenchymal disease.
+• 		Framing: Making decisions in different ways, depending on whether a 
+choice	is	presented	in	positive	or	negative	terms.
+For	example,	a	doctor	
+may respond differently to a radiology report of an incidentally discov-
+ered adrenal mass that is reported as ‘probably benign’, compared to the 
+same mass if the report reads ‘unable to exclude malignancy’.
+• 		Optimism:	Assuming	that	negative	outcomes	will	occur	at	a	lower	rate	
+than	they	really	do.	For	example,	a	junior	doctor	may	fail	to	call	for	senior	
+help with a clearly deteriorating patient because of an unrealistically 
+positive  expectation that the interventions they have instituted will 
+improve the situation.
+• 		Recency bias: Remembering most easily things that have happened 
+most	recently.
+For	example,	a	doctor	may	be	distracted	away	from	a	
+common diagnosis by a much rarer one, which was covered in a recent 
+teaching session they attended.
+	• 		Substitution:	An	easier	(and	related)	question	is	solved	in	place	of	a	
+more	difficult	one.
+For	example,	a	patient	with	a	history	of	intravenous	
+drug use presents with worsening headache, although a CT scan of their 
+head is normal.
+Rather than address a computationally difficult question 
+(why does this patient still have a headache?), a simpler question is 
+solved (might they simply be seeking opiate analgesia?).
+• 		The sunk- cost fallacy: Continuing to invest in a failing idea because 
+of	significant	prior	investment.
+For	example,	a	cardiologist	recommends	
+that a patient undergo high- risk elective valve replacement, despite col-
+leagues suggesting conservative management because of the patient’s 
+co- morbidities.
+The procedure is unsuccessful and the patient suffers 
+significant complications, but the doctor subsequently recommends a 
+second procedure rather than conservative management, in order to try 
+to salvage something from the situation.
+Adapted	from	Kahneman	D.	Thinking, Fast and Slow.	New	York:	Farrar,	Strauss	and	
+Giroux; 2012.
+Box 1.8  Cognitive biases leading to misdiagnosis
+1
+Communicating a diagnosis 9
+	•	 	A	one-	off	high	blood	pressure	measurement	may	have	several	
+confounding factors, including stress on being examined by the 
+doctor.
+It would require further follow- up to corroborate this finding.
+•		Hypertension	is	known	to	increase	the	risk	of	cardiovascular	dis-
+ease and stroke significantly when left untreated for a period of 
+years in younger patients, but it is far from certain that this pat -
+tern is seen in newly diagnosed hypertension in the elderly.
+•		All	medications	have	side-	effects:	those	of	commonly	used	anti-
+hypertensive drugs include postural dizziness that may lead to 
+falls, and increased susceptibility to acute kidney injury.
+These 
+may significantly outweigh any benefits of treatment.
+Some have argued that there is no such thing as overdiag-
+nosis, only ‘overtreatment’.
+Certainly, in this clinical scenario, little 
+evidence exists to support the diagnosis or treatment.
+As any good 
+geriatrician will confirm, there is art as well as science involved in 
+intervening wisely in a complex situation such as this.
+Further reading
+Bulliard JL, Chiolero A. Screening and overdiagnosis: public health implications. 
+Public Health Rev 2015; 36:8.
+Kahneman D. Thinking, Fast and Slow. New York: Strauss and Giroux; 2012.
+Norman G, Barraclough K, Dolovich L et al.  Iterative diagnosis.
+BMJ 2009; 
+339:b3490.
+O’Sullivan ED, Schofield SJ. Cognitive bias in clinical medicine. J R Coll 
+Physicians Edinb 2018; 48:225–232.
+Saposnik G, Redelmeier D, Ruff CC et al.  Cognitive biases associated with 
+medical decisions: a systematic review.
+BMC Med Inform Decis Mak 2016; 16:138. 
+COMMUNICATING A DIAGNOSIS
+Towards the end of a clinical consultation, the clinician will need to 
+explain their diagnostic reasoning to the patient, along with their 
+plans for further investigation and intervention.
+Explaining and 
+teaching is a key part of working in medicine, and this part of the 
+consultation is crucial in laying the foundation on which decisions 
+for the future can be made.
+Explaining diagnoses to patients
+Some patients will have little difficulty in understanding complex 
+medical explanations; this should never be assumed, however.
+While it is wise to avoid patronizing patients with a good under -
+standing, it is generally worth assuming that patients understand 
+less rather than more about their condition, and explaining all parts 
+of the reasoning process, at least in brief.
+Using a phrase like ‘I 
+know you understand lots about this already, but I’m just going to 
+go over things right from the beginning so we both understand each 
+other’ can be a good way of giving simple explanations without 
+causing embarrassment.
+Explaining a patient’s diagnosis is best done in chunks, waiting 
+between each chunk to ensure they have understood ( Box 1.10).
+It 
+is wise to work chronologically through the symptoms, employing 
+Fig. 1.4 Examples of different levels of diagnosis.
+Patient presents to
+hospital with acute
+central chest pain
+Diagnosis: acute
+coronary syndrome
+Electrocardiogram
+performed and serum
+troponin measured in
+emergency department
+Diagnosis: ST-elevation
+myocardial infarction
+Percutaneous angiography
+and echocardiography
+performed at local cardiac
+unit
+Diagnosis: acute
+thrombosis of left anterior
+descending artery,
+impaired left ventricular
+function
+Patient sees their
+general practitioner,
+complaining of
+fatigue
+Diagnosis: tiredness,
+unclear cause
+A routine panel of blood
+tests is ordered by the
+doctor.
+Diagnosis: iron
+deficiency anaemia
+Upper and lower
+endoscopies with mucosal
+biopsies are performed
+urgently to exclude
+gastrointestinal malignancy
+Diagnosis: duodenal ulcer
+secondary to 
+Helicobacter
+pylori infection, with slow
+chronic blood loss
+	• 		A 77- year- old woman is undergoing CT scanning of the coronary 
+arteries after an episode of chest pain.
+A	small	(<10	mm)	pulmonary	
+nodule is incidentally noted. She is at high risk for lung cancer because 
+of a long smoking history.
+In accordance with the British Thoracic 
+Society’s ‘Guidelines for the Investigation and Management of Pulmonary 
+Nodules’, she is offered computed tomography screening at 3 months 
+and 1 year.
+These reveal stable appearances with no increase in size, so 
+she is reassured and discharged from further follow- up of this nodule.
+• 		A 34- year- old man is found to have abnormal liver function tests 
+and is referred to a hepatology clinic.
+A	set	of	blood	tests	screening 	
+for common causes of liver disease, including viral hepatitis antibodies, 
+are	all	normal.
+A	liver	biopsy	is	discussed	with	the	patient, 	but	because	
+his liver function tests are not rapidly deteriorating, a decision is made 
+in favour of watchful waiting.
+Two months later, his liver function tests 
+return to normal ranges and remain normal after another 6 months.
+He is discharged from clinic without a diagnosis for his transient liver 
+injury.
+• 		An 18- year- old woman with a history of presumed minimal change 
+disease as a child presents to the renal outpatient department with 
+recurrent nephrotic syndrome.
+She is commenced on a loop diuretic and 
+high- dose corticosteroids, but after 2 months remission has not been 
+achieved.
+Because it is atypical for minimal change disease to fail to 
+remit by this point, and because the diagnosis had never before been 
+histologically proven, a renal biopsy is carried out.
+This revealed a different 
+but related renal disorder: focal segmental glomerulosclerosis.
+Box 1.9  The role of watchful waiting in diagnosis
+1
+ 10 Diagnosis: the art of being a doctor
+causal explanations and tying symptoms to the underlying patho -
+logical processes.
+This helps patients to understand the clinician’s 
+diagnostic reasoning and future priorities in management.
+Breaking bad news
+Sometimes, clinicians have to tell patients that they have a severe, 
+chronic or life- limiting disease.
+This might be expected news for the 
+patient or it might come as a complete surprise.
+This is one of the most 
+difficult things a clinician has to do.
+It is never a pleasant task but hav-
+ing a good structure enables a clinician to be sensitive and kind, and 
+leaves the patient knowing that they are not on their own (Box 1.11).
+Traditionally, it was commonplace to withhold bad news from 
+patients, telling it only to their families.
+Such an approach will often 
+cause far greater distress to the patient (as a result of being deceived) 
+and is now considered unacceptable.
+Where patients do not wish to 
+be told about their diagnosis, this should be respected, and informa-
+tion can be given to family members instead if the patient consents;
+often, in such cases, the patient may understand that the news is not 
+good and may wish to be spared the full details.
+If major treatment 
+decisions need to be made and the patient has mental capacity to 
+make them, clinicians should do their best to persuade patients of the 
+importance of understanding what is wrong with them.
+Team communication
+Communication of a diagnosis between members of the health -
+care team should be succinct and accurate.
+Technical terms are 
+appropriate, alongside abbreviations, as long as they are widely 
+understood.
+Often, patients with complex medical histories may 
+present with multiple problems, and so clinicians treating them 
+may compile a ‘ problem list ’ outlining currently unresolved 
+issues ( Box 1.12 ).
+This can help to highlight issues that need to 
+be resolved, guide investigations and management, and be used 
+in communicating a patient’s needs between members of the 
+healthcare team.
+Beginning with a summary of the clinical presentation, the clinician explains 
+their diagnostic reasoning before suggesting what should happen next, ensuring 
+after each chunk that the patient understands and agrees.
+•		‘So	you	came	in	to	see	me	because	over	the	past	month	you’ve	noticed	pain,	
+swelling and stiffness in your hands ...’
+	 •		‘When	I	examined	your	hands,	I	found	that	lots	of	the	small	joints	in	your	
+fingers were hot, red and swollen, and I also noticed these new swellings 
+behind your elbows you hadn’t seen before ...’
+	 •		‘Now	I	don’t	know	exactly	what	is	going	on,	but	when	joints	get	red	and	hot	
+like this, it often means there is inflammation in the joints – often the body’s 
+immune system is attacking something in the joint ...’
+	 •		‘I’d	like	to	do	some	blood	tests	to	look	for	evidence	that	the	immune	system	
+is causing this, and also get an X- ray of your hands ...’
+	 •		‘Once	the	results	are	back,	I’m	going	to	talk	to	a	specialist	rheumatologist	at	
+the hospital ...’
+	 •		‘It	might	be	that	they	suggest	starting	anti-	inflammatory	medication	over	the	
+next few days to try to reduce the swelling and stop it causing any damage 
+to the joints ...’
+	 •		‘In	the	meantime,	let	me	prescribe	you	some	painkillers	to	try	to	make	things	
+more comfortable.’
+Box 1.10  ‘Chunking’ the diagnostic process
+	 •		Choose	a	setting	that	is	private,	quiet	and	comfortable	–	perhaps	a	relatives’	
+room off a main ward, 
+after ensuring that you will not be disturbed.
+	 •		Ask	the	patient	who	they	would	like	with	them	to	discuss	their	test	results	
+– encourage them to bring along a trusted friend or relative.
+Try to have at 
+least two members of clinical staff present, e.g.
+a senior treating doctor and 
+a nurse caring for the patient.
+•		Set	aside	time	–	ideally,	at	least	20	minutes	–	to	ensure	that	the	discussion	
+is not rushed and that questions can be dealt with.
+	 •		Introduce	yourself	and	others	present	and	explain	the	purpose	of	the	
+meeting, e.g. to go through recent test results.
+	 •		Ask	how	the	patient	has	been	since	the	last	time	you	spoke	with	them.
+•		Briefly	(in	not	more	than	two	or	three	sentences)	recap	their	history	–	what	
+symptoms they presented with and why certain tests were done.
+	 •		Fire	a	warning	shot:	explain	that	things	are	looking	more	serious	than	first	
+thought.
+	 •		Pause.
+	 •		Clearly,	briefly	and	in	plain	English,	describe	the	findings,	e.g.
+‘I’m	afraid	
+that the CT scan revealed there is a lump in your left lung, and the doctor 
+reporting the scan thinks that this could be lung cancer.’
+	 •		Pause.
+•		Be	prepared	for	any	reaction	from	the	patient	–	they	might	break	down	in	
+tears, or argue with you, or become angry, or simply deny that what you have 
+said	is	true.	Avoid	giving	too	much	more	information	until	they	indicate	they	
+are ready.
+•		Briefly	outline	the	likely	diagnosis,	any	areas	of	uncertainty	and	the	next	
+steps (e.g. further investigations or referral to a specialist).
+	 •		Pause.
+	 •		Invite	questions.
+•		Be	ready	to	answer	the	question	‘How	long	have	I	got?’	It	is	often	impossible	
+to say at this stage, and it is generally misleading and inappropriate to give 
+specific figures.
+It can sometimes be helpful to outline whether a condition is 
+survivable, or to give best-  and worst- case scenarios.
+•		Give	hope:	explain	what	can	be	done,	even	it	is	simply	a	matter	of	care,	
+ support and symptom control. Try to help patients to maintain some control 
+over their life, but never make false promises.
+•		Empathize:	e.g.	some	patients	like	to	be	touched,	with	a	reassuring	hand	
+placed	on	theirs,	while	others	do	not.	Always	try	to	convey	concern	and	
+ support explicitly.
+	 •		Outline	a	brief	plan:	what	happens	now?	What	should	they	do	if	they	think	of	
+questions over the next few hours?
+Box 1.11  Breaking bad news
+ 1.  Right lower lobe pneumonia (presumed aspiration pneumonia, no 
+ positive microbiology)
+ 2.  Impaired swallow, awaiting speech and language therapy assessment
+ 3.  Previous stroke, right- sided hemiparesis, bedbound
+	 4.		Acute	kidney	injury	probably	secondary	to	sepsis	and	hypotension	–	
+resolving
+ 5.  Previously struggling to cope at home despite four- times- daily care 
+package;
+may require residential nursing care
+Box 1.12  Example of a ‘problem list’ in an elderly patient 
+admitted to hospital
+1
+Diagnosis, artificial intelligence and the future of medicine   11
+The SBAR tool
+Reviews of serious incidents occurring in hospital often highlight 
+poor communication between team members as playing a key role 
+in subsequent patient harm.
+For example, a member of the nurs -
+ing staff may notice a deteriorating patient and summon the on- call 
+doctor, who may fail to appreciate the severity of the situation and 
+therefore not respond in a timely manner.
+To address this problem, the SBAR tool has been developed to 
+help formalize such communication.
+Staff members are encouraged 
+to use this to structure their communication, in order to emphasize 
+the need for full attention and an adequate response from the pro -
+fessional receiving the call.
+• 		Situation: who is making the call, which patient does it relate to 
+and where are they in the hospital?
+• 		Background: why was the patient admitted and what have been 
+the recent events?
+• 		Assessment: why are you calling, what are the patient’s current 
+problems and what assessment have you made of them?
+• 		Response: what do you need the person receiving the call to do?
+Shared decision- making
+Generally a diagnosis will be reached that incorporates information 
+from the history, physical examination and relevant investigations.
+This will be communicated to the patient by the clinician treat -
+ing them, who should check their understanding and discuss the 
+implications.
+As with history- taking, the patient must be regarded 
+and treated as an equal partner.
+The concept of shared decision- 
+making has been developed to emphasize just how important joint 
+involvement is, with benefits for both the healthcare provider and 
+the patient (Box 1.13).
+For patients to participate as equal partners, it is crucial for 
+them to be provided with all the necessary information about their 
+condition and the various treatment options available, presented in 
+language that is easily understood.
+Information leaflets and online 
+materials, often produced by patient support groups and charities, 
+are available to help achieve this.
+Managing uncertainty
+Sometimes, it is not possible to make a definitive, corroborated 
+diagnosis.
+This may be because:
+	 •		the	 investigations	 available	 are	 unable	 to	 provide	 definitive	
+proof, for example if medicine is being delivered in a resource- 
+poor setting
+	 •		definitive	investigation	is	avoided	because	of	the	dangers	or	bur-
+dens involved
+	 •		the	patient	declines	investigation
+	 •		investigations	have	commenced	but	will	not	reach	a	conclusion	
+for some time.
+This can be very difficult for both patients and clinicians.
+With -
+out a confirmed diagnosis, it is impossible to produce a confident 
+prognosis, and this can be profoundly challenging for patients.
+It 
+can also be unnerving to clinicians to be taken to the point at which 
+science can offer nothing more and they are forced to acknowledge 
+their limitations.
+At this point, the clinician should help the patient 
+deal with this lack of closure and uncertainty.
+It might be relevant 
+to establish what gives the patient’s life meaning, to enquire about 
+their religious or spiritual beliefs, or to ask what most concerns them 
+about facing their current illness.
+In the meantime, plans can be built on the available evidence 
+relating to the patient’s underlying illness, guided by key concerns 
+expressed by the patient:
+	 •		Symptomatic	treatment	(such	as	pain	relief	or	anti-	sickness	drugs)	
+is always appropriate when required, and may be a way of restor-
+ing a sense of control in an uncertain situation (see Ch. 7).
+•		Empirical	treatment	can	be	instituted	on	the	basis	of	a	suspect-
+ed underlying pathology, even if a firm diagnosis is not possible.
+However, this needs clear discussion with the patient about the 
+likelihood that the proposed treatment may cause side- effects, 
+and may be ineffective or even harmful if the suspected diag-
+nosis is incorrect.
+•		If	a	rapidly	life-	limiting	condition,	such	as	advanced	malignancy,	
+is suspected, then discussions should begin early about end- of- 
+life care. What is important to the patient?
+Where would they like 
+to be cared for in their final months or weeks?
+	 •		Help	from	psychologists	or	chaplains	can	be	of	great	benefit	and	
+is often readily available.
+Further reading
+Baile WF, Buckman R, Lenzi R et al. SPIKES – a six- step protocol for delivering 
+bad news: application to the patient with cancer.
+Oncologist 2000; 5:302–311.
+Hatch S. Uncertainty in medicine. BMJ 2017; 357:j2180.
+NHS Improvement. SBAR Communication Tool. https://improvement.nhs.uk/docu
+ments/2162/sbar- communication- tool.pdf.
+NICE.
+Shared Decision Making Guidelines. https://www.nice.org.uk/about/what- 
+we- do/our- programmes/nice- guidance/nice- guidelines/shared- decision- making.
+DIAGNOSIS, ARTIFICIAL  
+INTELLIGENCE AND THE FUTURE  
+OF MEDICINE
+Artificial intelligence (AI) describes the ability of machines to 
+perform tasks traditionally believed to require higher cognitive 
+skills.
+Examples include natural language processing, learning, 
+executive planning and pattern recognition.
+Although multiple 
+predictions are made about the future powers of self- conscious 
+computers and ‘super- intelligences’, all the AI technology avail -
+able currently, and in the near future, may be described as ‘narrow 
+AI’ or ‘weak AI’: that is, systems designed to augment specified 
+tasks within limited and well- defined fields of activity.
+The basis of 
+all AI systems lies in the ability of high- capacity computer systems 
+to analyse and utilize trends in large datasets that correlate with 
+predefined outputs, ‘seeing’ patterns in data that possess predic -
+tive significance but are invisible to human observers.
+AI systems 
+are ‘fed’ data and use this to develop and refine rules that predict 
+the outputs they are designed to detect.
+Benefits for the patient
+	 •		Better	understanding	of	the	different	treatment	options	available	and	
+their benefits and risks
+	 •		A	feeling	of	empowerment	as	different	options	are	explored
+	 •		A	treatment	plan	tailored	to	the	patient’s	individual	needs 
+Benefits for the healthcare provider
+	 •		A	better	understanding	of	what	things	are	most	important	to	this	
+ individual patient
+	 •		Better	patient	engagement	with	the	illness	and	its	management
+	 •		Better	adherence	to	prescribed	medication
+Box 1.13  Benefits of shared decision- making
+1
+ 12 Diagnosis: the art of being a doctor
+AI systems in healthcare
+A number of such narrow AI systems have been trialled with encour-
+aging results in different areas of medical practice:
+	• 		‘Computer vision’ .
+These AI systems review large numbers 
+of medical images with appropriate diagnostic labels supplied 
+by experts, and build diagnostic algorithms based on features 
+of the image that correlate with the assigned diagnosis.
+Such 
+systems have been shown to perform as well as, or better 
+than, human experts in a number of clinical settings, including 
+the interpretation of electrocardiograms, the diagnosis of skin 
+ cancers, the recognition of abnormalities on retinal screening 
+photographs, and the reporting of chest X- rays and other radio-
+logical images.
+• 		Risk prediction. These AI systems consider large sets of patient 
+data (age, sex, ethnicity, environmental risk factors, physiologi -
+cal observations, results of blood tests and other investigations, 
+administered medications) and correlate these with patient out -
+comes to form powerful predictive tools.
+Patterns are detected 
+that may have previously been overlooked by human research -
+ers, such as beat- to- beat heart rate variation, which correlates 
+strongly with mortality and development of sepsis in patients in 
+critical care settings.
+Similar algorithms have been shown to be 
+effective in predicting in- hospital complications and mortality, 
+out- of- hospital events (such as 10- year cardiovascular mortal -
+ity) and even less obvious outcomes (such as suicide risk).
+• 		Individualized treatment . No two patients suffer exactly the 
+same disease and yet patients with the same diagnosis are 
+generally, at present, offered the same treatment options.
+AI 
+systems have been developed that analyse a large volume of 
+patient data (relating, for example, to patients’ whole- genome 
+sequences or samples from tumours), allowing genetic 
+variants to be identified that predict the likely responses to 
+ different types of treatment.
+These allow treatment regimens 
+to be tailored to individual patients, maximizing efficacy and 
+ minimizing toxicity.
+Future uses of AI
+All of the currently and imminently available AI systems simply pres-
+ent clinicians with suggestions: probabilities that might suggest 
+a diagnosis, or quantify a set of risks, or identify treatments most 
+likely to be of benefit.
+As such, these AI systems provide doctors 
+with a helpful ‘ second opinion ’, from a unique, non- human per-
+spective.
+The key ethical issue of deciding what to do next falls to 
+the patient and doctor, working collaboratively.
+However, other AI technologies are being developed that pose 
+far greater ethical questions about the role that machines should 
+play in healthcare.
+Although these are presently far off, some devel-
+opers envisage robotic systems that would almost completely 
+replace human doctors: patients would tell a computer system their 
+symptoms, undergo whatever investigations were required, and 
+receive an automated, algorithm- driven diagnosis and manage -
+ment plan.
+These systems would use natural language processing 
+to review all relevant medical literature, and make use of this data to 
+identify exactly which treatment would be most appropriate for the 
+patient in question.
+In the social care sector, robotic systems are already being 
+designed that provide ‘care’ and ‘companionship’ for elderly, dis -
+abled or cognitively impaired people.
+Other systems administer 
+talking- based therapy to patients with mood disorders such as 
+depression.
+Does this represent a good use of technology, reducing 
+the cost and improving the quality of care?
+Or is there something 
+fundamental about caring for people that requires a human to do it?
+The role and goals of medicine
+Predictions about the future implications of technology are notori -
+ously difficult to make and prone to embarrassingly high degrees 
+of error.
+It is right for doctors to welcome rigorously tested narrow 
+AI as it is currently available, and to appraise future developments 
+critically to ensure that they maintain the safety and dignity of the 
+patients they are designed to help.
+However, technology can never replace the human- to- human 
+interaction at the heart of every medical consultation.
+While we 
+strive to use all available technology to refine diagnosis and improve 
+management, this must never be at the expense of the relation -
+ship that has always formed the cornerstone of effective medical 
+care.
+We are increasingly able to provide our patients with the most 
+incredible therapeutic interventions that deliver invaluable improve-
+ments in quality and quantity of life.
+But we are also always able to 
+give them our attention, comfort, compassion and care.
+There can 
+be no greater privilege than having a patient trust you with their life 
+and health, and we shoulder a heavy responsibility when seeking to 
+act as their doctors.
+Further reading
+Academy of Medicine Royal Colleges. Artificial Intelligence in Healthcare, 2018; 
+https://www.aomrc.org.uk/wp- content/uploads/2019/01/Artificial_intelligence_in_
+healthcare_0119.pdf.
+Nuffield Council on Bioethics.
+Artificial Intelligence (AI) in Healthcare and Research , 
+2018; http://nuffieldbioethics.org/wp- content/uploads/Artificial- Intelligence- AI- in- 
+healthcare- and- research.pdf.

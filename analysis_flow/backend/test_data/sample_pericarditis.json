@@ -1,0 +1,36 @@
+{
+    "name": "Acute Pericarditis",
+    "description": "25yo male with sharp pleuritic chest pain relieved by leaning forward — post-viral pericarditis",
+    "severity": "moderate",
+    "symptoms": {
+        "text": "25-year-old male with sharp pleuritic chest pain worsened by inspiration and supine position, relieved by leaning forward. Onset 3 days after upper respiratory infection. Low-grade fever (38.2°C). No significant past medical history. No family history of cardiac disease.",
+        "age": 25,
+        "sex": "M",
+        "chief_complaint": "Sharp pleuritic chest pain, worse supine, relieved leaning forward"
+    },
+    "ecg": {
+        "status": "present",
+        "rhythm": "Normal sinus rhythm",
+        "heart_rate": 88,
+        "st_segment": "Diffuse ST-segment elevation with PR depression",
+        "interpretation": "Diffuse concave-up ST elevation with PR depression consistent with acute pericarditis",
+        "findings": [
+            "Diffuse ST elevation",
+            "PR depression",
+            "No reciprocal changes"
+        ]
+    },
+    "labs": {
+        "status": "present",
+        "troponin": 0.15,
+        "bnp": 45,
+        "creatinine": 0.9,
+        "hemoglobin": 15.1,
+        "findings": [
+            "Mildly elevated troponin (myopericarditis)",
+            "Normal BNP",
+            "Elevated CRP and ESR"
+        ]
+    },
+    "experience_level": "newbie"
+}

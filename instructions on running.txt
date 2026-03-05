@@ -1,0 +1,11 @@
+# Instructions on Running the System
+
+## Backend Setup
+1. Run the `backends.bat` script located in the root folder.
+   - This script will initialize separate virtual environments (venvs) for each backend folder and install the required dependencies from `requirements.txt`.
+   - If the virtual environments already exist, the script will skip initialization and directly start the backends.
+
+## Frontend Setup
+1. Run the `frontend.bat` script located in the root folder.
+   - On the first launch, this script will install the necessary frontend dependencies using `npm install` and `pnpm install`.
+   - For subsequent launches, it will directly start the development server to load the frontend.

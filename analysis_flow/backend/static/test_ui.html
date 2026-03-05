@@ -1,0 +1,1316 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KRA-ORA Pipeline Tester</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0
+        }
+
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-card: #1a2236;
+            --bg-card-hover: #1e2942;
+            --bg-glass: rgba(26, 34, 54, .65);
+            --border: #2a3654;
+            --border-active: #3b82f6;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent: #3b82f6;
+            --accent-glow: rgba(59, 130, 246, .25);
+            --green: #10b981;
+            --green-glow: rgba(16, 185, 129, .2);
+            --red: #ef4444;
+            --red-glow: rgba(239, 68, 68, .2);
+            --amber: #f59e0b;
+            --amber-glow: rgba(245, 158, 11, .2);
+            --purple: #8b5cf6;
+            --purple-glow: rgba(139, 92, 246, .2);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --shadow: 0 4px 24px rgba(0, 0, 0, .4);
+            --font: 'Inter', system-ui, sans-serif;
+            --mono: 'JetBrains Mono', monospace;
+        }
+
+        html {
+            font-size: 15px;
+            scroll-behavior: smooth
+        }
+
+        body {
+            font-family: var(--font);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59, 130, 246, .08), transparent),
+                radial-gradient(ellipse 60% 40% at 80% 100%, rgba(139, 92, 246, .06), transparent);
+        }
+
+        /* ---- TOP BAR ---- */
+        .topbar {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(20px);
+            background: rgba(10, 14, 26, .82);
+            border-bottom: 1px solid var(--border);
+            padding: 14px 32px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .topbar .logo {
+            font-size: 1.3rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -.5px;
+        }
+
+        .topbar .subtitle {
+            color: var(--text-muted);
+            font-size: .85rem;
+            font-weight: 400
+        }
+
+        .topbar .health-dot {
+            margin-left: auto;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            transition: background .3s;
+        }
+
+        .topbar .health-dot.ok {
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green-glow)
+        }
+
+        .topbar .health-dot.bad {
+            background: var(--red);
+            box-shadow: 0 0 8px var(--red-glow)
+        }
+
+        .topbar .health-label {
+            font-size: .78rem;
+            color: var(--text-muted)
+        }
+
+        /* ---- MAIN LAYOUT ---- */
+        .app {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            min-height: calc(100vh - 56px)
+        }
+
+        /* ---- LEFT PANEL ---- */
+        .left-panel {
+            border-right: 1px solid var(--border);
+            padding: 24px 20px;
+            overflow-y: auto;
+            max-height: calc(100vh - 56px);
+        }
+
+        .section-title {
+            font-size: .72rem;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        /* Sample cards */
+        .sample-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all .2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sample-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            transition: opacity .2s;
+            background: linear-gradient(135deg, rgba(59, 130, 246, .06), rgba(139, 92, 246, .04));
+        }
+
+        .sample-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(59, 130, 246, .1)
+        }
+
+        .sample-card:hover::before {
+            opacity: 1
+        }
+
+        .sample-card.active {
+            border-color: var(--accent);
+            background: var(--bg-card-hover);
+            box-shadow: 0 0 0 2px var(--accent-glow)
+        }
+
+        .sample-card .card-name {
+            font-weight: 600;
+            font-size: .95rem;
+            margin-bottom: 4px;
+            position: relative;
+            z-index: 1
+        }
+
+        .sample-card .card-desc {
+            font-size: .8rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+            position: relative;
+            z-index: 1
+        }
+
+        .sample-card .severity-badge {
+            display: inline-block;
+            font-size: .65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .8px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-top: 8px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .severity-badge.critical {
+            background: var(--red-glow);
+            color: var(--red)
+        }
+
+        .severity-badge.high {
+            background: var(--amber-glow);
+            color: var(--amber)
+        }
+
+        .severity-badge.moderate {
+            background: var(--accent-glow);
+            color: var(--accent)
+        }
+
+        /* Input preview */
+        .input-preview {
+            margin-top: 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+
+        .preview-header {
+            padding: 10px 16px;
+            background: rgba(59, 130, 246, .06);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .preview-header span {
+            font-size: .78rem;
+            font-weight: 600;
+            color: var(--text-secondary)
+        }
+
+        .preview-body {
+            padding: 12px 16px;
+            max-height: 260px;
+            overflow-y: auto
+        }
+
+        .preview-body pre {
+            font-family: var(--mono);
+            font-size: .72rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        /* Run button */
+        .run-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            margin-top: 20px;
+            padding: 14px 24px;
+            border: none;
+            border-radius: var(--radius);
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: #fff;
+            font-family: var(--font);
+            font-size: .95rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all .25s;
+            box-shadow: 0 4px 20px rgba(59, 130, 246, .3);
+            letter-spacing: .3px;
+        }
+
+        .run-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 28px rgba(59, 130, 246, .4)
+        }
+
+        .run-btn:active:not(:disabled) {
+            transform: translateY(0)
+        }
+
+        .run-btn:disabled {
+            opacity: .5;
+            cursor: not-allowed
+        }
+
+        .run-btn.running {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            animation: pulse-btn 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-btn {
+
+            0%,
+            100% {
+                box-shadow: 0 4px 20px rgba(99, 102, 241, .3)
+            }
+
+            50% {
+                box-shadow: 0 4px 30px rgba(99, 102, 241, .5)
+            }
+        }
+
+        .run-btn svg {
+            width: 18px;
+            height: 18px
+        }
+
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 2.5px solid rgba(255, 255, 255, .2);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin .7s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg)
+            }
+        }
+
+        /* ---- RIGHT PANEL ---- */
+        .right-panel {
+            padding: 28px 32px;
+            overflow-y: auto;
+            max-height: calc(100vh - 56px)
+        }
+
+        /* Pipeline stepper */
+        .stepper {
+            display: flex;
+            gap: 0;
+            margin-bottom: 28px;
+            flex-wrap: wrap
+        }
+
+        .step-item {
+            flex: 1;
+            min-width: 100px;
+            padding: 12px 10px;
+            text-align: center;
+            position: relative;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            transition: all .3s;
+        }
+
+        .step-item:first-child {
+            border-radius: var(--radius-sm) 0 0 var(--radius-sm)
+        }
+
+        .step-item:last-child {
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0
+        }
+
+        .step-item+.step-item {
+            border-left: none
+        }
+
+        .step-num {
+            font-size: .65rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px
+        }
+
+        .step-label {
+            font-size: .72rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-top: 2px
+        }
+
+        .step-time {
+            font-size: .65rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+            font-family: var(--mono)
+        }
+
+        .step-item.active {
+            background: rgba(59, 130, 246, .08);
+            border-color: var(--accent)
+        }
+
+        .step-item.active .step-num {
+            color: var(--accent)
+        }
+
+        .step-item.active .step-label {
+            color: var(--text-primary)
+        }
+
+        .step-item.completed {
+            background: rgba(16, 185, 129, .06);
+            border-color: rgba(16, 185, 129, .3)
+        }
+
+        .step-item.completed .step-num {
+            color: var(--green)
+        }
+
+        .step-item.completed .step-label {
+            color: var(--green)
+        }
+
+        .step-item.failed {
+            background: var(--red-glow);
+            border-color: rgba(239, 68, 68, .3)
+        }
+
+        .step-item.failed .step-num,
+        .step-item.failed .step-label {
+            color: var(--red)
+        }
+
+        /* Supabase IDs panel */
+        .ids-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            margin-bottom: 24px;
+        }
+
+        .ids-panel .ids-title {
+            font-size: .72rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px
+        }
+
+        .id-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px
+        }
+
+        .id-row .id-label {
+            font-size: .75rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            min-width: 130px
+        }
+
+        .id-row .id-value {
+            font-family: var(--mono);
+            font-size: .72rem;
+            color: var(--accent);
+            background: rgba(59, 130, 246, .08);
+            padding: 3px 10px;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+
+        .id-row .id-value.empty {
+            color: var(--text-muted);
+            background: none
+        }
+
+        /* Result card */
+        .result-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .result-header {
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .result-header .result-icon {
+            font-size: 1.3rem
+        }
+
+        .result-header .result-title {
+            font-weight: 700;
+            font-size: 1rem
+        }
+
+        .result-header .result-status {
+            margin-left: auto;
+            font-size: .72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .8px;
+            padding: 4px 12px;
+            border-radius: 20px;
+        }
+
+        .result-status.completed {
+            background: var(--green-glow);
+            color: var(--green)
+        }
+
+        .result-status.partial {
+            background: var(--amber-glow);
+            color: var(--amber)
+        }
+
+        .result-status.failed {
+            background: var(--red-glow);
+            color: var(--red)
+        }
+
+        .result-body {
+            padding: 20px 24px
+        }
+
+        /* Markdown rendered output */
+        .md-output {
+            line-height: 1.75;
+            font-size: .9rem;
+            color: var(--text-primary);
+        }
+
+        .md-output h1,
+        .md-output h2,
+        .md-output h3 {
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 6px;
+            margin: 20px 0 12px;
+            font-weight: 700;
+        }
+
+        .md-output h1 {
+            font-size: 1.4rem
+        }
+
+        .md-output h2 {
+            font-size: 1.15rem
+        }
+
+        .md-output h3 {
+            font-size: 1rem;
+            border: none;
+            color: var(--accent)
+        }
+
+        .md-output p {
+            margin-bottom: 10px
+        }
+
+        .md-output ul,
+        .md-output ol {
+            margin: 8px 0 12px 20px
+        }
+
+        .md-output li {
+            margin-bottom: 4px
+        }
+
+        .md-output strong {
+            color: #fff;
+            font-weight: 700
+        }
+
+        .md-output em {
+            color: var(--text-secondary)
+        }
+
+        .md-output code {
+            font-family: var(--mono);
+            font-size: .82rem;
+            background: rgba(59, 130, 246, .1);
+            color: var(--accent);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .md-output pre {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 14px;
+            margin: 12px 0;
+            overflow-x: auto;
+        }
+
+        .md-output pre code {
+            background: none;
+            padding: 0;
+            color: var(--text-secondary)
+        }
+
+        .md-output blockquote {
+            border-left: 3px solid var(--accent);
+            padding: 8px 16px;
+            margin: 12px 0;
+            background: rgba(59, 130, 246, .04);
+            color: var(--text-secondary);
+        }
+
+        .md-output table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+            font-size: .82rem;
+        }
+
+        .md-output th {
+            background: rgba(59, 130, 246, .08);
+            padding: 8px 12px;
+            text-align: left;
+            border: 1px solid var(--border);
+            font-weight: 600;
+        }
+
+        .md-output td {
+            padding: 8px 12px;
+            border: 1px solid var(--border)
+        }
+
+        .disclaimer {
+            margin-top: 16px;
+            padding: 12px 16px;
+            background: rgba(245, 158, 11, .06);
+            border: 1px solid rgba(245, 158, 11, .2);
+            border-radius: var(--radius-sm);
+            font-size: .82rem;
+            color: var(--amber);
+        }
+
+        /* KRA Raw toggle */
+        .raw-toggle {
+            margin-top: 16px;
+            border: none;
+            background: none;
+            color: var(--text-muted);
+            font-family: var(--font);
+            font-size: .78rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 0;
+        }
+
+        .raw-toggle:hover {
+            color: var(--text-secondary)
+        }
+
+        .raw-collapse {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height .3s;
+        }
+
+        .raw-collapse.open {
+            max-height: 2000px
+        }
+
+        .raw-content {
+            margin-top: 8px;
+            padding: 14px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-family: var(--mono);
+            font-size: .72rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 80px 40px;
+            color: var(--text-muted);
+        }
+
+        .empty-state .empty-icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+            opacity: .5
+        }
+
+        .empty-state .empty-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: var(--text-secondary)
+        }
+
+        .empty-state .empty-desc {
+            font-size: .85rem;
+            line-height: 1.5
+        }
+
+        /* Log area */
+        .log-area {
+            margin-top: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 14px;
+            font-family: var(--mono);
+            font-size: .72rem;
+            color: var(--text-muted);
+            line-height: 1.7;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .log-area .log-ok {
+            color: var(--green)
+        }
+
+        .log-area .log-err {
+            color: var(--red)
+        }
+
+        .log-area .log-info {
+            color: var(--accent)
+        }
+
+        .log-area .log-warn {
+            color: var(--amber)
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted)
+        }
+
+        /* Responsive */
+        @media(max-width:900px) {
+            .app {
+                grid-template-columns: 1fr
+            }
+
+            .left-panel {
+                max-height: none;
+                border-right: none;
+                border-bottom: 1px solid var(--border)
+            }
+
+            .stepper {
+                flex-direction: column
+            }
+
+            .step-item:first-child {
+                border-radius: var(--radius-sm) var(--radius-sm) 0 0
+            }
+
+            .step-item:last-child {
+                border-radius: 0 0 var(--radius-sm) var(--radius-sm)
+            }
+
+            .step-item+.step-item {
+                border-left: 1px solid var(--border);
+                border-top: none
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- TOP BAR -->
+    <div class="topbar">
+        <div class="logo">KRA-ORA</div>
+        <div class="subtitle">Pipeline Tester</div>
+        <div class="health-label" id="health-label">checking...</div>
+        <div class="health-dot" id="health-dot"></div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div class="app">
+
+        <!-- LEFT PANEL: Sample selector -->
+        <div class="left-panel">
+            <div class="section-title">Test Samples</div>
+            <div id="sample-list">
+                <div style="color:var(--text-muted);font-size:.85rem;">Loading samples...</div>
+            </div>
+
+            <!-- Input preview -->
+            <div class="input-preview" id="input-preview" style="display:none">
+                <div class="preview-header">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                    </svg>
+                    <span>Request Payload</span>
+                </div>
+                <div class="preview-body">
+                    <pre id="preview-json"></pre>
+                </div>
+            </div>
+
+            <!-- Run button -->
+            <button class="run-btn" id="run-btn" disabled onclick="runPipeline()">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+                Run Pipeline
+            </button>
+        </div>
+
+        <!-- RIGHT PANEL: Results -->
+        <div class="right-panel">
+
+            <!-- Pipeline stepper -->
+            <div class="stepper" id="stepper">
+                <div class="step-item" data-step="SESSION_INIT">
+                    <div class="step-num">Step 1</div>
+                    <div class="step-label">SQLite Session</div>
+                    <div class="step-time" id="time-SESSION_INIT"></div>
+                </div>
+                <div class="step-item" data-step="FAISS_SEARCH">
+                    <div class="step-num">Step 2</div>
+                    <div class="step-label">FAISS Search</div>
+                    <div class="step-time" id="time-FAISS_SEARCH"></div>
+                </div>
+                <div class="step-item" data-step="SUPABASE_SAVE_PAYLOAD">
+                    <div class="step-num">Step 3</div>
+                    <div class="step-label">Supabase Payload</div>
+                    <div class="step-time" id="time-SUPABASE_SAVE_PAYLOAD"></div>
+                </div>
+                <div class="step-item" data-step="KRA_CALL">
+                    <div class="step-num">Step 4</div>
+                    <div class="step-label">KRA Analysis</div>
+                    <div class="step-time" id="time-KRA_CALL"></div>
+                </div>
+                <div class="step-item" data-step="SUPABASE_SAVE_KRA">
+                    <div class="step-num">Step 5</div>
+                    <div class="step-label">Supabase KRA</div>
+                    <div class="step-time" id="time-SUPABASE_SAVE_KRA"></div>
+                </div>
+                <div class="step-item" data-step="ORA_CALL">
+                    <div class="step-num">Step 6</div>
+                    <div class="step-label">ORA Refinement</div>
+                    <div class="step-time" id="time-ORA_CALL"></div>
+                </div>
+                <div class="step-item" data-step="SUPABASE_SAVE_ORA">
+                    <div class="step-num">Step 7</div>
+                    <div class="step-label">Supabase ORA</div>
+                    <div class="step-time" id="time-SUPABASE_SAVE_ORA"></div>
+                </div>
+            </div>
+
+            <!-- Supabase IDs -->
+            <div class="ids-panel" id="ids-panel" style="display:none">
+                <div class="ids-title">Supabase References</div>
+                <div class="id-row">
+                    <div class="id-label">Session ID</div>
+                    <div class="id-value" id="id-session">—</div>
+                </div>
+                <div class="id-row">
+                    <div class="id-label">Payload ID</div>
+                    <div class="id-value" id="id-payload">—</div>
+                </div>
+                <div class="id-row">
+                    <div class="id-label">KRA Output ID</div>
+                    <div class="id-value" id="id-kra">—</div>
+                </div>
+                <div class="id-row">
+                    <div class="id-label">ORA Output ID</div>
+                    <div class="id-value" id="id-ora">—</div>
+                </div>
+            </div>
+
+            <!-- Result area (initially empty) -->
+            <div id="result-area">
+                <div class="empty-state">
+                    <div class="empty-icon">🔬</div>
+                    <div class="empty-title">Select a Sample & Run the Pipeline</div>
+                    <div class="empty-desc">
+                        Choose a test case from the left panel, then click <strong>Run Pipeline</strong>
+                        to trace data through all 7 steps: SQLite → FAISS → Supabase → KRA → Supabase → ORA → Local
+                        Render
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log area -->
+            <div class="log-area" id="log-area" style="display:none"></div>
+        </div>
+    </div>
+
+    <script>
+        /* ================================================================ */
+        /*  STATE                                                            */
+        /* ================================================================ */
+        let samples = [];
+        let selectedSample = null;
+        let selectedPayload = null;
+        let isRunning = false;
+
+        const STEPS = [
+            'SESSION_INIT', 'FAISS_SEARCH', 'SUPABASE_SAVE_PAYLOAD',
+            'KRA_CALL', 'SUPABASE_SAVE_KRA', 'ORA_CALL', 'SUPABASE_SAVE_ORA'
+        ];
+
+        /* ================================================================ */
+        /*  INIT                                                             */
+        /* ================================================================ */
+        document.addEventListener('DOMContentLoaded', async () => {
+            checkHealth();
+            loadSamples();
+        });
+
+        /* ================================================================ */
+        /*  HEALTH CHECK                                                     */
+        /* ================================================================ */
+        async function checkHealth() {
+            const dot = document.getElementById('health-dot');
+            const label = document.getElementById('health-label');
+            try {
+                const r = await fetch('/api/process/health', { signal: AbortSignal.timeout(10000) });
+                if (r.ok) {
+                    const d = await r.json();
+                    dot.className = 'health-dot ' + (d.status === 'ok' ? 'ok' : 'bad');
+                    label.textContent = d.status === 'ok'
+                        ? `FAISS ✓  Supabase ✓  KRA: ${d.kra_endpoint.split('/').pop()}  ORA: ${d.ora_endpoint.split('/').pop()}`
+                        : `degraded — FAISS:${d.faiss_ready} Supabase:${d.supabase_ready}`;
+                } else {
+                    dot.className = 'health-dot bad';
+                    label.textContent = `HTTP ${r.status}`;
+                }
+            } catch (e) {
+                dot.className = 'health-dot bad';
+                label.textContent = 'server unreachable';
+            }
+        }
+
+        /* ================================================================ */
+        /*  LOAD SAMPLES                                                     */
+        /* ================================================================ */
+        async function loadSamples() {
+            const container = document.getElementById('sample-list');
+            try {
+                const r = await fetch('/test/samples');
+                const d = await r.json();
+                samples = d.samples || [];
+                if (!samples.length) {
+                    container.innerHTML = '<div style="color:var(--text-muted)">No samples found in test_data/</div>';
+                    return;
+                }
+                container.innerHTML = samples.map(s => `
+      <div class="sample-card" data-id="${s.id}" onclick="selectSample('${s.id}')">
+        <div class="card-name">${esc(s.name)}</div>
+        <div class="card-desc">${esc(s.description)}</div>
+        <span class="severity-badge ${s.severity}">${s.severity}</span>
+      </div>
+    `).join('');
+            } catch (e) {
+                container.innerHTML = `<div style="color:var(--red)">Failed to load samples: ${esc(e.message)}</div>`;
+            }
+        }
+
+        /* ================================================================ */
+        /*  SELECT SAMPLE                                                    */
+        /* ================================================================ */
+        async function selectSample(id) {
+            if (isRunning) return;
+            // Toggle visual
+            document.querySelectorAll('.sample-card').forEach(c => c.classList.toggle('active', c.dataset.id === id));
+            selectedSample = id;
+
+            try {
+                const r = await fetch(`/test/samples/${id}`);
+                const data = await r.json();
+
+                // Build the POST payload (strip display-only fields)
+                selectedPayload = {
+                    symptoms: data.symptoms,
+                    ecg: data.ecg || null,
+                    labs: data.labs || null,
+                    experience_level: data.experience_level || 'seasoned',
+                };
+
+                // Show preview
+                const preview = document.getElementById('input-preview');
+                preview.style.display = 'block';
+                document.getElementById('preview-json').textContent = JSON.stringify(selectedPayload, null, 2);
+
+                // Enable button
+                document.getElementById('run-btn').disabled = false;
+            } catch (e) {
+                log('err', `Failed to load sample: ${e.message}`);
+            }
+        }
+
+        /* ================================================================ */
+        /*  RUN PIPELINE                                                     */
+        /* ================================================================ */
+        async function runPipeline() {
+            if (isRunning || !selectedPayload) return;
+            isRunning = true;
+
+            const btn = document.getElementById('run-btn');
+            btn.disabled = true;
+            btn.classList.add('running');
+            btn.innerHTML = '<div class="spinner"></div> Running Pipeline...';
+
+            // Reset UI
+            resetSteps();
+            document.getElementById('ids-panel').style.display = 'none';
+            document.getElementById('result-area').innerHTML = `
+    <div class="empty-state">
+      <div class="spinner" style="width:36px;height:36px;border-width:3px;margin:0 auto 16px;border-color:rgba(59,130,246,.15);border-top-color:var(--accent)"></div>
+      <div class="empty-title">Pipeline Running...</div>
+      <div class="empty-desc">Sending to <strong>/api/process/analyze</strong> — this may take 1–3 minutes if HF Spaces are cold-starting.</div>
+    </div>
+  `;
+
+            showLog();
+            clearLog();
+            log('info', `Selected: ${selectedSample}`);
+            log('info', `POST /api/process/analyze`);
+
+            // Animate steps as "active" one by one while waiting
+            const stepAnim = animateStepsWhileWaiting();
+
+            const startTime = Date.now();
+
+            try {
+                const r = await fetch('/api/process/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(selectedPayload),
+                });
+
+                stepAnim.stop();
+                const totalSec = ((Date.now() - startTime) / 1000).toFixed(1);
+
+                if (!r.ok) {
+                    const errText = await r.text();
+                    log('err', `HTTP ${r.status}: ${errText}`);
+                    markAllStepsFailed();
+                    showError(`Server returned HTTP ${r.status}`, errText);
+                    return;
+                }
+
+                const result = await r.json();
+                log('ok', `Pipeline ${result.status} in ${totalSec}s`);
+
+                // Update stepper from processing_steps
+                updateStepsFromResult(result.processing_steps || []);
+
+                // Show Supabase IDs
+                showIds(result);
+
+                // Show result
+                showResult(result);
+
+            } catch (e) {
+                stepAnim.stop();
+                log('err', `Request failed: ${e.message}`);
+                markAllStepsFailed();
+                showError('Request Failed', e.message);
+            } finally {
+                isRunning = false;
+                btn.disabled = false;
+                btn.classList.remove('running');
+                btn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Run Pipeline
+    `;
+            }
+        }
+
+        /* ================================================================ */
+        /*  STEP ANIMATION WHILE WAITING                                     */
+        /* ================================================================ */
+        function animateStepsWhileWaiting() {
+            let idx = 0;
+            let running = true;
+            // Estimated durations per step in ms
+            const durations = [500, 3000, 2000, 60000, 2000, 60000, 2000];
+
+            function advance() {
+                if (!running || idx >= STEPS.length) return;
+                const el = document.querySelector(`.step-item[data-step="${STEPS[idx]}"]`);
+                if (el) el.classList.add('active');
+                idx++;
+                if (idx < STEPS.length) {
+                    setTimeout(advance, durations[idx - 1] || 2000);
+                }
+            }
+            advance();
+
+            return {
+                stop() {
+                    running = false;
+                    document.querySelectorAll('.step-item.active').forEach(el => el.classList.remove('active'));
+                }
+            };
+        }
+
+        /* ================================================================ */
+        /*  UPDATE STEPS FROM RESULT                                         */
+        /* ================================================================ */
+        function updateStepsFromResult(steps) {
+            for (const s of steps) {
+                const el = document.querySelector(`.step-item[data-step="${s.step}"]`);
+                if (!el) continue;
+                el.classList.remove('active');
+                if (s.status === 'COMPLETED') {
+                    el.classList.add('completed');
+                    log('ok', `${s.step}: ${s.duration_ms}ms${s.supabase_id ? ' → ' + s.supabase_id : ''}`);
+                } else if (s.status === 'FAILED') {
+                    el.classList.add('failed');
+                    log('err', `${s.step}: FAILED`);
+                }
+                const timeEl = document.getElementById(`time-${s.step}`);
+                if (timeEl && s.duration_ms != null) {
+                    timeEl.textContent = s.duration_ms >= 1000
+                        ? `${(s.duration_ms / 1000).toFixed(1)}s`
+                        : `${s.duration_ms}ms`;
+                }
+            }
+        }
+
+        /* ================================================================ */
+        /*  SHOW IDS                                                         */
+        /* ================================================================ */
+        function showIds(result) {
+            const panel = document.getElementById('ids-panel');
+            panel.style.display = 'block';
+            setIdValue('id-session', result.session_id);
+            setIdValue('id-payload', result.supabase_payload_id);
+            setIdValue('id-kra', result.supabase_kra_id);
+            setIdValue('id-ora', result.supabase_ora_id);
+        }
+
+        function setIdValue(elId, val) {
+            const el = document.getElementById(elId);
+            if (val) {
+                el.textContent = val;
+                el.classList.remove('empty');
+            } else {
+                el.textContent = '— not set —';
+                el.classList.add('empty');
+            }
+        }
+
+        /* ================================================================ */
+        /*  SHOW RESULT                                                      */
+        /* ================================================================ */
+        function showResult(result) {
+            const area = document.getElementById('result-area');
+            const statusClass = result.status === 'COMPLETED' ? 'completed'
+                : result.status === 'PARTIAL' ? 'partial' : 'failed';
+            const icon = result.status === 'COMPLETED' ? '✅'
+                : result.status === 'PARTIAL' ? '⚠️' : '❌';
+
+            let html = `
+    <div class="result-card">
+      <div class="result-header">
+        <div class="result-icon">${icon}</div>
+        <div class="result-title">Diagnostic Report</div>
+        <div class="result-status ${statusClass}">${result.status}</div>
+        ${result.total_duration_ms ? `<span style="font-size:.75rem;color:var(--text-muted);margin-left:8px">${(result.total_duration_ms / 1000).toFixed(1)}s total</span>` : ''}
+      </div>
+      <div class="result-body">
+  `;
+
+            // Refined output (Markdown rendered)
+            if (result.refined_output) {
+                html += `<div class="md-output">${renderMarkdown(result.refined_output)}</div>`;
+            } else if (result.error) {
+                html += `<div style="color:var(--red);font-size:.9rem">${esc(result.error)}</div>`;
+            } else {
+                html += `<div style="color:var(--text-muted)">No output returned.</div>`;
+            }
+
+            // Disclaimer
+            if (result.disclaimer) {
+                html += `<div class="disclaimer">⚠️ ${esc(result.disclaimer)}</div>`;
+            }
+
+            // KRA raw toggle
+            if (result.kra_raw) {
+                html += `
+      <button class="raw-toggle" onclick="toggleRaw()">
+        ▶ Show Raw KRA Output (${result.kra_raw.length} chars)
+      </button>
+      <div class="raw-collapse" id="raw-collapse">
+        <div class="raw-content">${esc(result.kra_raw)}</div>
+      </div>
+    `;
+            }
+
+            html += `</div></div>`;
+            area.innerHTML = html;
+        }
+
+        function toggleRaw() {
+            const el = document.getElementById('raw-collapse');
+            const btn = el.previousElementSibling;
+            el.classList.toggle('open');
+            btn.textContent = el.classList.contains('open') ? '▼ Hide Raw KRA Output' : '▶ Show Raw KRA Output';
+        }
+
+        /* ================================================================ */
+        /*  ERROR DISPLAY                                                    */
+        /* ================================================================ */
+        function showError(title, detail) {
+            document.getElementById('result-area').innerHTML = `
+    <div class="result-card">
+      <div class="result-header">
+        <div class="result-icon">❌</div>
+        <div class="result-title">${esc(title)}</div>
+        <div class="result-status failed">ERROR</div>
+      </div>
+      <div class="result-body">
+        <div style="color:var(--red);font-size:.9rem;margin-bottom:12px">${esc(detail)}</div>
+        <div style="color:var(--text-muted);font-size:.82rem">
+          <strong>Troubleshooting tips:</strong><br>
+          • Is the FastAPI server running? (<code>python -m uvicorn backend.main:app --port 8000</code>)<br>
+          • Are HuggingFace Spaces awake? Visit KRA/ORA URLs in browser first.<br>
+          • Check <code>.env</code> for correct SUPABASE_URL and SUPABASE_SERVICE_KEY.<br>
+          • Check the terminal running uvicorn for detailed logs.
+        </div>
+      </div>
+    </div>
+  `;
+        }
+
+        /* ================================================================ */
+        /*  HELPERS                                                          */
+        /* ================================================================ */
+        function resetSteps() {
+            document.querySelectorAll('.step-item').forEach(el => {
+                el.classList.remove('active', 'completed', 'failed');
+            });
+            STEPS.forEach(s => {
+                const t = document.getElementById(`time-${s}`);
+                if (t) t.textContent = '';
+            });
+        }
+
+        function markAllStepsFailed() {
+            document.querySelectorAll('.step-item').forEach(el => el.classList.add('failed'));
+        }
+
+        function esc(str) {
+            if (!str) return '';
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
+        function renderMarkdown(text) {
+            if (typeof marked !== 'undefined') {
+                return marked.parse(text);
+            }
+            // Fallback: show as preformatted
+            return `<pre style="white-space:pre-wrap">${esc(text)}</pre>`;
+        }
+
+        /* ---- LOG ---- */
+        function showLog() { document.getElementById('log-area').style.display = 'block'; }
+        function clearLog() { document.getElementById('log-area').innerHTML = ''; }
+        function log(level, msg) {
+            const area = document.getElementById('log-area');
+            const cls = level === 'ok' ? 'log-ok' : level === 'err' ? 'log-err' : level === 'warn' ? 'log-warn' : 'log-info';
+            const prefix = level === 'ok' ? '✓' : level === 'err' ? '✗' : level === 'warn' ? '⚡' : '→';
+            const ts = new Date().toLocaleTimeString();
+            area.innerHTML += `<div class="${cls}">[${ts}] ${prefix} ${esc(msg)}</div>`;
+            area.scrollTop = area.scrollHeight;
+        }
+    </script>
+</body>
+
+</html>
