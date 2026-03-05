@@ -121,23 +121,32 @@ if not exist "%SVC_DIR%\.venv\Scripts\activate.bat" (
         echo  [%SVC_NAME%] ERROR: Failed to create venv
         exit /b 1
     )
+)
+
+echo  [%SVC_NAME%] Checking/upgrading pip in service venv ...
+"%SVC_DIR%\.venv\Scripts\python.exe" -m ensurepip --upgrade >nul 2>nul
+"%SVC_DIR%\.venv\Scripts\python.exe" -m pip install --upgrade pip -q
+if errorlevel 1 (
+    echo  [%SVC_NAME%] ERROR: Failed to upgrade pip in venv
+    exit /b 1
+)
+
+:: Install dependencies only on first-time venv creation
+if not exist "%SVC_DIR%\.venv\.deps_installed" (
     echo  [%SVC_NAME%] Installing requirements ...
-    call "%SVC_DIR%\.venv\Scripts\activate.bat"
-    "%SVC_DIR%\.venv\Scripts\python.exe" -m pip install --upgrade pip -q
     if exist "%SVC_REQ%" (
         "%SVC_DIR%\.venv\Scripts\python.exe" -m pip install -r "%SVC_REQ%" -q
         if errorlevel 1 (
             echo  [%SVC_NAME%] ERROR: Dependency installation failed
-            call deactivate
             exit /b 1
         )
     ) else (
         echo  [%SVC_NAME%] WARNING: Requirements file not found: %SVC_REQ%
     )
-    call deactivate
+    type nul > "%SVC_DIR%\.venv\.deps_installed"
     echo  [%SVC_NAME%] Setup complete!
 ) else (
-    echo  [%SVC_NAME%] Virtual environment already exists. Skipping install.
+    echo  [%SVC_NAME%] Dependencies already installed. Skipping install.
 )
 
 :: Launch in a new cmd window with the venv activated
