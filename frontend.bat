@@ -22,7 +22,7 @@ if not exist "%FE_DIR%" (
     exit /b 1
 )
 
-cd /d "%FE_DIR%"
+pushd "%FE_DIR%"
 
 :: Check if node_modules exists (first launch detection)
 if not exist "%FE_DIR%\node_modules" (
@@ -37,20 +37,20 @@ if not exist "%FE_DIR%\node_modules" (
         if errorlevel 1 (
             echo  ERROR: Failed to install pnpm. Falling back to npm.
             echo  Running: npm install
-            npm install
+            npm --prefix "%FE_DIR%" install
             echo.
             echo  Starting dev server with npm ...
-            npm run dev
+            npm --prefix "%FE_DIR%" run dev
             pause
             exit /b 0
         )
     )
 
     echo  Running: pnpm install
-    pnpm install
+    pnpm --dir "%FE_DIR%" install
     if errorlevel 1 (
         echo  ERROR: pnpm install failed. Trying npm install ...
-        npm install
+        npm --prefix "%FE_DIR%" install
     )
     echo.
     echo  Dependencies installed successfully!
@@ -64,7 +64,8 @@ echo  URL: http://localhost:3000
 echo.
 
 :: Start the dev server
-pnpm dev
+pnpm --dir "%FE_DIR%" dev
 
+popd
 pause
 exit /b 0
