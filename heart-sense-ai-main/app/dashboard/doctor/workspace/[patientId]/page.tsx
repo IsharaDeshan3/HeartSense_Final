@@ -165,6 +165,8 @@ export default function DiagnosticWorkspace() {
   useEffect(() => {
     const initWorkflow = async () => {
       if (!patient) return;
+      // Prevent re-initializing if a session already exists
+      if (workflowSessionId) return;
       try {
         const session = await WorkflowService.initSession(
           String(patient._id ?? patientId),
@@ -206,11 +208,17 @@ export default function DiagnosticWorkspace() {
   // Save a diagnostic entry to the patient's history
   const saveDiagnosticEntry = async (type: string, entrySummary: string, entryData: any) => {
     try {
-      await fetch(`/api/patients/${patientId}/diagnostics`, {
+      const resolvedPatientId = String(patient?._id ?? patientId);
+      const res = await fetch(`/api/patients/${resolvedPatientId}/diagnostics`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type, summary: entrySummary, data: entryData }),
       });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.warn("Diagnostic history save skipped:", err?.message || `HTTP ${res.status}`);
+      }
     } catch (error) {
       console.error("Failed to save diagnostic entry:", error);
     }
@@ -664,8 +672,10 @@ export default function DiagnosticWorkspace() {
                   ecgResult={summary.ecgResult}
                   labResult={summary.labResult}
                   workflowSessionId={workflowSessionId}
+                  workflowState={workflowState}
                   ecgSkipped={ecgSkipped}
                   labSkipped={labSkipped}
+                  onWorkflowStateChange={(state) => setWorkflowState(state)}
                 />
               </WorkspaceModule>
             )}

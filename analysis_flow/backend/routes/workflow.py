@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
+import traceback
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 from backend.processing.workflow_state import WorkflowState
 from backend.processing.workflow_store import WorkflowStore
@@ -121,14 +125,21 @@ async def save_lab(session_id: str, payload: LabSaveRequest) -> StepSaveResponse
 
 @router.post("/session/{session_id}/analysis/run")
 async def run_analysis(session_id: str, payload: AnalysisRunRequest) -> dict[str, Any]:
+    import asyncio
+    loop = asyncio.get_event_loop()
     try:
-        return _workflow.run_analysis(
-            session_id=session_id,
-            experience_level=payload.experience_level,
+        result = await loop.run_in_executor(
+            None,
+            lambda: _workflow.run_analysis(
+                session_id=session_id,
+                experience_level=payload.experience_level,
+            ),
         )
+        return result
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except Exception as exc:
+        logger.error("Analysis pipeline failed:\n%s", traceback.format_exc())
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Analysis failed: {exc}")

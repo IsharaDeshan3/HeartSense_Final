@@ -29,6 +29,17 @@ class WorkflowService:
             raise ValueError("SESSION_NOT_FOUND")
 
         current_state = session["current_state"]
+
+        # Allow retry from a stuck ANALYSIS_RUNNING state (reset to LAB_DONE first)
+        if current_state == WorkflowState.ANALYSIS_RUNNING.value:
+            self._store.transition_state(
+                session_id=session_id,
+                next_state=WorkflowState.LAB_DONE,
+                event_type="ANALYSIS_RETRY_RESET",
+                message="Resetting stuck ANALYSIS_RUNNING state for retry",
+            )
+            current_state = WorkflowState.LAB_DONE.value
+
         if current_state != WorkflowState.LAB_DONE.value:
             raise RuntimeError(f"INVALID_ANALYSIS_STATE:{current_state}")
 
@@ -47,11 +58,43 @@ class WorkflowService:
         )
 
         started = time.time()
-        processing_steps: list[dict[str, Any]] = []
 
         extraction_payload = extraction["payload"]
         ecg_payload = ecg["payload"] if ecg is not None else {"result": {"status": "skipped", "reason": "not_submitted"}}
         lab_payload = lab["payload"] if lab is not None else {"result": {"status": "skipped", "reason": "not_submitted"}}
+
+        try:
+            return self._run_analysis_pipeline(
+                session_id=session_id,
+                experience_level=experience_level,
+                extraction_payload=extraction_payload,
+                ecg_payload=ecg_payload,
+                lab_payload=lab_payload,
+                started=started,
+            )
+        except Exception:
+            # Rollback state so the user can retry
+            try:
+                self._store.transition_state(
+                    session_id=session_id,
+                    next_state=WorkflowState.LAB_DONE,
+                    event_type="ANALYSIS_ROLLBACK",
+                    message="Analysis pipeline failed – rolled back to LAB_DONE",
+                )
+            except Exception:
+                pass  # best-effort rollback
+            raise
+
+    def _run_analysis_pipeline(
+        self,
+        session_id: str,
+        experience_level: str,
+        extraction_payload: dict[str, Any],
+        ecg_payload: dict[str, Any],
+        lab_payload: dict[str, Any],
+        started: float,
+    ) -> dict[str, Any]:
+        processing_steps: list[dict[str, Any]] = []
 
         symptoms_json, symptoms_text = self._normalize_symptoms_payload(extraction_payload)
         ecg_json = self._normalize_ecg_payload(ecg_payload)

@@ -25,6 +25,7 @@ import {
   type AnalysisResponse,
 } from "@/services/DiagnosticService";
 import { WorkflowService } from "@/services/WorkflowService";
+import type { WorkflowState } from "@/services/WorkflowService";
 import {
   buildSymptomsPayload,
   buildECGPayload,
@@ -48,8 +49,10 @@ interface AiDiagnosticsProps {
   ecgResult?: EcgResult | null;
   labResult?: LabAnalysisResult | null;
   workflowSessionId?: string | null;
+  workflowState?: WorkflowState | null;
   ecgSkipped?: boolean;
   labSkipped?: boolean;
+  onWorkflowStateChange?: (state: WorkflowState) => void;
 }
 
 const EXPERIENCE_OPTIONS: {
@@ -84,8 +87,10 @@ export default function AiDiagnostics({
   ecgResult,
   labResult,
   workflowSessionId,
+  workflowState,
   ecgSkipped = false,
   labSkipped = false,
+  onWorkflowStateChange,
 }: AiDiagnosticsProps) {
   const [experience, setExperience] = useState<ExperienceLevel>("seasoned");
   const [isRunning, setIsRunning] = useState(false);
@@ -105,7 +110,8 @@ export default function AiDiagnostics({
       recentObservation.length > 5);
   const hasEcg = !!ecgResult;
   const hasLab = !!labResult;
-  const canRun = hasNlp; // NLP/symptoms is the minimum requirement
+  const isWorkflowAnalysisRunning = workflowState === "ANALYSIS_RUNNING";
+  const canRun = hasNlp && !isWorkflowAnalysisRunning; // NLP/symptoms is the minimum requirement
   const dataSourceCount = [hasNlp, hasEcg, hasLab].filter(Boolean).length;
 
   // Health check on mount
@@ -129,6 +135,11 @@ export default function AiDiagnostics({
   }, [isRunning]);
 
   const handleRun = async () => {
+    if (isWorkflowAnalysisRunning) {
+      toast.info("Analysis is already running for this session. Please wait for completion.");
+      return;
+    }
+
     setIsRunning(true);
     setError(null);
     setResult(null);
@@ -175,6 +186,7 @@ export default function AiDiagnostics({
       const useWorkflow = !!workflowSessionId;
 
       if (useWorkflow) {
+        onWorkflowStateChange?.("ANALYSIS_RUNNING" as WorkflowState);
         const workflowRes = await WorkflowService.runAnalysis(workflowSessionId, experience);
         res = {
           session_id: workflowRes.session_id,
@@ -216,10 +228,13 @@ export default function AiDiagnostics({
       setResult(res);
 
       if (res.status === "COMPLETED") {
+        onWorkflowStateChange?.("ANALYSIS_DONE" as WorkflowState);
         toast.success("AI Diagnostic Analysis Complete");
       } else if (res.status === "PARTIAL") {
+        onWorkflowStateChange?.("ANALYSIS_DONE" as WorkflowState);
         toast.warning("Partial result — some pipeline steps failed");
       } else {
+        onWorkflowStateChange?.("FAILED" as WorkflowState);
         toast.error("Diagnostic pipeline failed");
       }
     } catch (err: any) {
@@ -227,6 +242,8 @@ export default function AiDiagnostics({
       const msg = err.message || "Failed to run diagnostic pipeline";
       setCurrentPipelineStep(undefined);
       setError(msg);
+      // Rollback state on error (backend also rolls back to LAB_DONE)
+      onWorkflowStateChange?.("LAB_DONE" as WorkflowState);
       toast.error(msg);
     } finally {
       setIsRunning(false);

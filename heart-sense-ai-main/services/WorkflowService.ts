@@ -73,8 +73,7 @@ export const WorkflowService = {
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || err.error || "Workflow analysis failed");
+      throw new Error(await extractErrorMessage(res, "Workflow analysis failed"));
     }
 
     return res.json() as Promise<{
@@ -108,8 +107,7 @@ async function postStep(url: string, body: Record<string, unknown>) {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || err.error || "Workflow step save failed");
+    throw new Error(await extractErrorMessage(res, "Workflow step save failed"));
   }
 
   return res.json() as Promise<{
@@ -119,4 +117,18 @@ async function postStep(url: string, body: Record<string, unknown>) {
     revision: number;
     updated_at: string;
   }>;
+}
+
+async function extractErrorMessage(res: Response, fallback: string) {
+  const statusPrefix = `[${res.status}]`;
+  const contentType = res.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    const err = await res.json().catch(() => ({}));
+    const detail = err?.detail || err?.error || err?.message;
+    return detail ? `${statusPrefix} ${detail}` : `${statusPrefix} ${fallback}`;
+  }
+
+  const text = (await res.text().catch(() => "")).trim();
+  return text ? `${statusPrefix} ${text}` : `${statusPrefix} ${fallback}`;
 }

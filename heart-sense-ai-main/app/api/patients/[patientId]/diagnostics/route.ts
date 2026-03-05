@@ -27,10 +27,10 @@ export async function PATCH(
 
         const patient = await Patient.findById(params.patientId);
         if (!patient) {
-            return NextResponse.json(
-                { message: "Patient not found" },
-                { status: 404 }
-            );
+            return NextResponse.json({
+                message: "Patient not found in Mongo registry; diagnostic history write skipped",
+                skipped: true,
+            });
         }
 
         // Add the diagnostic entry with doctor attribution

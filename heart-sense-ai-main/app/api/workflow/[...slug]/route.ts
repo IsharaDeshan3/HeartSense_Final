@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const WORKFLOW_BACKEND_URL =
-  process.env.WORKFLOW_BACKEND_URL ?? process.env.DIAGNOSTIC_BACKEND_URL ?? "http://localhost:8000";
+  process.env.WORKFLOW_BACKEND_URL ?? process.env.DIAGNOSTIC_BACKEND_URL ?? "http://localhost:8080";
 
 function buildTargetUrl(slug: string[], search: string) {
   const path = slug.join("/");

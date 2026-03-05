@@ -18,7 +18,7 @@ ALLOWED_TRANSITIONS: dict[WorkflowState, set[WorkflowState]] = {
     WorkflowState.EXTRACTION_DONE: {WorkflowState.ECG_DONE, WorkflowState.FAILED},
     WorkflowState.ECG_DONE: {WorkflowState.LAB_DONE, WorkflowState.FAILED},
     WorkflowState.LAB_DONE: {WorkflowState.ANALYSIS_RUNNING, WorkflowState.FAILED},
-    WorkflowState.ANALYSIS_RUNNING: {WorkflowState.ANALYSIS_DONE, WorkflowState.FAILED},
+    WorkflowState.ANALYSIS_RUNNING: {WorkflowState.ANALYSIS_DONE, WorkflowState.FAILED, WorkflowState.LAB_DONE},
     WorkflowState.ANALYSIS_DONE: {WorkflowState.FAILED},
     WorkflowState.FAILED: set(),
 }
