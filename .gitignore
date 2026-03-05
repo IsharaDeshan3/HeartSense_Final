@@ -66,8 +66,6 @@ transcript-generation-project-16b1d3bf7ca8.json
 # --- Workspace/project-specific generated folders ---
 analysis_flow/recycle/
 analysis_flow/knowledge_base/faiss_index/
-analysis_flow/knowledge_base/vector_index.faiss
-analysis_flow/knowledge_base/vector_db_metadata.pkl
 analysis_flow/backend/database/*.db
 analysis_flow/sessions.db
 analysis_flow/tmp_hf_spaces/
