@@ -165,14 +165,14 @@ export default function AiDiagnostics({
         patientAge,
         patientGender,
       );
-      const ecgPayload = buildECGPayload(ecgResult);
-      const labPayload = buildLabPayload(labResult);
+      const ecgPayload = buildECGPayload(ecgResult, ecgSkipped);
+      const labPayload = buildLabPayload(labResult, labSkipped);
 
       let res: AnalysisResponse;
 
-      // When steps are skipped, the workflow backend state is out of sync,
-      // so use the direct diagnostic service instead
-      const useWorkflow = workflowSessionId && !ecgSkipped && !labSkipped;
+      // Workflow session is the source of truth for stored extraction/ECG/lab
+      // payloads and Supabase link-chaining to KRA/ORA.
+      const useWorkflow = !!workflowSessionId;
 
       if (useWorkflow) {
         const workflowRes = await WorkflowService.runAnalysis(workflowSessionId, experience);

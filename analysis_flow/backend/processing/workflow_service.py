@@ -36,8 +36,8 @@ class WorkflowService:
         ecg = self._store.get_latest_step_payload(session_id, "ecg")
         lab = self._store.get_latest_step_payload(session_id, "lab")
 
-        if extraction is None or ecg is None or lab is None:
-            raise RuntimeError("MISSING_STEP_PAYLOADS")
+        if extraction is None:
+            raise RuntimeError("MISSING_EXTRACTION_PAYLOAD")
 
         self._store.transition_state(
             session_id=session_id,
@@ -50,70 +50,26 @@ class WorkflowService:
         processing_steps: list[dict[str, Any]] = []
 
         extraction_payload = extraction["payload"]
-        ecg_payload = ecg["payload"]
-        lab_payload = lab["payload"]
+        ecg_payload = ecg["payload"] if ecg is not None else {"result": {"status": "skipped", "reason": "not_submitted"}}
+        lab_payload = lab["payload"] if lab is not None else {"result": {"status": "skipped", "reason": "not_submitted"}}
 
-        symptoms = extraction_payload.get("symptoms", [])
-        risk_factors = extraction_payload.get("risk_factors", [])
-        translated = extraction_payload.get("translated_text") or ""
+        symptoms_json, symptoms_text = self._normalize_symptoms_payload(extraction_payload)
+        ecg_json = self._normalize_ecg_payload(ecg_payload)
+        labs_json = self._normalize_lab_payload(lab_payload)
 
-        symptoms_text = translated.strip()
-        if not symptoms_text:
-            symptoms_text = "Symptoms: " + ", ".join(symptoms)
-        if risk_factors:
-            symptoms_text += f"\nRisk factors: {', '.join(risk_factors)}"
-
-        ecg_result = ecg_payload.get("result", {})
-        lab_result = lab_payload.get("result", {})
-
-        ecg_findings: list[str] = []
-        abnormalities = ecg_result.get("abnormalities", {})
-        diagnosis = ecg_result.get("diagnosis", {})
-        if isinstance(abnormalities, dict):
-            ecg_findings.extend(abnormalities.get("abnormalities", []) or [])
-            severity = abnormalities.get("severity")
-            if severity:
-                ecg_findings.append(f"severity={severity}")
-        if isinstance(diagnosis, dict):
-            primary = diagnosis.get("primary_diagnosis")
-            if primary:
-                ecg_findings.append(str(primary))
-
-        lab_findings: list[str] = []
-        lab_values: dict[str, float] = {}
-
-        if isinstance(lab_result, dict):
-            comparisons = lab_result.get("labComparison", []) or []
-            for item in comparisons:
-                if not isinstance(item, dict):
-                    continue
-                status = str(item.get("status", "")).lower()
-                test = str(item.get("test", "")).strip()
-                val = item.get("actualValue")
-                if status != "normal" and test:
-                    lab_findings.append(f"{test}: {val} ({status})")
-
-            g1 = lab_result.get("extractedJsonGroup1", {}) or {}
-            marker_map = {
-                "troponin": ["troponin", "Troponin"],
-                "ldh": ["LDH", "ldh"],
-                "bnp": ["BNP", "bnp"],
-                "creatinine": ["Cr", "creatinine", "Creatinine"],
-                "hemoglobin": ["Hemoglobin", "Hb", "hemoglobin"],
-            }
-            for marker, aliases in marker_map.items():
-                value: Optional[float] = None
-                for alias in aliases:
-                    raw_val = g1.get(alias)
-                    if raw_val is None:
-                        continue
-                    try:
-                        value = float(raw_val)
-                        break
-                    except (TypeError, ValueError):
-                        continue
-                if value is not None:
-                    lab_values[marker] = value
+        ecg_findings: list[str] = ecg_json.get("findings", []) if ecg_json.get("status") == "present" else []
+        lab_findings: list[str] = labs_json.get("findings", []) if labs_json.get("status") == "present" else []
+        lab_values: dict[str, float] = {
+            marker: value
+            for marker, value in {
+                "troponin": labs_json.get("troponin"),
+                "ldh": labs_json.get("ldh"),
+                "bnp": labs_json.get("bnp"),
+                "creatinine": labs_json.get("creatinine"),
+                "hemoglobin": labs_json.get("hemoglobin"),
+            }.items()
+            if isinstance(value, (int, float))
+        }
 
         retrieval_started = time.time()
         context_text, quality, rare_alert = self._search.search(
@@ -157,14 +113,9 @@ class WorkflowService:
         payload_started = time.time()
         payload_id, payload_url = save_analysis_payload(
             session_id=session_id,
-            symptoms={
-                "symptoms": symptoms,
-                "risk_factors": risk_factors,
-                "translated_text": translated,
-                "symptoms_text": symptoms_text,
-            },
-            ecg=ecg_result,
-            labs=lab_result,
+            symptoms=symptoms_json,
+            ecg=ecg_json,
+            labs=labs_json,
             context_text=context_text,
             quality=quality,
         )
@@ -182,7 +133,7 @@ class WorkflowService:
 
         kra_started = time.time()
         kra_result = self._kra.analyze(payload_id=payload_id)
-        kra_id, _ = save_kra_output(
+        kra_id, kra_url = save_kra_output(
             session_id=session_id,
             payload_id=payload_id,
             symptoms_text=symptoms_text,
@@ -208,7 +159,7 @@ class WorkflowService:
                 kra_output_id=kra_id,
                 experience_level=level,
             )
-            ora_output_id = save_ora_output(
+            ora_output_id, ora_url = save_ora_output(
                 session_id=session_id,
                 kra_output_id=kra_id,
                 experience_level=level,
@@ -217,6 +168,7 @@ class WorkflowService:
                 status=ora_result.get("status", "success"),
             )
             ora_ids[level.lower()] = ora_output_id
+            ora_ids[f"{level.lower()}_url"] = ora_url
             ora_outputs[level.lower()] = ora_result.get("refined_output", "")
             ora_disclaimers[level.lower()] = ora_result.get("disclaimer") or ""
             processing_steps.append(
@@ -244,9 +196,11 @@ class WorkflowService:
             "status": "COMPLETED",
             "experience_level": experience_level,
             "supabase_payload_id": payload_id,
-            "supabase_kra_id": kra_id,
-            "supabase_ora_id": ora_ids.get("expert") or ora_ids.get("newbie"),
             "supabase_payload_url": payload_url,
+            "supabase_kra_id": kra_id,
+            "supabase_kra_url": kra_url,
+            "supabase_ora_id": ora_ids.get("expert") or ora_ids.get("newbie"),
+            "supabase_ora_url": ora_ids.get("expert_url") or ora_ids.get("newbie_url"),
             "processing_steps": processing_steps,
             "kra_raw": kra_result.get("raw_text", ""),
             "ora_outputs": ora_outputs,
@@ -256,4 +210,141 @@ class WorkflowService:
             "rare_case_alert": rare_alert.to_dict() if rare_alert.triggered else None,
             "total_duration_ms": elapsed_ms,
             "context_preview": context_text[:1200],
+        }
+
+    @staticmethod
+    def _to_float(value: Any) -> Optional[float]:
+        try:
+            if value is None or value == "":
+                return None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _normalize_symptoms_payload(self, extraction_payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
+        symptoms = extraction_payload.get("symptoms", []) or []
+        risk_factors = extraction_payload.get("risk_factors", []) or []
+        translated = str(extraction_payload.get("translated_text") or "").strip()
+
+        chief_complaint = str(symptoms[0]).strip() if symptoms else None
+        symptoms_text = translated
+        if not symptoms_text:
+            if symptoms:
+                symptoms_text = "Presenting symptoms: " + ", ".join(map(str, symptoms))
+            else:
+                symptoms_text = "No symptom narrative provided"
+        if risk_factors:
+            symptoms_text += f"\nRisk factors: {', '.join(map(str, risk_factors))}"
+
+        symptoms_json = {
+            "text": symptoms_text,
+            "chief_complaint": chief_complaint,
+            "additional": {
+                "symptoms": symptoms,
+                "risk_factors": risk_factors,
+                "translated_text": translated,
+                "symptom_count": len(symptoms),
+                "risk_factor_count": len(risk_factors),
+            },
+        }
+        return symptoms_json, symptoms_text
+
+    def _normalize_ecg_payload(self, ecg_payload: dict[str, Any]) -> dict[str, Any]:
+        raw = ecg_payload.get("result", {}) if isinstance(ecg_payload, dict) else {}
+        if not isinstance(raw, dict):
+            raw = {}
+
+        status = str(raw.get("status") or "present").lower()
+        if status in {"skipped", "error"}:
+            return {
+                "status": status,
+                "raw": raw,
+            }
+
+        rhythm_analysis = raw.get("rhythm_analysis", {}) or {}
+        abnormalities = raw.get("abnormalities", {}) or {}
+        diagnosis = raw.get("diagnosis", {}) or {}
+
+        findings: list[str] = []
+        for item in (abnormalities.get("abnormalities", []) or []):
+            if item:
+                findings.append(str(item))
+        severity = abnormalities.get("severity")
+        if severity:
+            findings.append(f"severity={severity}")
+        for item in (diagnosis.get("differential_diagnoses", []) or []):
+            if item:
+                findings.append(str(item))
+        for item in (diagnosis.get("recommendations", []) or []):
+            if item:
+                findings.append(str(item))
+        for item in (raw.get("findings", []) or []):
+            if item:
+                findings.append(str(item))
+
+        rhythm = raw.get("rhythm") or rhythm_analysis.get("rhythm_type")
+        heart_rate_raw = raw.get("heart_rate") or rhythm_analysis.get("heart_rate")
+        heart_rate_val = self._to_float(heart_rate_raw)
+        heart_rate = int(heart_rate_val) if heart_rate_val is not None else None
+        interpretation = raw.get("interpretation") or diagnosis.get("primary_diagnosis")
+        st_segment = raw.get("st_segment")
+
+        return {
+            "status": "present",
+            "rhythm": rhythm,
+            "heart_rate": heart_rate,
+            "st_segment": st_segment,
+            "interpretation": interpretation,
+            "findings": findings,
+            "raw": raw,
+        }
+
+    def _normalize_lab_payload(self, lab_payload: dict[str, Any]) -> dict[str, Any]:
+        raw = lab_payload.get("result", {}) if isinstance(lab_payload, dict) else {}
+        if not isinstance(raw, dict):
+            raw = {}
+
+        status = str(raw.get("status") or "present").lower()
+        if status in {"skipped", "error"}:
+            return {
+                "status": status,
+                "raw": raw,
+            }
+
+        comparisons = raw.get("labComparison", []) or []
+        findings: list[str] = []
+        for item in comparisons:
+            if not isinstance(item, dict):
+                continue
+            item_status = str(item.get("status", "")).lower()
+            test = str(item.get("test", "")).strip()
+            actual = item.get("actualValue")
+            if test and item_status and item_status != "normal":
+                findings.append(f"{test}: {actual} ({item_status})")
+
+        group1 = raw.get("extractedJsonGroup1", {}) or {}
+        group2 = raw.get("extractedJsonGroup2", {}) or {}
+
+        def _pick(*keys: str) -> Optional[float]:
+            for key in keys:
+                value = self._to_float(group1.get(key))
+                if value is not None:
+                    return value
+                value = self._to_float(group2.get(key))
+                if value is not None:
+                    return value
+                value = self._to_float(raw.get(key))
+                if value is not None:
+                    return value
+            return None
+
+        return {
+            "status": "present",
+            "troponin": _pick("troponin", "Troponin"),
+            "ldh": _pick("ldh", "LDH"),
+            "bnp": _pick("bnp", "BNP"),
+            "creatinine": _pick("creatinine", "Creatinine", "Cr"),
+            "hemoglobin": _pick("hemoglobin", "Hemoglobin", "Hb"),
+            "findings": findings,
+            "raw": raw,
         }

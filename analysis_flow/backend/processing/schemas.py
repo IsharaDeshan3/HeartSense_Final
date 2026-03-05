@@ -7,7 +7,7 @@ These are the "connector point" models your frontends POST to.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -37,10 +37,11 @@ class ECGPayload(BaseModel):
 
     Pass `status='skipped'` if ECG was not available.
     """
-    status: str = Field(
+    status: Literal["present", "skipped", "error"] = Field(
         default="present",
         description="'present' | 'skipped' | 'error'",
     )
+    skip_reason: Optional[str] = None
     rhythm: Optional[str] = None
     heart_rate: Optional[int] = None
     qrs_duration: Optional[float] = None
@@ -58,10 +59,11 @@ class LabPayload(BaseModel):
 
     Pass `status='skipped'` if labs were not available.
     """
-    status: str = Field(
+    status: Literal["present", "skipped", "error"] = Field(
         default="present",
         description="'present' | 'skipped' | 'error'",
     )
+    skip_reason: Optional[str] = None
     troponin: Optional[float] = None
     ldh: Optional[float] = None
     bnp: Optional[float] = None

@@ -91,22 +91,37 @@ export default function DiagnosticWorkspace() {
     }));
   };
 
-  const handleSkipStep = () => {
-    if (activeTab === "ecg") {
-      setEcgSkipped(true);
-      setActiveTab("lab");
-      if (workflowState === "EXTRACTION_DONE") {
-        setWorkflowState("ECG_DONE");
+  const handleSkipStep = async () => {
+    if (!workflowSessionId) {
+      toast.error("Workflow session not ready");
+      return;
+    }
+
+    setIsAdvancing(true);
+    try {
+      if (activeTab === "ecg") {
+        const saved = await WorkflowService.saveEcg(workflowSessionId, {
+          status: "skipped",
+          reason: "user_skipped",
+        });
+        setWorkflowState(saved.state);
+        setEcgSkipped(true);
+        setActiveTab("lab");
+        toast.info("ECG skipped and recorded");
+      } else if (activeTab === "lab") {
+        const saved = await WorkflowService.saveLab(workflowSessionId, {
+          status: "skipped",
+          reason: "user_skipped",
+        });
+        setWorkflowState(saved.state);
+        setLabSkipped(true);
+        setActiveTab("ai");
+        toast.info("Lab Reports skipped and recorded");
       }
-      toast.info("ECG skipped");
-    } else if (activeTab === "lab") {
-      setLabSkipped(true);
-      setActiveTab("ai");
-      // Mark Lab as skipped
-      if (workflowState === "ECG_DONE") {
-        setWorkflowState("LAB_DONE");
-      }
-      toast.info("Lab Reports skipped");
+    } catch (error: any) {
+      toast.error("Failed to skip step", { description: error.message });
+    } finally {
+      setIsAdvancing(false);
     }
   };
 
@@ -284,7 +299,7 @@ export default function DiagnosticWorkspace() {
   };
 
   const handleNextToAnalysis = async () => {
-    if (!summary.labResult) {
+    if (!summary.labResult && !labSkipped) {
       toast.warning("Complete Lab analysis before proceeding");
       return;
     }
@@ -679,7 +694,7 @@ export default function DiagnosticWorkspace() {
                   isAdvancing || !workflowSessionId ||
                   (activeTab === "nlp" && summary.symptoms.length === 0) ||
                   (activeTab === "ecg" && !summary.ecgResult) ||
-                  (activeTab === "lab" && !summary.labResult)
+                  (activeTab === "lab" && !summary.labResult && !labSkipped)
                 }
                 className="h-12 px-6 rounded-xl bg-primary text-primary-foreground font-bold text-sm shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all gap-2 group"
               >

@@ -199,12 +199,12 @@ def save_ora_output(
     refined_output: str,
     disclaimer: Optional[str],
     status: str = "success",
-) -> str:
+) -> Tuple[str, str]:
     """
     Insert ORA agent output into `ora_outputs`.
 
     Returns:
-        row_id (UUID string) of the inserted row.
+        (row_id, public_url) of the inserted row.
     """
     row = {
         "session_id": session_id,
@@ -217,8 +217,10 @@ def save_ora_output(
 
     inserted = _post("ora_outputs", row)
     row_id: str = inserted["id"]
+    _init()
+    public_url = f"{_base_url}/rest/v1/ora_outputs?id=eq.{row_id}"
     logger.info("Saved ora_output row_id=%s", row_id)
-    return row_id
+    return row_id, public_url
 
 
 # --------------------------------------------------------------------- #

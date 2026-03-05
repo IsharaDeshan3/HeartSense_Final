@@ -12,13 +12,13 @@ set ROOT=%~dp0
 set PY_VER=
 set PY_CMD=
 
-for /f %%v in ('py -3.10 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2^>nul') do (
+for /f %%v in ('py -3.10 -c "import sys; print(str(sys.version_info.major)+\".\"+str(sys.version_info.minor))" 2^>nul') do (
     set PY_VER=%%v
     set PY_CMD=py -3.10
 )
 
 if not defined PY_VER (
-    for /f %%v in ('python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2^>nul') do (
+    for /f %%v in ('python -c "import sys; print(str(sys.version_info.major)+\".\"+str(sys.version_info.minor))" 2^>nul') do (
         set PY_VER=%%v
         set PY_CMD=python
     )
@@ -121,8 +121,10 @@ if not exist "%SVC_DIR%\.venv\Scripts\activate.bat" (
         echo  [%SVC_NAME%] ERROR: Failed to create venv
         exit /b 1
     )
-) else if not exist "%SVC_DIR%\.venv\Scripts\python.exe" (
-    echo  [%SVC_NAME%] Detected broken venv (python.exe missing). Recreating ...
+)
+
+if exist "%SVC_DIR%\.venv\Scripts\activate.bat" if not exist "%SVC_DIR%\.venv\Scripts\python.exe" (
+    echo  [%SVC_NAME%] Detected broken venv ^(python.exe missing^). Recreating ...
     rmdir /s /q "%SVC_DIR%\.venv"
     %PY_CMD% -m venv "%SVC_DIR%\.venv"
     if errorlevel 1 (

@@ -395,7 +395,7 @@ class PipelineService:
         if result.refined_output:
             t0 = time.time()
             try:
-                ora_output_id = save_ora_output(
+                ora_output_id, _ = save_ora_output(
                     session_id=session_id,
                     kra_output_id=kra_output_id,
                     experience_level=experience_level,

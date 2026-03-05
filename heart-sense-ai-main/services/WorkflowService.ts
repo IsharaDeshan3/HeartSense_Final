@@ -85,6 +85,8 @@ export const WorkflowService = {
       supabase_kra_id?: string;
       supabase_ora_id?: string;
       supabase_payload_url?: string;
+      supabase_kra_url?: string;
+      supabase_ora_url?: string;
       processing_steps: Array<{ step: string; status: string; duration_ms?: number; supabase_id?: string }>;
       kra_raw?: string;
       ora_outputs?: { newbie?: string; expert?: string };

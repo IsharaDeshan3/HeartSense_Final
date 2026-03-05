@@ -78,8 +78,11 @@ export function buildSymptomsPayload(
  */
 export function buildECGPayload(
   ecgResult: EcgResult | null | undefined,
+  skipped = false,
 ): ECGPayload | undefined {
-  if (!ecgResult) return undefined;
+  if (!ecgResult) {
+    return skipped ? { status: "skipped", skip_reason: "user_skipped" } : undefined;
+  }
 
   const { rhythm_analysis, abnormalities, diagnosis } = ecgResult;
 
@@ -105,16 +108,21 @@ export function buildECGPayload(
  */
 export function buildLabPayload(
   labResult: LabAnalysisResult | null | undefined,
+  skipped = false,
 ): LabPayload | undefined {
-  if (!labResult) return undefined;
+  if (!labResult) {
+    return skipped ? { status: "skipped", skip_reason: "user_skipped" } : undefined;
+  }
 
   const g1 = labResult.extractedJsonGroup1 ?? {};
   const g2 = labResult.extractedJsonGroup2 ?? {};
 
   // Map known lab fields
-  const creatinine =
-    parseFloat(g1.Cr) || parseFloat(g2.creatinine) || undefined;
-  const hemoglobin = parseFloat(g1.Hemoglobin) || undefined;
+  const troponin = parseOptionalNumber(g2.troponin ?? g1.Troponin ?? g1.troponin);
+  const ldh = parseOptionalNumber(g2.ldh ?? g1.LDH ?? g1.ldh);
+  const bnp = parseOptionalNumber(g2.bnp ?? g1.BNP ?? g1.bnp);
+  const creatinine = parseOptionalNumber(g1.Cr ?? g2.creatinine ?? g1.Creatinine);
+  const hemoglobin = parseOptionalNumber(g1.Hemoglobin ?? g1.Hb ?? g1.hemoglobin);
 
   // Collect findings from the comparison table
   const findings = labResult.labComparison
@@ -126,6 +134,9 @@ export function buildLabPayload(
 
   return {
     status: "present",
+    troponin,
+    ldh,
+    bnp,
     creatinine,
     hemoglobin,
     findings: findings.length > 0 ? findings : undefined,
@@ -147,4 +158,10 @@ function mapGenderToSex(gender?: string): string | undefined {
   if (g === "male" || g === "m") return "M";
   if (g === "female" || g === "f") return "F";
   return "Other";
+}
+
+function parseOptionalNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : undefined;
 }
