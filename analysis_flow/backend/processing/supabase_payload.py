@@ -94,6 +94,28 @@ def _get(table: str, query_params: str, single: bool = False) -> Any:
 #  analysis_payloads                                                      #
 # --------------------------------------------------------------------- #
 
+def check_existing_payload(session_id: str) -> Optional[str]:
+    """
+    Return the Supabase row-id of an already-saved analysis_payload for
+    *session_id*, or None if no such row exists.
+
+    Used by the pipeline to implement idempotent saves: if a payload was
+    already saved (e.g. the pipeline was retried after a transient error)
+    we reuse the existing id instead of creating a duplicate row.
+    """
+    try:
+        _init()
+        row = _get(
+            "analysis_payloads",
+            f"session_id=eq.{session_id}&select=id&limit=1",
+            single=True,
+        )
+        return row["id"] if row else None
+    except Exception as exc:
+        logger.warning("check_existing_payload(%s) failed: %s – treating as not found", session_id, exc)
+        return None
+
+
 def save_analysis_payload(
     session_id: str,
     symptoms: Dict[str, Any],

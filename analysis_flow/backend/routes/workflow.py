@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import traceback
-from typing import Any, Optional
+from typing import Any, AsyncGenerator, Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -55,6 +58,12 @@ class LabSaveRequest(BaseModel):
 
 class AnalysisRunRequest(BaseModel):
     experience_level: str = Field(default="seasoned")
+
+
+class AnalysisStopResponse(BaseModel):
+    session_id: str
+    state: str
+    status: str
 
 
 @router.post("/session/init", response_model=SessionInitResponse)
@@ -143,3 +152,68 @@ async def run_analysis(session_id: str, payload: AnalysisRunRequest) -> dict[str
     except Exception as exc:
         logger.error("Analysis pipeline failed:\n%s", traceback.format_exc())
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Analysis failed: {exc}")
+
+
+@router.post("/session/{session_id}/analysis/stop", response_model=AnalysisStopResponse)
+async def stop_analysis(session_id: str) -> AnalysisStopResponse:
+    try:
+        result = _workflow.request_stop_analysis(session_id=session_id)
+        return AnalysisStopResponse(**result)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+
+@router.get("/session/{session_id}/analysis/events")
+async def analysis_events(session_id: str, request: Request) -> StreamingResponse:
+    """
+    Server-Sent Events stream that emits real-time pipeline step updates.
+
+    Each event is a JSON object::
+
+        {"step": "kra_analysis", "status": "started", "duration_ms": 0}
+        {"step": "kra_analysis", "status": "completed", "duration_ms": 3210}
+        {"step": "analysis_done",  "status": "completed"}
+
+    The stream closes after the "analysis_done" event or when the client
+    disconnects.  Subscribe *before* calling /analysis/run so you don't
+    miss early events.
+    """
+    session = _store.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    queue = _workflow.event_bus.subscribe(session_id)
+
+    async def generator() -> AsyncGenerator[str, None]:
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                # Poll the thread-safe queue with a short async sleep to keep
+                # the event loop free between polls.
+                try:
+                    event = await asyncio.get_event_loop().run_in_executor(
+                        None, lambda: queue.get(timeout=1)
+                    )
+                except Exception:
+                    # queue.get timed out – check connection and retry
+                    continue
+
+                data = json.dumps(event)
+                yield f"data: {data}\n\n"
+
+                # Close stream once the terminal event arrives
+                if event.get("step") == "analysis_done" or event.get("status") == "error":
+                    break
+        finally:
+            _workflow.event_bus.unsubscribe(session_id, queue)
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )

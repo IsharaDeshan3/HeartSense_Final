@@ -66,7 +66,12 @@ export const WorkflowService = {
   },
 
   async runAnalysis(sessionId: string, experienceLevel: "newbie" | "seasoned" | "expert") {
-    const res = await fetch(`/api/workflow/session/${sessionId}/analysis/run`, {
+    const directBackendBase = resolveDirectWorkflowBackendBase();
+    const runAnalysisUrl = directBackendBase
+      ? `${directBackendBase}/api/workflow/v1/session/${sessionId}/analysis/run`
+      : `/api/workflow/session/${sessionId}/analysis/run`;
+
+    const res = await fetch(runAnalysisUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ experience_level: experienceLevel }),
@@ -97,7 +102,67 @@ export const WorkflowService = {
       context_preview?: string;
     }>;
   },
+
+  async stopAnalysis(sessionId: string) {
+    const directBackendBase = resolveDirectWorkflowBackendBase();
+    const stopAnalysisUrl = directBackendBase
+      ? `${directBackendBase}/api/workflow/v1/session/${sessionId}/analysis/stop`
+      : `/api/workflow/session/${sessionId}/analysis/stop`;
+
+    const res = await fetch(stopAnalysisUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!res.ok) {
+      throw new Error(await extractErrorMessage(res, "Failed to stop workflow analysis"));
+    }
+
+    return res.json() as Promise<{
+      session_id: string;
+      state: WorkflowState;
+      status: "CANCEL_REQUESTED";
+    }>;
+  },
+
+  /**
+   * Open an SSE stream that delivers real-time pipeline step events.
+   *
+   * Each `message` event carries a JSON payload:
+   *   { step: string; status: "started" | "completed" | "error"; duration_ms?: number }
+   *
+   * The stream emits a terminal event `{ step: "analysis_done", status: "completed" }`
+   * when the pipeline finishes, after which the backend closes the connection.
+   *
+   * **Call this BEFORE `/analysis/run`** to avoid missing early events.
+   *
+   * @example
+   *   const es = WorkflowService.openAnalysisEventStream(sessionId);
+   *   es.onmessage = (e) => { const event = JSON.parse(e.data); ... };
+   *   es.onerror   = () => es.close();
+   */
+  openAnalysisEventStream(sessionId: string): EventSource {
+    const directBackendBase = resolveDirectWorkflowBackendBase();
+    const eventsUrl = directBackendBase
+      ? `${directBackendBase}/api/workflow/v1/session/${sessionId}/analysis/events`
+      : `/api/workflow/session/${sessionId}/analysis/events`;
+    return new EventSource(eventsUrl);
+  },
 };
+
+function resolveDirectWorkflowBackendBase() {
+  const envBase = (process.env.NEXT_PUBLIC_WORKFLOW_BACKEND_URL || "").trim().replace(/\/$/, "");
+  if (envBase) return envBase;
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return "http://127.0.0.1:8080";
+    }
+  }
+
+  return "";
+}
 
 async function postStep(url: string, body: Record<string, unknown>) {
   const res = await fetch(url, {

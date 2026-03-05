@@ -55,6 +55,17 @@ interface AiDiagnosticsProps {
   onWorkflowStateChange?: (state: WorkflowState) => void;
 }
 
+type AnalysisProgressCache = {
+  isRunning: boolean;
+  startedAt: number | null;
+  currentPipelineStep?: string;
+  completedPipelineSteps: string[];
+};
+
+function getAnalysisProgressKey(sessionId: string) {
+  return `workspace:analysis-progress:${sessionId}`;
+}
+
 const EXPERIENCE_OPTIONS: {
   value: ExperienceLevel;
   label: string;
@@ -98,10 +109,12 @@ export default function AiDiagnostics({
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [isHealthy, setIsHealthy] = useState<boolean | null>(null);
+  const [isStopping, setIsStopping] = useState(false);
   const [oraMode, setOraMode] = useState<"newbie" | "expert">("newbie");
   const [currentPipelineStep, setCurrentPipelineStep] = useState<string | undefined>();
   const [completedPipelineSteps, setCompletedPipelineSteps] = useState<string[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startedAtRef = useRef<number | null>(null);
 
   // Data readiness flags
   const hasNlp =
@@ -124,8 +137,15 @@ export default function AiDiagnostics({
   // Elapsed timer
   useEffect(() => {
     if (isRunning) {
-      setElapsed(0);
-      timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
+      if (!startedAtRef.current) {
+        startedAtRef.current = Date.now();
+      }
+      const tick = () => {
+        if (!startedAtRef.current) return;
+        setElapsed(Math.max(0, Math.floor((Date.now() - startedAtRef.current) / 1000)));
+      };
+      tick();
+      timerRef.current = setInterval(tick, 1000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
     }
@@ -134,6 +154,64 @@ export default function AiDiagnostics({
     };
   }, [isRunning]);
 
+  useEffect(() => {
+    if (!workflowSessionId || typeof window === "undefined") return;
+
+    try {
+      const raw = window.localStorage.getItem(getAnalysisProgressKey(workflowSessionId));
+      if (!raw) return;
+      const cached = JSON.parse(raw) as AnalysisProgressCache;
+      setCurrentPipelineStep(cached.currentPipelineStep);
+      setCompletedPipelineSteps(Array.isArray(cached.completedPipelineSteps) ? cached.completedPipelineSteps : []);
+
+      if (cached.startedAt) {
+        startedAtRef.current = cached.startedAt;
+        setElapsed(Math.max(0, Math.floor((Date.now() - cached.startedAt) / 1000)));
+      }
+
+      if (cached.isRunning || workflowState === "ANALYSIS_RUNNING") {
+        setIsRunning(true);
+      }
+    } catch {
+      // ignore invalid cache
+    }
+  }, [workflowSessionId, workflowState]);
+
+  useEffect(() => {
+    if (!workflowSessionId || typeof window === "undefined") return;
+
+    const payload: AnalysisProgressCache = {
+      isRunning,
+      startedAt: startedAtRef.current,
+      currentPipelineStep,
+      completedPipelineSteps,
+    };
+    window.localStorage.setItem(getAnalysisProgressKey(workflowSessionId), JSON.stringify(payload));
+
+    if (!isRunning) {
+      startedAtRef.current = null;
+    }
+  }, [workflowSessionId, isRunning, currentPipelineStep, completedPipelineSteps]);
+
+  useEffect(() => {
+    if (!workflowSessionId || workflowState !== "ANALYSIS_RUNNING") return;
+
+    const poll = setInterval(async () => {
+      try {
+        const session = await WorkflowService.getSession(workflowSessionId);
+        if (session.current_state !== "ANALYSIS_RUNNING") {
+          setIsRunning(false);
+          setCurrentPipelineStep(undefined);
+          onWorkflowStateChange?.(session.current_state);
+        }
+      } catch {
+        // keep polling through transient errors
+      }
+    }, 5000);
+
+    return () => clearInterval(poll);
+  }, [workflowSessionId, workflowState, onWorkflowStateChange]);
+
   const handleRun = async () => {
     if (isWorkflowAnalysisRunning) {
       toast.info("Analysis is already running for this session. Please wait for completion.");
@@ -141,32 +219,41 @@ export default function AiDiagnostics({
     }
 
     setIsRunning(true);
+    startedAtRef.current = Date.now();
     setError(null);
     setResult(null);
     setCurrentPipelineStep("session_init");
     setCompletedPipelineSteps([]);
     toast.info("Diagnostic pipeline initiated — this may take 30-120s…");
 
-    // Simulate step progression (the backend doesn't stream steps yet)
-    const steps = [
-      { key: "session_init", delay: 500 },
-      { key: "faiss_search", delay: 2000 },
-      { key: "rare_case_search", delay: 3000 },
-      { key: "supabase_save_payload", delay: 2000 },
-      { key: "kra_analysis", delay: 0 }, // will stay here until done
-    ];
-    let cancelled = false;
-    (async () => {
-      for (const step of steps) {
-        if (cancelled) return;
-        setCurrentPipelineStep(step.key);
-        if (step.delay > 0) {
-          await new Promise(r => setTimeout(r, step.delay));
-          if (cancelled) return;
-          setCompletedPipelineSteps(prev => [...prev, step.key]);
+    // Real-time pipeline step streaming via SSE.  Subscribe BEFORE calling
+    // runAnalysis so that no early events are missed.
+    let eventSource: EventSource | null = null;
+    if (workflowSessionId) {
+      eventSource = WorkflowService.openAnalysisEventStream(workflowSessionId);
+      eventSource.onmessage = (e: MessageEvent) => {
+        try {
+          const event = JSON.parse(e.data) as { step: string; status: string };
+          if (event.status === "started") {
+            setCurrentPipelineStep(event.step);
+          } else if (event.status === "completed") {
+            if (event.step !== "analysis_done") {
+              setCurrentPipelineStep(event.step);
+            }
+            setCompletedPipelineSteps(prev =>
+              prev.includes(event.step) ? prev : [...prev, event.step]
+            );
+          }
+        } catch {
+          // ignore JSON parse errors
         }
-      }
-    })();
+      };
+      eventSource.onerror = () => {
+        eventSource?.close();
+        eventSource = null;
+      };
+    }
+    let cancelled = false;
 
     try {
       const symptomsPayload = buildSymptomsPayload(
@@ -188,6 +275,13 @@ export default function AiDiagnostics({
       if (useWorkflow) {
         onWorkflowStateChange?.("ANALYSIS_RUNNING" as WorkflowState);
         const workflowRes = await WorkflowService.runAnalysis(workflowSessionId, experience);
+        const selectedOraMode: "newbie" | "expert" = experience === "newbie" ? "newbie" : "expert";
+        const selectedOutput =
+          workflowRes.ora_outputs?.[selectedOraMode] ||
+          workflowRes.refined_output;
+        const selectedDisclaimer =
+          workflowRes.ora_disclaimers?.[selectedOraMode] ||
+          workflowRes.disclaimer;
         res = {
           session_id: workflowRes.session_id,
           status: workflowRes.status,
@@ -202,15 +296,13 @@ export default function AiDiagnostics({
           ora_disclaimers: workflowRes.ora_disclaimers,
           rare_case_alert: workflowRes.rare_case_alert as any,
           refined_output:
-            workflowRes.ora_outputs?.newbie ||
-            workflowRes.refined_output ||
+            selectedOutput ||
             (workflowRes.context_preview
               ? `### Phase C Partial\n\nContext prepared but ORA output missing.\n\n**Context Preview**\n${workflowRes.context_preview}`
               : "### Phase C Partial\n\nContext prepared but ORA output missing."),
-          disclaimer:
-            workflowRes.ora_disclaimers?.newbie || workflowRes.disclaimer,
+          disclaimer: selectedDisclaimer,
         } as AnalysisResponse;
-        setOraMode("newbie");
+        setOraMode(selectedOraMode);
       } else {
         res = await DiagnosticService.runDiagnosis({
           symptoms: symptomsPayload,
@@ -220,8 +312,10 @@ export default function AiDiagnostics({
         });
       }
 
-      // Mark remaining steps as completed
+      // Mark remaining steps as completed and close SSE stream
       cancelled = true;
+      eventSource?.close();
+      eventSource = null;
       const allStepKeys = Object.keys(PIPELINE_STEP_LABELS);
       setCompletedPipelineSteps(allStepKeys);
       setCurrentPipelineStep(undefined);
@@ -239,14 +333,40 @@ export default function AiDiagnostics({
       }
     } catch (err: any) {
       cancelled = true;
+      eventSource?.close();
+      eventSource = null;
       const msg = err.message || "Failed to run diagnostic pipeline";
       setCurrentPipelineStep(undefined);
-      setError(msg);
-      // Rollback state on error (backend also rolls back to LAB_DONE)
-      onWorkflowStateChange?.("LAB_DONE" as WorkflowState);
-      toast.error(msg);
+      if (msg.includes("ANALYSIS_CANCELLED")) {
+        setError(null);
+        onWorkflowStateChange?.("LAB_DONE" as WorkflowState);
+        toast.info("Analysis stopped");
+      } else {
+        setError(msg);
+        // Rollback state on error (backend also rolls back to LAB_DONE)
+        onWorkflowStateChange?.("LAB_DONE" as WorkflowState);
+        toast.error(msg);
+      }
     } finally {
       setIsRunning(false);
+    }
+  };
+
+  const handleStop = async () => {
+    if (!workflowSessionId || !isRunning || isStopping) return;
+
+    setIsStopping(true);
+    try {
+      await WorkflowService.stopAnalysis(workflowSessionId);
+      setIsRunning(false);
+      setCurrentPipelineStep(undefined);
+      setCompletedPipelineSteps((prev) => prev);
+      onWorkflowStateChange?.("LAB_DONE" as WorkflowState);
+      toast.success("Stop requested. Analysis has been terminated.");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to stop analysis");
+    } finally {
+      setIsStopping(false);
     }
   };
 
@@ -359,6 +479,25 @@ export default function AiDiagnostics({
               </>
             )}
           </Button>
+
+          {isRunning && !!workflowSessionId && (
+            <Button
+              onClick={handleStop}
+              disabled={isStopping}
+              variant="outline"
+              className="h-12 px-6 rounded-2xl border-rose-500/30 text-rose-400 hover:bg-rose-500/10"
+            >
+              {isStopping ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Stopping...
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-4 w-4 mr-2" /> Stop Analysis
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </div>
 

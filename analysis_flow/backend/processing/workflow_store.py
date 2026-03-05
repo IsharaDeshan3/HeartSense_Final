@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from .workflow_state import WorkflowState, can_transition
+from .workflow_state import WorkflowState, can_transition, state_index
 
 
 _local = threading.local()
@@ -189,6 +189,44 @@ class WorkflowStore:
             raise ValueError("SESSION_NOT_FOUND")
 
         current_state = WorkflowState(row["current_state"])
+
+        # ── Idempotency guard ────────────────────────────────────────────────
+        # If the session is already AT or PAST the target next_state, this step
+        # was already saved in a previous request.  Return the existing payload
+        # instead of raising a 409 conflict.
+        curr_idx = state_index(current_state)
+        next_idx = state_index(next_state)
+        if curr_idx >= next_idx >= 0:
+            existing = self.get_latest_step_payload(session_id, step_name)
+            if existing:
+                return {
+                    "session_id": session_id,
+                    "state": current_state.value,
+                    "saved_step": step_name,
+                    "revision": existing["revision"],
+                    "updated_at": existing["created_at"],
+                }
+            # No payload yet but state is already advanced — still OK, just
+            # insert the new payload without changing the state.
+            now = datetime.now(timezone.utc).isoformat()
+            revision_row = conn.execute(
+                "SELECT COALESCE(MAX(revision), 0) AS max_revision FROM step_payloads WHERE session_id = ? AND step_name = ?",
+                (session_id, step_name),
+            ).fetchone()
+            next_revision = int(revision_row["max_revision"]) + 1
+            conn.execute(
+                "INSERT INTO step_payloads (session_id, step_name, payload_json, payload_hash, revision, created_at) VALUES (?, ?, ?, NULL, ?, ?)",
+                (session_id, step_name, json.dumps(payload), next_revision, now),
+            )
+            conn.commit()
+            return {
+                "session_id": session_id,
+                "state": current_state.value,
+                "saved_step": step_name,
+                "revision": next_revision,
+                "updated_at": now,
+            }
+
         if not can_transition(current_state, next_state):
             raise RuntimeError(f"INVALID_TRANSITION:{current_state.value}->{next_state.value}")
 

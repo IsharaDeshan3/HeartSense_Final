@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import List
 
 
 class WorkflowState(str, Enum):
@@ -13,13 +14,56 @@ class WorkflowState(str, Enum):
     FAILED = "FAILED"
 
 
+# Linear ordering — used for idempotent step-save comparisons
+STATE_ORDER: List[WorkflowState] = [
+    WorkflowState.SESSION_CREATED,
+    WorkflowState.EXTRACTION_DONE,
+    WorkflowState.ECG_DONE,
+    WorkflowState.LAB_DONE,
+    WorkflowState.ANALYSIS_RUNNING,
+    WorkflowState.ANALYSIS_DONE,
+]
+
+
+def state_index(state: WorkflowState) -> int:
+    """Return the ordinal position of a state in the pipeline (FAILED returns -1)."""
+    try:
+        return STATE_ORDER.index(state)
+    except ValueError:
+        return -1
+
+
 ALLOWED_TRANSITIONS: dict[WorkflowState, set[WorkflowState]] = {
-    WorkflowState.SESSION_CREATED: {WorkflowState.EXTRACTION_DONE, WorkflowState.FAILED},
-    WorkflowState.EXTRACTION_DONE: {WorkflowState.ECG_DONE, WorkflowState.FAILED},
-    WorkflowState.ECG_DONE: {WorkflowState.LAB_DONE, WorkflowState.FAILED},
-    WorkflowState.LAB_DONE: {WorkflowState.ANALYSIS_RUNNING, WorkflowState.FAILED},
-    WorkflowState.ANALYSIS_RUNNING: {WorkflowState.ANALYSIS_DONE, WorkflowState.FAILED, WorkflowState.LAB_DONE},
-    WorkflowState.ANALYSIS_DONE: {WorkflowState.FAILED},
+    # Normal forward progression
+    WorkflowState.SESSION_CREATED: {
+        WorkflowState.EXTRACTION_DONE,
+        WorkflowState.FAILED,
+    },
+    WorkflowState.EXTRACTION_DONE: {
+        WorkflowState.ECG_DONE,
+        WorkflowState.LAB_DONE,       # skip ECG
+        WorkflowState.ANALYSIS_RUNNING,  # skip ECG + Lab
+        WorkflowState.FAILED,
+    },
+    WorkflowState.ECG_DONE: {
+        WorkflowState.LAB_DONE,
+        WorkflowState.ANALYSIS_RUNNING,  # skip Lab
+        WorkflowState.FAILED,
+    },
+    WorkflowState.LAB_DONE: {
+        WorkflowState.ANALYSIS_RUNNING,
+        WorkflowState.FAILED,
+    },
+    # Analysis can complete, fail, or be rolled back to LAB_DONE
+    WorkflowState.ANALYSIS_RUNNING: {
+        WorkflowState.ANALYSIS_DONE,
+        WorkflowState.FAILED,
+        WorkflowState.LAB_DONE,  # cancellation / rollback
+    },
+    WorkflowState.ANALYSIS_DONE: {
+        WorkflowState.FAILED,
+        WorkflowState.ANALYSIS_RUNNING,  # re-run analysis
+    },
     WorkflowState.FAILED: set(),
 }
 
