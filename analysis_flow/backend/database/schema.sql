@@ -1,692 +1,257 @@
+﻿-- =============================================================================
+--  HeartSense AI -- Supabase Schema (full fresh install)
+--  Run this entire file in the Supabase SQL Editor on a clean project.
+--
+--  Tables:
+--    1. profiles               -- doctor / user accounts (linked to auth.users)
+--    2. analysis_payloads      -- raw patient inputs for every analysis session
+--    3. kra_outputs            -- KRA agent output per session
+--    4. ora_outputs            -- ORA refined output per session
+--
+--  Views:
+--    diagnosis_history         -- joined read-only view used by history queries
+--
+--  RLS is enabled on all tables with service-role bypass.
+-- =============================================================================
+
+-- ---------------------------------------------------------------------------
+--  0.  Extensions
+-- ---------------------------------------------------------------------------
+
+create extension if not exists "uuid-ossp";
+create extension if not exists pgcrypto;
 
 
-
-
-
-
-
-
-
-
-
-
-create extension if not exists vector;
-
-
-
-
-
-
-
-
+-- ---------------------------------------------------------------------------
+--  1.  profiles
+-- ---------------------------------------------------------------------------
 
 create table if not exists profiles (
-
-  id uuid references auth.users on delete cascade primary key,
-
-  role text check (role in ('admin', 'seasoned', 'newbie')) default 'newbie',
-
-  full_name text,
-
-  email text,
-
-  created_at timestamp with time zone default now(),
-
-  updated_at timestamp with time zone default now()
-
+    id          uuid        primary key references auth.users on delete cascade,
+    role        text        not null default 'newbie'
+                                check (role in ('admin', 'seasoned', 'newbie')),
+    full_name   text,
+    email       text,
+    created_at  timestamptz not null default now(),
+    updated_at  timestamptz not null default now()
 );
 
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+    insert into public.profiles (id, full_name, email)
+    values (
+        new.id,
+        new.raw_user_meta_data ->> 'full_name',
+        new.email
+    )
+    on conflict (id) do nothing;
+    return new;
+end;
+$$;
 
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+    after insert on auth.users
+    for each row execute procedure public.handle_new_user();
 
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+    new.updated_at = now();
+    return new;
+end;
+$$;
 
+create trigger profiles_set_updated_at
+    before update on profiles
+    for each row execute procedure public.set_updated_at();
 
 alter table profiles enable row level security;
 
+create policy "profiles: user reads own"
+    on profiles for select
+    using (auth.uid() = id);
+
+create policy "profiles: user updates own"
+    on profiles for update
+    using (auth.uid() = id);
+
+create policy "profiles: admin reads all"
+    on profiles for select
+    using (
+        exists (
+            select 1 from profiles p
+            where p.id = auth.uid() and p.role = 'admin'
+        )
+    );
+
+create policy "profiles: service role full access"
+    on profiles
+    using (auth.role() = 'service_role');
 
 
+-- ---------------------------------------------------------------------------
+--  2.  analysis_payloads
+-- ---------------------------------------------------------------------------
 
+create table if not exists analysis_payloads (
+    id              uuid        primary key default gen_random_uuid(),
+    session_id      text        not null,
+    patient_id      text,
+    doctor_id       text,
 
-create policy "Users can view own profile" 
+    symptoms_json   jsonb       not null default '{}',
+    history_json    jsonb       not null default '{}',
+    ecg_json        jsonb       not null default '{}',
+    labs_json       jsonb       not null default '{}',
 
-  on profiles for select 
+    context_text    text        not null default '',
+    quality_json    jsonb       not null default '{}',
 
-  using (auth.uid() = id);
+    status          text        not null default 'pending'
+                                    check (status in ('pending', 'processing', 'completed', 'failed')),
 
-
-
-create policy "Users can update own profile" 
-
-  on profiles for update 
-
-  using (auth.uid() = id);
-
-
-
-create policy "Admins can view all profiles"
-
-  on profiles for select
-
-  using (
-
-    exists (
-
-      select 1 from profiles 
-
-      where id = auth.uid() and role = 'admin'
-
-    )
-
-  );
-
-
-
-
-
-create or replace function public.handle_new_user()
-
-returns trigger as $$
-
-begin
-
-  insert into public.profiles (id, full_name, email)
-
-  values (new.id, new.raw_user_meta_data->>'full_name', new.email);
-
-  return new;
-
-end;
-
-$$ language plpgsql security definer;
-
-
-
-create trigger on_auth_user_created
-
-  after insert on auth.users
-
-  for each row execute procedure public.handle_new_user();
-
-
-
-
-
-
-
-
-
-create table if not exists medical_knowledge (
-
-  id uuid primary key default gen_random_uuid(),
-
-  content text not null,
-
-  embedding vector(384),
-
-  source_type text check (source_type in ('pubmed', 'textbook', 'feedback', 'rare_case')),
-
-  category text,
-
-  severity text check (severity in ('CRITICAL', 'HIGH', 'MODERATE', 'LOW')),
-
-  metadata jsonb default '{}',
-
-  created_at timestamp with time zone default now(),
-
-  updated_at timestamp with time zone default now()
-
+    created_at      timestamptz not null default now(),
+    updated_at      timestamptz not null default now()
 );
 
+create index if not exists analysis_payloads_session_id_idx  on analysis_payloads (session_id);
+create index if not exists analysis_payloads_patient_id_idx  on analysis_payloads (patient_id);
+create index if not exists analysis_payloads_created_at_idx  on analysis_payloads (created_at desc);
+
+create trigger analysis_payloads_set_updated_at
+    before update on analysis_payloads
+    for each row execute procedure public.set_updated_at();
+
+alter table analysis_payloads enable row level security;
+
+create policy "analysis_payloads: service role full access"
+    on analysis_payloads
+    using (auth.role() = 'service_role');
+
+create policy "analysis_payloads: authenticated read own"
+    on analysis_payloads for select
+    using (
+        auth.role() = 'authenticated'
+        and doctor_id = auth.uid()::text
+    );
 
 
+-- ---------------------------------------------------------------------------
+--  3.  kra_outputs
+-- ---------------------------------------------------------------------------
 
+create table if not exists kra_outputs (
+    id              uuid        primary key default gen_random_uuid(),
+    session_id      text        not null,
+    payload_id      uuid        references analysis_payloads (id) on delete cascade,
+    patient_id      text,
 
-create index if not exists medical_knowledge_embedding_idx 
+    symptoms_text   text        not null default '',
 
-  on medical_knowledge 
+    kra_output      jsonb       not null default '{}',
+    raw_text        text,
 
-  using hnsw (embedding vector_cosine_ops);
-
-
-
-
-
-alter table medical_knowledge enable row level security;
-
-
-
-
-
-create policy "Anyone can read medical knowledge"
-
-  on medical_knowledge for select
-
-  using (true);
-
-
-
-
-
-create policy "Authorized users can insert knowledge"
-
-  on medical_knowledge for insert
-
-  with check (
-
-    exists (
-
-      select 1 from profiles 
-
-      where id = auth.uid() and role in ('admin', 'seasoned')
-
-    )
-
-  );
-
-
-
-
-
-
-
-
-
-create table if not exists feedback_queue (
-
-  id uuid primary key default gen_random_uuid(),
-
-  doctor_id uuid references auth.users,
-
-  original_diagnosis text not null,
-
-  proposed_correction text not null,
-
-  case_context jsonb not null,
-
-  status text check (status in ('pending', 'approved', 'conflict', 'rejected')) default 'pending',
-
-  admin_notes text,
-
-  reviewed_by uuid references auth.users,
-
-  reviewed_at timestamp with time zone,
-
-  created_at timestamp with time zone default now()
-
+    created_at      timestamptz not null default now()
 );
 
+create index if not exists kra_outputs_session_id_idx   on kra_outputs (session_id);
+create index if not exists kra_outputs_payload_id_idx   on kra_outputs (payload_id);
+create index if not exists kra_outputs_patient_id_idx   on kra_outputs (patient_id);
+create index if not exists kra_outputs_created_at_idx   on kra_outputs (created_at desc);
 
+alter table kra_outputs enable row level security;
 
+create policy "kra_outputs: service role full access"
+    on kra_outputs
+    using (auth.role() = 'service_role');
 
+create policy "kra_outputs: authenticated read"
+    on kra_outputs for select
+    using (auth.role() = 'authenticated');
 
-alter table feedback_queue enable row level security;
 
+-- ---------------------------------------------------------------------------
+--  4.  ora_outputs
+-- ---------------------------------------------------------------------------
 
+create table if not exists ora_outputs (
+    id                  uuid        primary key default gen_random_uuid(),
+    session_id          text        not null,
+    kra_output_id       uuid        references kra_outputs (id) on delete cascade,
+    patient_id          text,
 
+    experience_level    text        not null default 'seasoned'
+                                        check (experience_level in ('NEWBIE', 'SEASONED', 'newbie', 'seasoned')),
 
+    refined_output      text        not null default '',
+    disclaimer          text,
 
-create policy "Doctors can view own feedback"
+    status              text        not null default 'success'
+                                        check (status in ('success', 'partial', 'failed')),
 
-  on feedback_queue for select
-
-  using (doctor_id = auth.uid());
-
-
-
-
-
-create policy "Doctors can submit feedback"
-
-  on feedback_queue for insert
-
-  with check (doctor_id = auth.uid());
-
-
-
-
-
-create policy "Admins can view all feedback"
-
-  on feedback_queue for select
-
-  using (
-
-    exists (
-
-      select 1 from profiles 
-
-      where id = auth.uid() and role = 'admin'
-
-    )
-
-  );
-
-
-
-
-
-create policy "Admins can update feedback"
-
-  on feedback_queue for update
-
-  using (
-
-    exists (
-
-      select 1 from profiles 
-
-      where id = auth.uid() and role = 'admin'
-
-    )
-
-  );
-
-
-
-
-
-
-
-
-
-create table if not exists analysis_sessions (
-
-  id uuid primary key default gen_random_uuid(),
-
-  doctor_id uuid references auth.users,
-
-  session_id text unique not null,
-
-  
-
-
-
-  history_text text,
-
-  ecg_result jsonb,
-
-  lab_result jsonb,
-
-  bypassed jsonb default '{"ecg": false, "labs": false}',
-
-  
-
-
-
-  kra_output jsonb,
-
-  ora_output jsonb,
-
-  final_diagnosis text,
-
-  confidence float,
-
-  
-
-
-
-  experience_level text,
-
-  processing_time_ms int,
-
-  created_at timestamp with time zone default now()
-
+    created_at          timestamptz not null default now()
 );
 
-
-
-
-
-alter table analysis_sessions enable row level security;
-
-
-
-
-
-create policy "Doctors can view own sessions"
-
-  on analysis_sessions for select
-
-  using (doctor_id = auth.uid());
-
-
-
-
-
-create policy "Doctors can create sessions"
-
-  on analysis_sessions for insert
-
-  with check (doctor_id = auth.uid());
-
-
-
-
-
-create policy "Admins can view all sessions"
-
-  on analysis_sessions for select
-
-  using (
-
-    exists (
-
-      select 1 from profiles 
-
-      where id = auth.uid() and role = 'admin'
-
-    )
-
-  );
-
-
-
-
-
-
-
-
-
-create or replace function search_medical_knowledge(
-
-  query_embedding vector(384),
-
-  match_threshold float default 0.3,
-
-  match_count int default 5,
-
-  filter_source text default null
-
-)
-
-returns table (
-
-  id uuid,
-
-  content text,
-
-  similarity float,
-
-  source_type text,
-
-  category text,
-
-  metadata jsonb,
-
-  created_at timestamp with time zone
-
-)
-
-language plpgsql
-
-as $$
-
-begin
-
-  return query
-
-  select
-
-    mk.id,
-
-    mk.content,
-
-    1 - (mk.embedding <=> query_embedding) as similarity,
-
-    mk.source_type,
-
-    mk.category,
-
-    mk.metadata,
-
-    mk.created_at
-
-  from medical_knowledge mk
-
-  where 
-
-    1 - (mk.embedding <=> query_embedding) > match_threshold
-
-    and (filter_source is null or mk.source_type = filter_source)
-
-  order by mk.embedding <=> query_embedding
-
-  limit match_count;
-
-end;
-
-$$;
-
-
-
-
-
-
-
-
-
-create or replace function resolve_medical_conflict(
-
-  input_emb vector(384), 
-
-  input_diag text
-
-)
-
-returns table (is_conflict boolean, db_diag text) as $$
-
-begin
-
-  return query
-
-  select 
-
-    (mk.content != input_diag) as is_conflict,
-
-    mk.content as db_diag
-
-  from medical_knowledge mk
-
-  where 1 - (mk.embedding <=> input_emb) > 0.6
-
-  order by mk.embedding <=> input_emb
-
-  limit 1;
-
-end;
-
-$$ language plpgsql;
-
-
-
-
-
-
-
-
-
-
-
-
-
-create or replace function get_bypass_statistics()
-
-returns jsonb as $$
-
-declare
-
-  result jsonb;
-
-begin
-
-  select jsonb_build_object(
-
-    'total_cases', count(*),
-
-    'ecg_bypassed', count(*) filter (where (bypassed->>'ecg')::boolean = true),
-
-    'labs_bypassed', count(*) filter (where (bypassed->>'labs')::boolean = true),
-
-    'both_bypassed', count(*) filter (
-
-      where (bypassed->>'ecg')::boolean = true 
-
-      and (bypassed->>'labs')::boolean = true
-
-    )
-
-  ) into result
-
-  from analysis_sessions
-
-  where created_at > now() - interval '30 days';
-
-  
-
-  return result;
-
-end;
-
-$$ language plpgsql;
-
-
-
-
-
-create or replace function get_diagnosis_statistics()
-
-returns jsonb as $$
-
-declare
-
-  result jsonb;
-
-begin
-
-  select jsonb_build_object(
-
-    'total_analyses', count(*),
-
-    'avg_confidence', avg(confidence),
-
-    'low_confidence_count', count(*) filter (where confidence < 0.6),
-
-    'high_confidence_count', count(*) filter (where confidence >= 0.8),
-
-    'by_experience_level', jsonb_object_agg(
-
-      coalesce(experience_level, 'unknown'),
-
-      count(*)
-
-    )
-
-  ) into result
-
-  from analysis_sessions
-
-  where created_at > now() - interval '30 days';
-
-  
-
-  return result;
-
-end;
-
-$$ language plpgsql;
-
-
-
-
-
-
-
-
-
-create or replace function update_updated_at_column()
-
-returns trigger as $$
-
-begin
-
-  new.updated_at = now();
-
-  return new;
-
-end;
-
-$$ language plpgsql;
-
-
-
-create trigger update_profiles_updated_at
-
-  before update on profiles
-
-  for each row execute procedure update_updated_at_column();
-
-
-
-create trigger update_medical_knowledge_updated_at
-
-  before update on medical_knowledge
-
-  for each row execute procedure update_updated_at_column();
-
-
--- ================================================================== --
---  NEW TABLES: 7-step KRA-ORA processing pipeline                    --
---  Run this block in Supabase SQL Editor if adding to existing DB    --
--- ================================================================== --
-
--- 1. Stores raw patient inputs + FAISS context (Step 3)
-CREATE TABLE IF NOT EXISTS analysis_payloads (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id      TEXT NOT NULL,
-    symptoms_json   JSONB NOT NULL,
-    history_json    JSONB NOT NULL DEFAULT '{}',
-    ecg_json        JSONB NOT NULL DEFAULT '{}',
-    labs_json       JSONB NOT NULL DEFAULT '{}',
-    context_text    TEXT,
-    quality_json    JSONB,
-    status          TEXT NOT NULL DEFAULT 'pending',
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_ap_session ON analysis_payloads(session_id);
-
--- 2. Stores KRA agent output (Step 5)
-CREATE TABLE IF NOT EXISTS kra_outputs (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id      TEXT NOT NULL,
-    payload_id      UUID REFERENCES analysis_payloads(id),
-    symptoms_text   TEXT,
-    kra_output      JSONB NOT NULL DEFAULT '{}',
-    raw_text        TEXT,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_ko_session ON kra_outputs(session_id);
-
--- 3. Stores ORA agent output (Step 7)
-CREATE TABLE IF NOT EXISTS ora_outputs (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id       TEXT NOT NULL,
-    kra_output_id    UUID REFERENCES kra_outputs(id),
-    experience_level TEXT NOT NULL DEFAULT 'seasoned',
-    refined_output   TEXT,
-    disclaimer       TEXT,
-    status           TEXT NOT NULL DEFAULT 'success',
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_oo_session ON ora_outputs(session_id);
-
--- RLS: allow service role full access (local app + HF Spaces use service key)
-ALTER TABLE analysis_payloads ENABLE ROW LEVEL SECURITY;
-ALTER TABLE kra_outputs        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ora_outputs        ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "service_role_all_ap" ON analysis_payloads
-    FOR ALL TO service_role USING (true) WITH CHECK (true);
-CREATE POLICY "service_role_all_ko" ON kra_outputs
-    FOR ALL TO service_role USING (true) WITH CHECK (true);
-CREATE POLICY "service_role_all_oo" ON ora_outputs
-    FOR ALL TO service_role USING (true) WITH CHECK (true);
-
+create index if not exists ora_outputs_session_id_idx       on ora_outputs (session_id);
+create index if not exists ora_outputs_kra_output_id_idx    on ora_outputs (kra_output_id);
+create index if not exists ora_outputs_patient_id_idx       on ora_outputs (patient_id);
+create index if not exists ora_outputs_created_at_idx       on ora_outputs (created_at desc);
+
+alter table ora_outputs enable row level security;
+
+create policy "ora_outputs: service role full access"
+    on ora_outputs
+    using (auth.role() = 'service_role');
+
+create policy "ora_outputs: authenticated read"
+    on ora_outputs for select
+    using (auth.role() = 'authenticated');
+
+
+-- ---------------------------------------------------------------------------
+--  5.  diagnosis_history  (VIEW)
+--      Read-only joined view used by get_patient_diagnosis_history().
+-- ---------------------------------------------------------------------------
+
+create or replace view diagnosis_history as
+select
+    ap.id                   as payload_id,
+    ap.session_id,
+    ap.patient_id,
+    ap.doctor_id,
+    ap.symptoms_json,
+    ap.history_json,
+    ap.ecg_json,
+    ap.labs_json,
+    ap.context_text,
+    ap.quality_json,
+    ap.status               as payload_status,
+    ap.created_at,
+
+    ko.id                   as kra_id,
+    ko.kra_output,
+    ko.raw_text             as kra_raw_text,
+    ko.symptoms_text,
+
+    oo.id                   as ora_id,
+    oo.refined_output,
+    oo.disclaimer,
+    oo.status               as ora_status,
+    oo.experience_level
+
+from  analysis_payloads ap
+left join kra_outputs  ko  on ko.session_id = ap.session_id
+left join ora_outputs  oo  on oo.session_id = ap.session_id
+
+order by ap.created_at desc;
+
+grant select on diagnosis_history to authenticated;
+grant select on diagnosis_history to service_role;
