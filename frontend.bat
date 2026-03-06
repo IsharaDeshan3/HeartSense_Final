@@ -39,10 +39,7 @@ if not exist "%FE_DIR%\node_modules" (
             echo  Running: npm install
             npm --prefix "%FE_DIR%" install
             echo.
-            echo  Starting dev server with npm ...
-            npm --prefix "%FE_DIR%" run dev
-            pause
-            exit /b 0
+            echo  Dependencies installed successfully with npm.
         )
     )
 
@@ -55,16 +52,24 @@ if not exist "%FE_DIR%\node_modules" (
     echo.
     echo  Dependencies installed successfully!
     echo.
-) else (
-    echo  Dependencies already installed. Skipping install.
 )
 
-echo  Starting frontend dev server ...
-echo  URL: http://localhost:3000
-echo.
+:: Ensure Next.js is available
+where next >nul 2>nul
+if errorlevel 1 (
+    echo  Next.js not found. Installing it locally ...
+    npm --prefix "%FE_DIR%" install next
+    if errorlevel 1 (
+        echo  ERROR: Failed to install Next.js. Please check your setup.
+        pause
+        exit /b 1
+    )
+)
 
 :: Start the dev server
-pnpm --dir "%FE_DIR%" dev
+cd "%FE_DIR%"
+echo  Starting frontend server on http://localhost:3000 ...
+pnpm --dir "%FE_DIR%" dev || npm --prefix "%FE_DIR%" run dev
 
 popd
 pause

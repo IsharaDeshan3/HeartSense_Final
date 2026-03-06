@@ -94,9 +94,20 @@ echo.
 set SVC_NAME=Analysis Flow
 set SVC_DIR=%ROOT%analysis_flow
 set SVC_REQ=%SVC_DIR%\requirements.txt
-call :setup_venv
-echo.
 
+:: Ensure the virtual environment exists
+if not exist "%SVC_DIR%\.venv" (
+    echo Creating virtual environment for Analysis Flow...
+    python -m venv "%SVC_DIR%\.venv"
+)
+
+:: Activate the virtual environment and install dependencies
+powershell -Command "cd '%SVC_DIR%' ; .\.venv\Scripts\Activate.ps1 ; pip install -r requirements.txt ; pip install llama-cpp-python"
+
+:: Start the backend without WatchFiles reloads
+start "Analysis Flow KRA-ORA - :8080" cmd /k "cd /d \"%SVC_DIR%\" && call .venv\Scripts\activate.bat && python -m uvicorn backend.main:app --host 0.0.0.0 --port 8080"
+
+echo.
 echo [Phase 1] All virtual environments ready.
 echo.
 
@@ -219,7 +230,7 @@ start "ECG Backend - :5000" cmd /k "cd /d "%ROOT%ecg_backend-main" && call .venv
 
 :: ---- 6d. Analysis Flow (port 8080) — starts and eagerly preloads LLM ----
 echo   Starting Analysis Flow on :8080 (LLM models preload at startup) ...
-start "Analysis Flow KRA-ORA - :8080" cmd /k "cd /d "%ROOT%analysis_flow" && call .venv\Scripts\activate.bat && python -m uvicorn backend.main:app --host 0.0.0.0 --port 8080 --reload"
+start "Analysis Flow KRA-ORA - :8080" cmd /k "cd /d "%SVC_DIR%" && call .venv\Scripts\activate.bat && python -m uvicorn backend.main:app --host 0.0.0.0 --port 8080"
 
 echo.
 echo ====================================================================

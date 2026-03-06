@@ -16,6 +16,7 @@ import re
 import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
+from tqdm import tqdm
 
 from dotenv import load_dotenv, find_dotenv
 
@@ -63,27 +64,31 @@ class LLMEngine:
     def __init__(self) -> None:
         from llama_cpp import Llama
 
-        # ---- KRA model (GPU) ------------------------------------------------
-        kra_path = _env("KRA_MODEL_PATH")
-        logger.info("Loading KRA model: %s (GPU)", kra_path)
-        self.kra_model = Llama(
-            model_path=kra_path,
-            n_gpu_layers=int(_env("KRA_N_GPU_LAYERS")),
-            n_ctx=int(_env("KRA_N_CTX")),
-            verbose=False,
-        )
-        logger.info("KRA model loaded (%d ctx, GPU offload)", int(_env("KRA_N_CTX")))
+        # Initialize progress bar
+        with tqdm(total=2, desc="Loading Models", unit="model") as pbar:
+            # ---- KRA model (GPU) ------------------------------------------------
+            kra_path = _env("KRA_MODEL_PATH")
+            logger.info("Loading KRA model: %s (GPU)", kra_path)
+            self.kra_model = Llama(
+                model_path=kra_path,
+                n_gpu_layers=int(_env("KRA_N_GPU_LAYERS")),
+                n_ctx=int(_env("KRA_N_CTX")),
+                verbose=False,
+            )
+            logger.info("KRA model loaded (%d ctx, GPU offload)", int(_env("KRA_N_CTX")))
+            pbar.update(1)
 
-        # ---- ORA model (CPU) ------------------------------------------------
-        ora_path = _env("ORA_MODEL_PATH")
-        logger.info("Loading ORA model: %s (CPU)", ora_path)
-        self.ora_model = Llama(
-            model_path=ora_path,
-            n_gpu_layers=int(_env("ORA_N_GPU_LAYERS")),
-            n_ctx=int(_env("ORA_N_CTX")),
-            verbose=False,
-        )
-        logger.info("ORA model loaded (%d ctx, CPU only)", int(_env("ORA_N_CTX")))
+            # ---- ORA model (CPU) ------------------------------------------------
+            ora_path = _env("ORA_MODEL_PATH")
+            logger.info("Loading ORA model: %s (CPU)", ora_path)
+            self.ora_model = Llama(
+                model_path=ora_path,
+                n_gpu_layers=int(_env("ORA_N_GPU_LAYERS")),
+                n_ctx=int(_env("ORA_N_CTX")),
+                verbose=False,
+            )
+            logger.info("ORA model loaded (%d ctx, CPU only)", int(_env("ORA_N_CTX")))
+            pbar.update(1)
 
         # Inference locks (llama.cpp is not thread-safe per model instance)
         self._kra_lock = threading.Lock()
