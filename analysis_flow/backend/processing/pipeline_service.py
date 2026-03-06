@@ -1,15 +1,13 @@
 """
 backend/processing/pipeline_service.py
 
-Main orchestrator for the 7-step KRA-ORA processing pipeline.
+Main orchestrator for the 5-step local KRA-ORA processing pipeline.
 
 Step 1 — Save inputs to local SQLite session store
 Step 2 — FAISS vector search (medical books + rare cases)
-Step 3 — Save {inputs + context} to Supabase analysis_payloads
-Step 4 — POST supabase payload_id → KRA HuggingFace Space
-Step 5 — Save KRA output to Supabase kra_outputs
-Step 6 — POST supabase kra_output_id → ORA HuggingFace Space
-Step 7 — Return ORA refined text to the caller (local FastAPI route)
+Step 3 — KRA local inference (DeepSeek-R1, GPU)
+Step 4 — ORA local refinement (Phi-3.5-mini, CPU)
+Step 5 — Save all results to Supabase (payload + KRA + ORA in one batch)
 """
 
 from __future__ import annotations
@@ -103,8 +101,7 @@ def _labs_to_dict(req: AnalyzeRequest) -> Dict[str, Any]:
 
 def _build_symptom_text(req: AnalyzeRequest) -> str:
     """
-    Build a plain-text symptom string for FAISS embedding.
-    Mirrors the logic in the old AnalysisPipeline._build_symptom_text.
+    Build a plain-text symptom string for FAISS embedding and KRA prompt.
     """
     parts = [f"Patient: {req.symptoms.text}"]
 
@@ -182,7 +179,7 @@ def _format_rare_alert_block(alert: RareCaseAlert) -> str:
 
 class PipelineService:
     """
-    Orchestrates the full 7-step KRA-ORA analysis pipeline.
+    Orchestrates the 5-step local KRA-ORA analysis pipeline.
 
     Instantiate once (singleton in the FastAPI route) and call `.run()`.
     """
@@ -192,26 +189,23 @@ class PipelineService:
         self._search = SearchService()
         self._kra = KRAClient()
         self._ora = ORAClient()
-        logger.info("PipelineService initialised")
+        logger.info("PipelineService initialised (local inference mode)")
 
     # ------------------------------------------------------------------ #
 
     def run(self, req: AnalyzeRequest) -> PipelineResult:
         """
-        Execute all 7 pipeline steps for an incoming analysis request.
-
-        Args:
-            req: AnalyzeRequest — the three connector-point inputs.
-
-        Returns:
-            PipelineResult with session tracking info, Supabase IDs, and
-            the ORA-refined diagnostic output.
+        Execute all 5 pipeline steps for an incoming analysis request.
         """
         pipeline_start = time.time()
         steps: List[StepResult] = []
 
         experience_level = req.experience_level.upper()
+        if experience_level not in ("NEWBIE", "SEASONED"):
+            experience_level = "SEASONED"
+
         symptoms_text = _build_symptom_text(req)
+        patient_id = req.patient_id
 
         # ---- STEP 1: Create local SQLite session -------------------- #
         t0 = time.time()
@@ -244,7 +238,7 @@ class PipelineService:
             steps=steps,
         )
 
-        # ---- STEP 2: FAISS search + rare-case detection ---------------- #
+        # ---- STEP 2: FAISS search + rare-case detection --------------- #
         self._store.update_status(session_id, "FAISS_SEARCH", "IN_PROGRESS")
         t0 = time.time()
         context_text = ""
@@ -273,100 +267,42 @@ class PipelineService:
             steps.append(StepResult("FAISS_SEARCH", "FAILED", error=str(exc)))
             # Non-fatal — proceed with empty context
 
-        # ---- STEP 3: Save payload to Supabase ----------------------- #
-        self._store.update_status(session_id, "SUPABASE_SAVE_PAYLOAD", "IN_PROGRESS")
-        t0 = time.time()
-        payload_id: Optional[str] = None
-        try:
-            payload_id, payload_url = save_analysis_payload(
-                session_id=session_id,
-                symptoms=_symptoms_to_dict(req),
-                ecg=_ecg_to_dict(req),
-                labs=_labs_to_dict(req),
-                context_text=context_text,
-                quality=quality,
-            )
-            self._store.set_supabase_ids(session_id, payload_id=payload_id)
-            result.supabase_payload_id = payload_id
-            steps.append(StepResult(
-                step="SUPABASE_SAVE_PAYLOAD",
-                status="COMPLETED",
-                duration_ms=int((time.time() - t0) * 1000),
-                supabase_id=payload_id,
-            ))
-            logger.info("Saved analysis_payload: %s", payload_id)
-        except Exception as exc:
-            logger.error("Step 3 failed (Supabase save payload): %s", exc)
-            self._store.update_status(session_id, "SUPABASE_SAVE_PAYLOAD", "FAILED", str(exc))
-            result.status = "FAILED"
-            result.error = f"Supabase payload save failed: {exc}"
-            result.total_duration_ms = int((time.time() - pipeline_start) * 1000)
-            steps.append(StepResult("SUPABASE_SAVE_PAYLOAD", "FAILED", error=str(exc)))
-            result.steps = steps
-            return result
-
-        # ---- STEP 4: Call KRA HuggingFace Space --------------------- #
-        self._store.update_status(session_id, "KRA_CALL", "IN_PROGRESS")
+        # ---- STEP 3: KRA local inference (GPU) ----------------------- #
+        self._store.update_status(session_id, "KRA_INFERENCE", "IN_PROGRESS")
         t0 = time.time()
         kra_result: Dict[str, Any] = {}
         try:
-            update_payload_status(payload_id, "processing")
-            kra_result = self._kra.analyze(payload_id=payload_id)
+            kra_result = self._kra.analyze(
+                symptoms_text=symptoms_text,
+                context_text=context_text,
+                ecg_dict=_ecg_to_dict(req),
+                labs_dict=_labs_to_dict(req),
+            )
             result.kra_raw = kra_result.get("raw_text", json.dumps(kra_result))
             steps.append(StepResult(
-                step="KRA_CALL",
+                step="KRA_INFERENCE",
                 status="COMPLETED",
                 duration_ms=int((time.time() - t0) * 1000),
             ))
-            update_payload_status(payload_id, "kra_done")
-            logger.info("KRA call completed (%d chars)", len(result.kra_raw or ""))
+            logger.info("KRA local inference completed (%d chars)", len(result.kra_raw or ""))
         except Exception as exc:
-            logger.error("Step 4 KRA call failed: %s", exc)
-            self._store.update_status(session_id, "KRA_CALL", "FAILED", str(exc))
+            logger.error("Step 3 KRA inference failed: %s", exc)
+            self._store.update_status(session_id, "KRA_INFERENCE", "FAILED", str(exc))
             result.status = "FAILED"
-            result.error = f"KRA Space error: {exc}"
+            result.error = f"KRA inference error: {exc}"
             result.total_duration_ms = int((time.time() - pipeline_start) * 1000)
-            steps.append(StepResult("KRA_CALL", "FAILED", error=str(exc)))
+            steps.append(StepResult("KRA_INFERENCE", "FAILED", error=str(exc)))
             result.steps = steps
             return result
 
-        # ---- STEP 5: Save KRA output to Supabase -------------------- #
-        self._store.update_status(session_id, "SUPABASE_SAVE_KRA", "IN_PROGRESS")
-        t0 = time.time()
-        kra_output_id: Optional[str] = None
-        try:
-            kra_output_id, _ = save_kra_output(
-                session_id=session_id,
-                payload_id=payload_id,
-                symptoms_text=symptoms_text,
-                kra_result=kra_result,
-            )
-            self._store.set_supabase_ids(session_id, kra_id=kra_output_id)
-            result.supabase_kra_id = kra_output_id
-            steps.append(StepResult(
-                step="SUPABASE_SAVE_KRA",
-                status="COMPLETED",
-                duration_ms=int((time.time() - t0) * 1000),
-                supabase_id=kra_output_id,
-            ))
-            logger.info("Saved kra_output: %s", kra_output_id)
-        except Exception as exc:
-            logger.error("Step 5 Supabase KRA save failed: %s", exc)
-            self._store.update_status(session_id, "SUPABASE_SAVE_KRA", "FAILED", str(exc))
-            result.status = "PARTIAL"
-            result.error = f"KRA output Supabase save failed: {exc}"
-            result.total_duration_ms = int((time.time() - pipeline_start) * 1000)
-            steps.append(StepResult("SUPABASE_SAVE_KRA", "FAILED", error=str(exc)))
-            result.steps = steps
-            return result
-
-        # ---- STEP 6: Call ORA HuggingFace Space --------------------- #
-        self._store.update_status(session_id, "ORA_CALL", "IN_PROGRESS")
+        # ---- STEP 4: ORA local refinement (CPU) ---------------------- #
+        self._store.update_status(session_id, "ORA_REFINEMENT", "IN_PROGRESS")
         t0 = time.time()
         ora_result: Dict[str, Any] = {}
         try:
             ora_result = self._ora.refine(
-                kra_output_id=kra_output_id,
+                kra_result=kra_result,
+                symptoms_text=symptoms_text,
                 experience_level=experience_level,
             )
             refined = ora_result.get("refined_output", "")
@@ -378,23 +314,49 @@ class PipelineService:
             result.refined_output = refined
             result.disclaimer = ora_result.get("disclaimer")
             steps.append(StepResult(
-                step="ORA_CALL",
+                step="ORA_REFINEMENT",
                 status="COMPLETED",
                 duration_ms=int((time.time() - t0) * 1000),
             ))
-            logger.info("ORA call completed")
+            logger.info("ORA local refinement completed")
         except Exception as exc:
-            logger.error("Step 6 ORA call failed: %s", exc)
+            logger.error("Step 4 ORA refinement failed: %s", exc)
             # Non-fatal — return KRA raw output as partial result
             result.refined_output = result.kra_raw or "ORA refinement unavailable."
             result.disclaimer = "[!] ORA refinement failed. Showing raw KRA output. Verify clinically."
             result.status = "PARTIAL"
-            steps.append(StepResult("ORA_CALL", "FAILED", error=str(exc)))
+            steps.append(StepResult("ORA_REFINEMENT", "FAILED", error=str(exc)))
 
-        # ---- STEP 7: Save ORA output & finalise --------------------- #
-        if result.refined_output:
-            t0 = time.time()
-            try:
+        # ---- STEP 5: Save all results to Supabase (batch) ------------ #
+        self._store.update_status(session_id, "SUPABASE_SAVE", "IN_PROGRESS")
+        t0 = time.time()
+        try:
+            # 5a: Save analysis payload
+            payload_id, _ = save_analysis_payload(
+                session_id=session_id,
+                symptoms=_symptoms_to_dict(req),
+                ecg=_ecg_to_dict(req),
+                labs=_labs_to_dict(req),
+                context_text=context_text,
+                quality=quality,
+                patient_id=patient_id,
+            )
+            self._store.set_supabase_ids(session_id, payload_id=payload_id)
+            result.supabase_payload_id = payload_id
+
+            # 5b: Save KRA output
+            kra_output_id, _ = save_kra_output(
+                session_id=session_id,
+                payload_id=payload_id,
+                symptoms_text=symptoms_text,
+                kra_result=kra_result,
+                patient_id=patient_id,
+            )
+            self._store.set_supabase_ids(session_id, kra_id=kra_output_id)
+            result.supabase_kra_id = kra_output_id
+
+            # 5c: Save ORA output
+            if result.refined_output:
                 ora_output_id, _ = save_ora_output(
                     session_id=session_id,
                     kra_output_id=kra_output_id,
@@ -402,19 +364,25 @@ class PipelineService:
                     refined_output=result.refined_output or "",
                     disclaimer=result.disclaimer,
                     status=ora_result.get("status", "success"),
+                    patient_id=patient_id,
                 )
                 self._store.set_supabase_ids(session_id, ora_id=ora_output_id)
                 result.supabase_ora_id = ora_output_id
-                steps.append(StepResult(
-                    step="SUPABASE_SAVE_ORA",
-                    status="COMPLETED",
-                    duration_ms=int((time.time() - t0) * 1000),
-                    supabase_id=ora_output_id,
-                ))
-                update_payload_status(payload_id, "completed")
-            except Exception as exc:
-                logger.warning("Step 7 ORA Supabase save failed (non-fatal): %s", exc)
-                steps.append(StepResult("SUPABASE_SAVE_ORA", "FAILED", error=str(exc)))
+
+            update_payload_status(payload_id, "completed")
+
+            steps.append(StepResult(
+                step="SUPABASE_SAVE",
+                status="COMPLETED",
+                duration_ms=int((time.time() - t0) * 1000),
+                supabase_id=payload_id,
+            ))
+            logger.info("All results saved to Supabase (payload=%s)", payload_id)
+
+        except Exception as exc:
+            logger.warning("Step 5 Supabase save failed (non-fatal): %s", exc)
+            steps.append(StepResult("SUPABASE_SAVE", "FAILED", error=str(exc)))
+            # Non-fatal — pipeline results are still available locally
 
         total_ms = int((time.time() - pipeline_start) * 1000)
         if result.status == "IN_PROGRESS":

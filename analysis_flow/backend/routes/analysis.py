@@ -48,11 +48,14 @@ from routes .auth import get_current_user
 
 
 
-
-
-from agents .kra_agent import KRAAgent ,KRAOutput ,create_kra_agent 
-
-from agents .ora_agent import ORAAgent ,ORAOutput ,ExperienceLevel ,create_ora_agent 
+# Legacy agent imports — agents/ was removed in the local-LLM refactor.
+# The new pipeline uses backend/processing/{kra_client,ora_client}.py instead.
+try:
+    from agents .kra_agent import KRAAgent ,KRAOutput ,create_kra_agent 
+    from agents .ora_agent import ORAAgent ,ORAOutput ,ExperienceLevel ,create_ora_agent 
+except ImportError:
+    KRAAgent = KRAOutput = create_kra_agent = None
+    ORAAgent = ORAOutput = ExperienceLevel = create_ora_agent = None
 
 
 

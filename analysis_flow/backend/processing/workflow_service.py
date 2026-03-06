@@ -4,17 +4,18 @@ import queue
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional
 
 from backend.processing.kra_client import KRAClient
 from backend.processing.ora_client import ORAClient
 from backend.processing.search_service import SearchService
 from backend.processing.supabase_payload import (
+    get_patient_history_bundle,
     save_analysis_payload,
     save_kra_output,
     save_ora_output,
     update_payload_status,
-    check_existing_payload,
 )
 from backend.processing.workflow_state import WorkflowState
 from backend.processing.workflow_store import WorkflowStore
@@ -83,14 +84,19 @@ class WorkflowService:
         self._ora = ORAClient()
         self._cancel_requested: set[str] = set()
         self._cancel_lock = threading.Lock()
+        self._cancel_events: dict[str, threading.Event] = {}  # per-session cancel events
         self.event_bus = PipelineEventBus()
 
-    def check_spaces_health(self) -> dict[str, bool]:
-        """Non-blocking health check for KRA and ORA HF Spaces."""
+    def readiness_status(self) -> dict[str, bool]:
+        """Non-blocking readiness check for local KRA and ORA models."""
         kra_ok = self._kra.health_check()
         ora_ok = self._ora.health_check()
-        logger.info("Space health — KRA: %s  ORA: %s", kra_ok, ora_ok)
-        return {"kra": kra_ok, "ora": ora_ok}
+        logger.info("Model readiness — KRA: %s  ORA: %s", kra_ok, ora_ok)
+        return {"kra": kra_ok, "ora": ora_ok, "all_ready": kra_ok and ora_ok}
+
+    def check_spaces_health(self) -> dict[str, bool]:
+        """Backward-compatible alias for older callers."""
+        return self.readiness_status()
 
     def request_stop_analysis(self, session_id: str) -> dict[str, Any]:
         """
@@ -106,6 +112,10 @@ class WorkflowService:
 
         with self._cancel_lock:
             self._cancel_requested.add(session_id)
+            # Signal the cancel event so in-flight KRA/ORA SSE calls break immediately
+            event = self._cancel_events.get(session_id)
+            if event is not None:
+                event.set()
 
         logger.info("Stop requested for session %s (current_state=%s)",
                     session_id, session["current_state"])
@@ -119,6 +129,14 @@ class WorkflowService:
     def _clear_cancel_request(self, session_id: str) -> None:
         with self._cancel_lock:
             self._cancel_requested.discard(session_id)
+            self._cancel_events.pop(session_id, None)
+
+    def _get_or_create_cancel_event(self, session_id: str) -> threading.Event:
+        """Return the per-session cancel event, creating it if necessary."""
+        with self._cancel_lock:
+            if session_id not in self._cancel_events:
+                self._cancel_events[session_id] = threading.Event()
+            return self._cancel_events[session_id]
 
     def _raise_if_cancelled(self, session_id: str) -> None:
         with self._cancel_lock:
@@ -178,6 +196,9 @@ class WorkflowService:
         ecg_payload = ecg["payload"] if ecg is not None else {"result": {"status": "skipped", "reason": "not_submitted"}}
         lab_payload = lab["payload"] if lab is not None else {"result": {"status": "skipped", "reason": "not_submitted"}}
 
+        # Extract patient_id from session for Supabase threading
+        patient_id = session.get("patient_id")
+
         try:
             return self._run_analysis_pipeline(
                 session_id=session_id,
@@ -186,6 +207,7 @@ class WorkflowService:
                 ecg_payload=ecg_payload,
                 lab_payload=lab_payload,
                 started=started,
+                patient_id=patient_id,
             )
         except RuntimeError as exc:
             if "ANALYSIS_CANCELLED" in str(exc):
@@ -229,6 +251,116 @@ class WorkflowService:
     def _emit(self, session_id: str, step: str, status: str, **kwargs: Any) -> None:
         self.event_bus.emit(session_id, {"step": step, "status": status, **kwargs})
 
+    def _save_payload_snapshot(
+        self,
+        *,
+        session_id: str,
+        symptoms_json: dict[str, Any],
+        ecg_json: dict[str, Any],
+        labs_json: dict[str, Any],
+        context_text: str,
+        quality: dict[str, Any],
+        history_json: dict[str, Any],
+        patient_id: Optional[str],
+    ) -> dict[str, Any]:
+        try:
+            payload_id, payload_url = save_analysis_payload(
+                session_id=session_id,
+                symptoms=symptoms_json,
+                ecg=ecg_json,
+                labs=labs_json,
+                context_text=context_text,
+                quality=quality,
+                patient_id=patient_id,
+                history_json=history_json,
+            )
+            self._store.set_supabase_payload_id(session_id, payload_id)
+            update_payload_status(payload_id, "processing")
+            return {
+                "payload_id": payload_id,
+                "payload_url": payload_url,
+                "supabase_available": True,
+            }
+        except Exception as exc:
+            logger.warning(
+                "Supabase payload persistence failed for %s: %s – continuing with local payload id",
+                session_id,
+                exc,
+            )
+            payload_id = str(uuid.uuid4())
+            return {
+                "payload_id": payload_id,
+                "payload_url": None,
+                "supabase_available": False,
+                "error": str(exc),
+            }
+
+    def _save_kra_history_entry(
+        self,
+        *,
+        session_id: str,
+        payload_id: str,
+        symptoms_text: str,
+        kra_result: dict[str, Any],
+        patient_id: Optional[str],
+    ) -> dict[str, Any]:
+        try:
+            kra_id, kra_url = save_kra_output(
+                session_id=session_id,
+                payload_id=payload_id,
+                symptoms_text=symptoms_text,
+                kra_result=kra_result,
+                patient_id=patient_id,
+            )
+            self._store.set_supabase_kra_id(session_id, kra_id)
+            return {"kra_id": kra_id, "kra_url": kra_url, "supabase_available": True}
+        except Exception as exc:
+            logger.warning(
+                "KRA history persistence failed for %s: %s – continuing with local KRA id",
+                session_id,
+                exc,
+            )
+            return {
+                "kra_id": str(uuid.uuid4()),
+                "kra_url": None,
+                "supabase_available": False,
+                "error": str(exc),
+            }
+
+    def _save_ora_history_entry(
+        self,
+        *,
+        session_id: str,
+        kra_output_id: str,
+        experience_level: str,
+        ora_result: dict[str, Any],
+        patient_id: Optional[str],
+    ) -> dict[str, Any]:
+        try:
+            ora_output_id, ora_url = save_ora_output(
+                session_id=session_id,
+                kra_output_id=kra_output_id,
+                experience_level=experience_level,
+                refined_output=ora_result.get("refined_output", ""),
+                disclaimer=ora_result.get("disclaimer"),
+                status=ora_result.get("status", "success"),
+                patient_id=patient_id,
+            )
+            return {"ora_id": ora_output_id, "ora_url": ora_url, "supabase_available": True}
+        except Exception as exc:
+            logger.warning(
+                "ORA history persistence failed for %s/%s: %s",
+                session_id,
+                experience_level,
+                exc,
+            )
+            return {
+                "ora_id": str(uuid.uuid4()),
+                "ora_url": None,
+                "supabase_available": False,
+                "error": str(exc),
+            }
+
     def _run_analysis_pipeline(
         self,
         session_id: str,
@@ -237,6 +369,7 @@ class WorkflowService:
         ecg_payload: dict[str, Any],
         lab_payload: dict[str, Any],
         started: float,
+        patient_id: Optional[str] = None,
     ) -> dict[str, Any]:
         processing_steps: list[dict[str, Any]] = []
         self._raise_if_cancelled(session_id)
@@ -261,97 +394,178 @@ class WorkflowService:
         }
         self._emit(session_id, "session_init", "completed")
 
-        # ── Step 1: FAISS / rare-case retrieval ──────────────────────────────
+        # ── Step 1: Textbook retrieval, then uncertainty-gated rare cases ───
         self._emit(session_id, "faiss_search", "started")
         retrieval_started = time.time()
-        context_text, quality, rare_alert = self._search.search(
+        patient_vector = self._search.build_patient_vector(
             symptoms_text=symptoms_text,
-            top_k=5,
-            include_rare=True,
             ecg_findings=ecg_findings,
             lab_findings=lab_findings,
             lab_values=lab_values,
         )
+        textbook_context, quality = self._search.search_textbook(patient_vector, top_k=5)
         retrieval_ms = int((time.time() - retrieval_started) * 1000)
+        quality = dict(quality)
         processing_steps.append(
             {
-                "step": "dual_local_retrieval",
+                "step": "faiss_search",
                 "status": "success",
                 "duration_ms": retrieval_ms,
+                "rare_gate": quality.get("rare_search_gate"),
             }
         )
         self._emit(session_id, "faiss_search", "completed", duration_ms=retrieval_ms)
         self._raise_if_cancelled(session_id)
 
+        context_sections: list[str] = [textbook_context] if textbook_context else []
+        rare_context = ""
+        rare_alert = self._search.rare_case_flag.evaluate(textbook_context or "", symptoms_text)
+        rare_gate = self._search.should_search_rare_cases(
+            symptoms_text=symptoms_text,
+            textbook_context=textbook_context,
+            quality=quality,
+            ecg_findings=ecg_findings,
+            lab_findings=lab_findings,
+            lab_values=lab_values,
+        )
+        quality["rare_search_gate"] = rare_gate.get("reason")
+
         self._store.save_retrieval_context(
             session_id=session_id,
             source_type="books",
-            content=context_text,
+            content=textbook_context,
             metadata={
                 "quality": quality,
                 "experience_level": experience_level,
+                "rare_search_gate": rare_gate,
             },
         )
 
-        if quality.get("rare_cases_searched", 0):
-            self._store.save_retrieval_context(
-                session_id=session_id,
-                source_type="rare_cases",
-                content=context_text,
-                metadata={
-                    "rare_alert": rare_alert.to_dict(),
-                    "rare_top_score": quality.get("rare_top_score"),
-                },
-                score=float(quality.get("rare_top_score", 0.0) or 0.0),
+        if rare_gate.get("triggered"):
+            self._emit(session_id, "rare_case_search", "started")
+            rare_started = time.time()
+            rare_context, rare_quality, rare_alert = self._search.search_rare_cases(
+                patient_vector,
+                symptoms_text=symptoms_text,
             )
-            self._emit(session_id, "rare_case_search", "completed",
-                       triggered=bool(rare_alert.triggered),
-                       top_score=float(quality.get("rare_top_score", 0.0) or 0.0))
-
-        # ── Step 2: Supabase payload save (with local fallback) ───────────────
-        supabase_available = True
-        payload_url: str | None = None
-        inline_payload: dict[str, Any] = {
-            "session_id": session_id,
-            "symptoms": symptoms_json,
-            "ecg": ecg_json,
-            "labs": labs_json,
-            "context_text": context_text,
-            "quality": quality,
-        }
-
-        self._emit(session_id, "supabase_save_payload", "started")
-        payload_started = time.time()
-
-        # Idempotency: reuse an existing payload for this session if present.
-        existing_id = check_existing_payload(session_id)
-        if existing_id:
-            payload_id = existing_id
-            payload_url = None
-            self._store.set_supabase_payload_id(session_id, payload_id)
-            update_payload_status(payload_id, "processing")
-        else:
-            try:
-                payload_id, payload_url = save_analysis_payload(
+            rare_ms = int((time.time() - rare_started) * 1000)
+            quality.update(rare_quality)
+            if rare_context:
+                context_sections.append(rare_context)
+                self._store.save_retrieval_context(
                     session_id=session_id,
-                    symptoms=symptoms_json,
-                    ecg=ecg_json,
-                    labs=labs_json,
-                    context_text=context_text,
-                    quality=quality,
+                    source_type="rare_cases",
+                    content=rare_context,
+                    metadata={
+                        "rare_alert": rare_alert.to_dict(),
+                        "rare_search_gate": rare_gate,
+                        "rare_top_score": quality.get("rare_top_score"),
+                    },
+                    score=float(quality.get("rare_top_score", 0.0) or 0.0),
                 )
-                self._store.set_supabase_payload_id(session_id, payload_id)
-                update_payload_status(payload_id, "processing")
-            except Exception as exc:  # Supabase unavailable → fall back to local UUID
-                import logging as _logging
-                _logging.getLogger(__name__).warning(
-                    "Supabase save_analysis_payload failed for %s: %s – running in offline mode",
-                    session_id, exc
-                )
-                payload_id = str(uuid.uuid4())
-                supabase_available = False
+            processing_steps.append(
+                {
+                    "step": "rare_case_search",
+                    "status": "success",
+                    "duration_ms": rare_ms,
+                    "triggered": bool(rare_alert.triggered),
+                    "top_score": float(quality.get("rare_top_score", 0.0) or 0.0),
+                }
+            )
+            self._emit(
+                session_id,
+                "rare_case_search",
+                "completed",
+                duration_ms=rare_ms,
+                triggered=bool(rare_alert.triggered),
+                top_score=float(quality.get("rare_top_score", 0.0) or 0.0),
+            )
+        else:
+            quality.setdefault("rare_cases_searched", 0)
+            quality.setdefault("rare_top_score", 0.0)
+            processing_steps.append(
+                {
+                    "step": "rare_case_search",
+                    "status": "skipped",
+                    "duration_ms": 0,
+                    "reason": rare_gate.get("reason"),
+                }
+            )
+            self._emit(
+                session_id,
+                "rare_case_search",
+                "completed",
+                duration_ms=0,
+                triggered=False,
+                skipped=True,
+                reason=rare_gate.get("reason"),
+            )
+        self._raise_if_cancelled(session_id)
 
-        payload_ms = int((time.time() - payload_started) * 1000)
+        context_text = "\n\n".join(section.strip() for section in context_sections if str(section).strip())
+
+        # ── Step 2: Load longitudinal history summary for KRA only ──────────
+        history_bundle = {"patient_id": patient_id, "summary": {}, "records": []}
+        history_summary = {}
+        history_summary_text = ""
+        if patient_id:
+            try:
+                history_bundle = get_patient_history_bundle(patient_id)
+            except Exception as exc:
+                logger.warning("Patient history summary fetch failed for %s: %s", patient_id, exc)
+        if isinstance(history_bundle, dict):
+            history_summary = history_bundle.get("summary") or {}
+        history_summary_text = str(history_summary.get("summary_text") or "").strip()
+
+        # ── Step 3: Persist payload and run KRA in parallel ─────────────────
+        cancel_event = self._get_or_create_cancel_event(session_id)
+        self._emit(session_id, "supabase_save_payload", "started")
+        self._emit(session_id, "kra_analysis", "started")
+
+        def run_payload_save() -> dict[str, Any]:
+            started_at = time.time()
+            result = self._save_payload_snapshot(
+                session_id=session_id,
+                symptoms_json=symptoms_json,
+                ecg_json=ecg_json,
+                labs_json=labs_json,
+                context_text=context_text,
+                quality=quality,
+                history_json=history_summary,
+                patient_id=patient_id,
+            )
+            result["duration_ms"] = int((time.time() - started_at) * 1000)
+            return result
+
+        def run_kra_analysis() -> dict[str, Any]:
+            started_at = time.time()
+            result = self._kra.analyze(
+                symptoms_text=symptoms_text,
+                context_text=context_text,
+                ecg_dict=ecg_json,
+                labs_dict=labs_json,
+                history_summary_text=history_summary_text,
+                cancel_event=cancel_event,
+            )
+            return {
+                "kra_result": result,
+                "duration_ms": int((time.time() - started_at) * 1000),
+            }
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            payload_future = executor.submit(run_payload_save)
+            kra_future = executor.submit(run_kra_analysis)
+            payload_result = payload_future.result()
+            self._raise_if_cancelled(session_id)
+            kra_run = kra_future.result()
+
+        payload_id = payload_result["payload_id"]
+        payload_url = payload_result.get("payload_url")
+        supabase_available = bool(payload_result.get("supabase_available"))
+        payload_ms = int(payload_result.get("duration_ms") or 0)
+        kra_result = kra_run["kra_result"]
+        kra_ms = int(kra_run.get("duration_ms") or 0)
+
         processing_steps.append(
             {
                 "step": "supabase_save_payload",
@@ -361,110 +575,148 @@ class WorkflowService:
                 "supabase_available": supabase_available,
             }
         )
-        self._emit(session_id, "supabase_save_payload", "completed",
-                   duration_ms=payload_ms, supabase_available=supabase_available)
-        self._raise_if_cancelled(session_id)
-
-        # ── Step 3: KRA via HF Space (or local fallback) ─────────────────────
-        self._emit(session_id, "kra_analysis", "started")
-        kra_started = time.time()
-        kra_result = self._kra.analyze(
-            payload_id=payload_id,
-            supabase_available=supabase_available,
-            inline_payload=inline_payload if not supabase_available else None,
-        )
-        kra_ms = int((time.time() - kra_started) * 1000)
-
-        try:
-            kra_id, kra_url = save_kra_output(
-                session_id=session_id,
-                payload_id=payload_id,
-                symptoms_text=symptoms_text,
-                kra_result=kra_result,
-            )
-            self._store.set_supabase_kra_id(session_id, kra_id)
-        except Exception as exc:
-            import logging as _logging
-            _logging.getLogger(__name__).warning(
-                "save_kra_output failed for %s: %s – using local id", session_id, exc
-            )
-            kra_id = str(uuid.uuid4())
-            kra_url = None
-            supabase_available = False
-
         processing_steps.append(
             {
                 "step": "kra_analysis",
                 "status": "success",
                 "duration_ms": kra_ms,
+                "history_injected": bool(history_summary_text),
+            }
+        )
+        self._emit(
+            session_id,
+            "supabase_save_payload",
+            "completed",
+            duration_ms=payload_ms,
+            supabase_available=supabase_available,
+        )
+        self._emit(
+            session_id,
+            "kra_analysis",
+            "completed",
+            duration_ms=kra_ms,
+            history_injected=bool(history_summary_text),
+        )
+        self._raise_if_cancelled(session_id)
+
+        # ── Step 4: Persist KRA and run ORA directly from KRA in parallel ───
+        requested_level = str(experience_level or "seasoned").strip().upper()
+        if requested_level not in {"NEWBIE", "SEASONED"}:
+            requested_level = "SEASONED"
+
+        self._emit(session_id, "supabase_save_kra", "started")
+        self._emit(session_id, "ora_refinement", "started")
+
+        def run_kra_persist() -> dict[str, Any]:
+            started_at = time.time()
+            result = self._save_kra_history_entry(
+                session_id=session_id,
+                payload_id=payload_id,
+                symptoms_text=symptoms_text,
+                kra_result=kra_result,
+                patient_id=patient_id,
+            )
+            result["duration_ms"] = int((time.time() - started_at) * 1000)
+            return result
+
+        def run_ora_refinement() -> dict[str, Any]:
+            started_at = time.time()
+            result = self._ora.refine(
+                kra_result=kra_result,
+                symptoms_text=symptoms_text,
+                experience_level=requested_level,
+                cancel_event=cancel_event,
+            )
+            return {
+                "ora_result": result,
+                "duration_ms": int((time.time() - started_at) * 1000),
+            }
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            kra_save_future = executor.submit(run_kra_persist)
+            ora_future = executor.submit(run_ora_refinement)
+            kra_save_result = kra_save_future.result()
+            self._raise_if_cancelled(session_id)
+            ora_run = ora_future.result()
+
+        kra_id = kra_save_result["kra_id"]
+        kra_url = kra_save_result.get("kra_url")
+        kra_save_ms = int(kra_save_result.get("duration_ms") or 0)
+        ora_result = ora_run["ora_result"]
+        ora_ms = int(ora_run.get("duration_ms") or 0)
+        supabase_available = supabase_available and bool(kra_save_result.get("supabase_available"))
+
+        processing_steps.append(
+            {
+                "step": "supabase_save_kra",
+                "status": "success" if kra_save_result.get("supabase_available") else "offline_fallback",
+                "duration_ms": kra_save_ms,
                 "supabase_id": kra_id,
             }
         )
-        self._emit(session_id, "kra_analysis", "completed", duration_ms=kra_ms)
+        processing_steps.append(
+            {
+                "step": "ora_refinement",
+                "status": ora_result.get("status", "success"),
+                "duration_ms": ora_ms,
+                "experience_level": requested_level.lower(),
+            }
+        )
+        self._emit(
+            session_id,
+            "supabase_save_kra",
+            "completed",
+            duration_ms=kra_save_ms,
+            supabase_available=bool(kra_save_result.get("supabase_available")),
+        )
+        self._emit(
+            session_id,
+            "ora_refinement",
+            "completed",
+            duration_ms=ora_ms,
+            experience_level=requested_level.lower(),
+        )
         self._raise_if_cancelled(session_id)
 
-        # ── Step 4: ORA refinement via HF Space (or local fallback) ──────────
-        ora_ids: dict[str, str] = {}
-        ora_urls: dict[str, str | None] = {}
-        ora_outputs: dict[str, str] = {}
-        ora_disclaimers: dict[str, str] = {}
-
-        requested_level = str(experience_level or "seasoned").strip().upper()
-        if requested_level not in {"NEWBIE", "SEASONED", "EXPERT"}:
-            requested_level = "SEASONED"
-
-        for level in (requested_level,):
-            self._emit(session_id, f"ora_refinement_{level.lower()}", "started")
-            ora_started = time.time()
-            ora_result = self._ora.refine(
-                kra_output_id=kra_id,
-                experience_level=level,
-                supabase_available=supabase_available,
-                inline_kra_result=kra_result if not supabase_available else None,
-                symptoms_text=symptoms_text,
-            )
-            ora_ms = int((time.time() - ora_started) * 1000)
-
-            try:
-                ora_output_id, ora_url = save_ora_output(
-                    session_id=session_id,
-                    kra_output_id=kra_id,
-                    experience_level=level,
-                    refined_output=ora_result.get("refined_output", ""),
-                    disclaimer=ora_result.get("disclaimer"),
-                    status=ora_result.get("status", "success"),
-                )
-            except Exception as exc:
-                import logging as _logging
-                _logging.getLogger(__name__).warning(
-                    "save_ora_output failed for %s/%s: %s", session_id, level, exc
-                )
-                ora_output_id = str(uuid.uuid4())
-                ora_url = None
-
-            ora_ids[level.lower()] = ora_output_id
-            ora_urls[level.lower()] = ora_url
-            ora_outputs[level.lower()] = ora_result.get("refined_output", "")
-            ora_disclaimers[level.lower()] = ora_result.get("disclaimer") or ""
-            processing_steps.append(
-                {
-                    "step": f"ora_refinement_{level.lower()}",
-                    "status": "success",
-                    "duration_ms": ora_ms,
-                    "supabase_id": ora_output_id,
-                }
-            )
-            self._emit(session_id, f"ora_refinement_{level.lower()}", "completed", duration_ms=ora_ms)
-            self._raise_if_cancelled(session_id)
-
+        # ── Step 5: Persist ORA history entry ────────────────────────────────
+        self._emit(session_id, "supabase_save_ora", "started")
+        ora_save_started = time.time()
+        ora_save_result = self._save_ora_history_entry(
+            session_id=session_id,
+            kra_output_id=kra_id,
+            experience_level=requested_level,
+            ora_result=ora_result,
+            patient_id=patient_id,
+        )
+        ora_save_ms = int((time.time() - ora_save_started) * 1000)
         selected_key = requested_level.lower()
-        selected_ora_id = ora_ids.get(selected_key) or ora_ids.get("expert") or ora_ids.get("newbie") or ""
-        selected_ora_url = ora_urls.get(selected_key) or ora_urls.get("expert") or ora_urls.get("newbie")
+        selected_ora_id = ora_save_result.get("ora_id") or ""
+        selected_ora_url = ora_save_result.get("ora_url")
+        supabase_available = supabase_available and bool(ora_save_result.get("supabase_available"))
 
-        # Frontend compatibility: expose SEASONED under the "expert" alias if needed.
-        if "seasoned" in ora_outputs and "expert" not in ora_outputs:
-            ora_outputs["expert"] = ora_outputs["seasoned"]
-            ora_disclaimers["expert"] = ora_disclaimers.get("seasoned", "")
+        ora_outputs: dict[str, str] = {
+            selected_key: ora_result.get("refined_output", ""),
+        }
+        ora_disclaimers: dict[str, str] = {
+            selected_key: ora_result.get("disclaimer") or "",
+        }
+
+        processing_steps.append(
+            {
+                "step": "supabase_save_ora",
+                "status": "success" if ora_save_result.get("supabase_available") else "offline_fallback",
+                "duration_ms": ora_save_ms,
+                "supabase_id": selected_ora_id,
+            }
+        )
+        self._emit(
+            session_id,
+            "supabase_save_ora",
+            "completed",
+            duration_ms=ora_save_ms,
+            supabase_available=bool(ora_save_result.get("supabase_available")),
+        )
+        self._raise_if_cancelled(session_id)
 
         self._store.set_supabase_ora_id(session_id, selected_ora_id)
         if supabase_available:

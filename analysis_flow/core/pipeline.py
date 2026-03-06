@@ -52,8 +52,8 @@ class DiagnosisPipeline:
     def __init__(self, *, max_chars: int = 24000):
         self.max_chars = max_chars
         self.retriever = DualFAISSRetriever()
-        self.kra = KRAClient("KRA_ENDPOINT")
-        self.ora = ORAClient("ORA_ENDPOINT")
+        self.kra = KRAClient()
+        self.ora = ORAClient()
         self.safety = SafetyValidator(confidence_threshold=0.6)
 
     def run(self, case: PatientCase) -> Dict[str, Any]:

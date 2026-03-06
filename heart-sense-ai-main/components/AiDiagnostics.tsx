@@ -38,7 +38,7 @@ import PipelineWorkflow from "@/components/PipelineWorkflow";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type ExperienceLevel = "newbie" | "seasoned" | "expert";
+type ExperienceLevel = "newbie" | "seasoned";
 
 interface AiDiagnosticsProps {
   symptoms: string[];
@@ -73,7 +73,6 @@ const EXPERIENCE_OPTIONS: {
 }[] = [
     { value: "newbie", label: "Newbie", desc: "Detailed explanations" },
     { value: "seasoned", label: "Seasoned", desc: "Standard clinical" },
-    { value: "expert", label: "Expert", desc: "Concise & technical" },
   ];
 
 const PIPELINE_STEP_LABELS: Record<string, string> = {
@@ -110,7 +109,7 @@ export default function AiDiagnostics({
   const [elapsed, setElapsed] = useState(0);
   const [isHealthy, setIsHealthy] = useState<boolean | null>(null);
   const [isStopping, setIsStopping] = useState(false);
-  const [oraMode, setOraMode] = useState<"newbie" | "expert">("newbie");
+  const [oraMode, setOraMode] = useState<"newbie" | "seasoned">("newbie");
   const [currentPipelineStep, setCurrentPipelineStep] = useState<string | undefined>();
   const [completedPipelineSteps, setCompletedPipelineSteps] = useState<string[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -275,7 +274,7 @@ export default function AiDiagnostics({
       if (useWorkflow) {
         onWorkflowStateChange?.("ANALYSIS_RUNNING" as WorkflowState);
         const workflowRes = await WorkflowService.runAnalysis(workflowSessionId, experience);
-        const selectedOraMode: "newbie" | "expert" = experience === "newbie" ? "newbie" : "expert";
+        const selectedOraMode: "newbie" | "seasoned" = experience === "newbie" ? "newbie" : "seasoned";
         const selectedOutput =
           workflowRes.ora_outputs?.[selectedOraMode] ||
           workflowRes.refined_output;
@@ -304,12 +303,7 @@ export default function AiDiagnostics({
         } as AnalysisResponse;
         setOraMode(selectedOraMode);
       } else {
-        res = await DiagnosticService.runDiagnosis({
-          symptoms: symptomsPayload,
-          ecg: ecgPayload,
-          labs: labPayload,
-          experience_level: experience,
-        });
+        throw new Error("Workflow session not ready for analysis");
       }
 
       // Mark remaining steps as completed and close SSE stream
@@ -584,22 +578,22 @@ export default function AiDiagnostics({
           <Button
             type="button"
             size="sm"
-            variant={oraMode === "expert" ? "default" : "outline"}
+            variant={oraMode === "seasoned" ? "default" : "outline"}
             className="h-8 rounded-lg"
             onClick={() => {
-              setOraMode("expert");
+              setOraMode("seasoned");
               setResult((prev) =>
                 prev
                   ? {
                     ...prev,
-                    refined_output: prev.ora_outputs?.expert ?? prev.refined_output,
-                    disclaimer: prev.ora_disclaimers?.expert ?? prev.disclaimer,
+                    refined_output: prev.ora_outputs?.seasoned ?? prev.refined_output,
+                    disclaimer: prev.ora_disclaimers?.seasoned ?? prev.disclaimer,
                   }
                   : prev,
               );
             }}
           >
-            Expert
+            Seasoned
           </Button>
         </div>
       )}

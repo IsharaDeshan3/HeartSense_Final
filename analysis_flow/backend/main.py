@@ -63,11 +63,6 @@ else :
     from services .embedding import EmbeddingService 
 
     from routes import analysis ,feedback ,admin ,auth 
-
-
-
-from routes import processing  # new 7-step pipeline — active in both modes
-from routes import test_ui      # pipeline tester UI
 from routes import workflow
 
 
@@ -144,9 +139,31 @@ async def lifespan (app :FastAPI ):
 
     else :
 
-        logger .info ("LOCAL_MODE enabled - using FAISS + HF API pipeline")
+        logger .info ("LOCAL_MODE enabled - using local FAISS + local KRA/ORA workflow")
 
+    # Validate Supabase schema columns on startup
+    try:
+        from processing.supabase_payload import verify_schema
+        schema_result = verify_schema()
+        if not schema_result["ok"]:
+            logger.warning(
+                "⚠ SUPABASE SCHEMA INCOMPLETE – missing columns detected. "
+                "Run migration_add_columns.sql in the Supabase SQL Editor. "
+                "Details: %s", schema_result["tables"]
+            )
+        else:
+            logger.info("Supabase schema OK – all pipeline columns present")
+    except Exception as exc:
+        logger.warning("Supabase schema check skipped (connection issue): %s", exc)
 
+    # ── Eagerly preload LLM models so first request is fast ──
+    try:
+        from core.llm_engine import LLMEngine
+        logger.info("Preloading LLM models (KRA=GPU, ORA=CPU) — this takes 30-90 s ...")
+        LLMEngine.instance()
+        logger.info("LLM models loaded and ready for inference")
+    except Exception as exc:
+        logger.error("LLM preload failed: %s — models will load on first request", exc)
 
     logger .info ("System ready!")
 
@@ -226,16 +243,8 @@ else :
 
     app .include_router (admin .router ,prefix ="/api/admin",tags =["Admin"])
 
-
-
-# New 7-step KRA-ORA pipeline (active regardless of LOCAL_MODE)
-app .include_router (processing .router ,prefix ="/api/process",tags =["Processing Pipeline"])
-
 # Strict workflow state machine endpoints (Phase A)
 app .include_router (workflow .router ,prefix ="/api/workflow/v1",tags =["Workflow v1"])
-
-# Pipeline tester UI — GET /test
-app .include_router (test_ui .router ,prefix ="/test",tags =["Test UI"])
 
 
 
@@ -255,6 +264,14 @@ async def health_check ():
     "version":"2.0.0"
 
     }
+
+
+@app.get("/health/schema")
+async def schema_check():
+    """Check that all required Supabase columns exist."""
+    from processing.supabase_payload import verify_schema
+    result = verify_schema()
+    return result
 
 
 

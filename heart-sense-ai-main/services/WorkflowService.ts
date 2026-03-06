@@ -18,6 +18,33 @@ export interface WorkflowSession {
   step_payloads?: Record<string, unknown>;
 }
 
+export interface PatientDiagnosisRecord {
+  payload_id: string;
+  patient_id: string;
+  session_id: string;
+  symptoms_json: Record<string, unknown> | null;
+  ecg_json: Record<string, unknown> | null;
+  labs_json: Record<string, unknown> | null;
+  status: string;
+  created_at: string;
+  kra_id?: string;
+  kra_output?: Record<string, unknown> | null;
+  kra_raw_text?: string;
+  ora_id?: string;
+  experience_level?: string;
+  refined_output?: string;
+  disclaimer?: string;
+}
+
+export interface PatientHistorySummary {
+  patient_id: string;
+  visit_count: number;
+  latest_visit_at?: string | null;
+  top_conditions: string[];
+  key_lab_findings: string[];
+  summary_text: string;
+}
+
 export const WorkflowService = {
   async initSession(patientId: string, doctorId?: string) {
     const correlationId = crypto.randomUUID();
@@ -65,11 +92,8 @@ export const WorkflowService = {
     return postStep(`/api/workflow/session/${sessionId}/lab`, { result });
   },
 
-  async runAnalysis(sessionId: string, experienceLevel: "newbie" | "seasoned" | "expert") {
-    const directBackendBase = resolveDirectWorkflowBackendBase();
-    const runAnalysisUrl = directBackendBase
-      ? `${directBackendBase}/api/workflow/v1/session/${sessionId}/analysis/run`
-      : `/api/workflow/session/${sessionId}/analysis/run`;
+  async runAnalysis(sessionId: string, experienceLevel: "newbie" | "seasoned") {
+    const runAnalysisUrl = `/api/workflow/session/${sessionId}/analysis/run`;
 
     const res = await fetch(runAnalysisUrl, {
       method: "POST",
@@ -93,8 +117,8 @@ export const WorkflowService = {
       supabase_ora_url?: string;
       processing_steps: Array<{ step: string; status: string; duration_ms?: number; supabase_id?: string }>;
       kra_raw?: string;
-      ora_outputs?: { newbie?: string; expert?: string };
-      ora_disclaimers?: { newbie?: string; expert?: string };
+      ora_outputs?: { newbie?: string; seasoned?: string };
+      ora_disclaimers?: { newbie?: string; seasoned?: string };
       refined_output?: string;
       disclaimer?: string;
       rare_case_alert?: Record<string, unknown> | null;
@@ -104,10 +128,7 @@ export const WorkflowService = {
   },
 
   async stopAnalysis(sessionId: string) {
-    const directBackendBase = resolveDirectWorkflowBackendBase();
-    const stopAnalysisUrl = directBackendBase
-      ? `${directBackendBase}/api/workflow/v1/session/${sessionId}/analysis/stop`
-      : `/api/workflow/session/${sessionId}/analysis/stop`;
+    const stopAnalysisUrl = `/api/workflow/session/${sessionId}/analysis/stop`;
 
     const res = await fetch(stopAnalysisUrl, {
       method: "POST",
@@ -142,27 +163,27 @@ export const WorkflowService = {
    *   es.onerror   = () => es.close();
    */
   openAnalysisEventStream(sessionId: string): EventSource {
-    const directBackendBase = resolveDirectWorkflowBackendBase();
-    const eventsUrl = directBackendBase
-      ? `${directBackendBase}/api/workflow/v1/session/${sessionId}/analysis/events`
-      : `/api/workflow/session/${sessionId}/analysis/events`;
-    return new EventSource(eventsUrl);
+    // Always route through the Next.js proxy so the browser never calls the
+    // backend directly (avoids ERR_CONNECTION_REFUSED on localhost).
+    return new EventSource(`/api/workflow/session/${sessionId}/analysis/events`);
+  },
+
+  /**
+   * Fetch all past diagnosis records for a patient.
+   * Returns an array of diagnosis history entries from Supabase.
+   */
+  async getPatientHistory(patientId: string): Promise<{
+    patient_id: string;
+    summary: PatientHistorySummary;
+    records: PatientDiagnosisRecord[];
+  }> {
+    const res = await fetch(`/api/workflow/patient/${patientId}/history`);
+    if (!res.ok) {
+      throw new Error(await extractErrorMessage(res, "Failed to fetch patient history"));
+    }
+    return res.json();
   },
 };
-
-function resolveDirectWorkflowBackendBase() {
-  const envBase = (process.env.NEXT_PUBLIC_WORKFLOW_BACKEND_URL || "").trim().replace(/\/$/, "");
-  if (envBase) return envBase;
-
-  if (typeof window !== "undefined") {
-    const host = window.location.hostname;
-    if (host === "localhost" || host === "127.0.0.1") {
-      return "http://127.0.0.1:8080";
-    }
-  }
-
-  return "";
-}
 
 async function postStep(url: string, body: Record<string, unknown>) {
   const res = await fetch(url, {

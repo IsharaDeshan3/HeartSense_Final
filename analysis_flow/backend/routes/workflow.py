@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 from backend.processing.workflow_state import WorkflowState
 from backend.processing.workflow_store import WorkflowStore
 from backend.processing.workflow_service import WorkflowService
+from backend.processing.supabase_payload import get_patient_history_bundle, ping_supabase
 
 
 router = APIRouter()
@@ -64,6 +65,20 @@ class AnalysisStopResponse(BaseModel):
     session_id: str
     state: str
     status: str
+
+
+@router.get("/health")
+async def health() -> dict[str, Any]:
+    readiness = _workflow.readiness_status()
+    search_readiness = _workflow._search.readiness_status()
+    return {
+        "status": "ok" if readiness["all_ready"] and search_readiness["faiss_ready"] else "degraded",
+        "faiss_ready": search_readiness["faiss_ready"],
+        "rare_cases_ready": search_readiness["rare_cases_ready"],
+        "supabase_ready": ping_supabase(),
+        "kra_model_loaded": readiness["kra"],
+        "ora_model_loaded": readiness["ora"],
+    }
 
 
 @router.post("/session/init", response_model=SessionInitResponse)
@@ -161,6 +176,37 @@ async def stop_analysis(session_id: str) -> AnalysisStopResponse:
         return AnalysisStopResponse(**result)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+
+@router.delete("/patient/{patient_id}/cleanup")
+async def cleanup_patient_data(patient_id: str) -> dict[str, Any]:
+    """
+    Delete all analysis data (Supabase + local SQLite) for a patient.
+
+    Called by the Next.js frontend when a doctor removes a patient.
+    """
+    from backend.processing.supabase_payload import delete_patient_data
+    try:
+        result = delete_patient_data(patient_id)
+        return {"status": "ok", "patient_id": patient_id, "deleted": result}
+    except Exception as exc:
+        logger.error("Patient cleanup failed for %s: %s", patient_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Cleanup failed: {exc}",
+        )
+
+
+@router.get("/patient/{patient_id}/history")
+async def get_patient_history(patient_id: str) -> dict[str, Any]:
+    try:
+        return get_patient_history_bundle(patient_id)
+    except Exception as exc:
+        logger.error("Patient history fetch failed for %s: %s", patient_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"History fetch failed: {exc}",
+        )
 
 
 @router.get("/session/{session_id}/analysis/events")

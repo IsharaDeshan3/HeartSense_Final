@@ -82,6 +82,168 @@ class SearchService:
         self._negative_filter = NegativeFilter()
         self._rare_flag = RareCaseFlag()
 
+    def build_patient_vector(
+        self,
+        *,
+        symptoms_text: str,
+        ecg_findings: Optional[List[str]] = None,
+        lab_findings: Optional[List[str]] = None,
+        lab_values: Optional[Dict[str, float]] = None,
+        age: Optional[int] = None,
+        sex: Optional[str] = None,
+        chief_complaint: Optional[str] = None,
+    ):
+        """Build a reusable unified patient vector for textbook + rare retrieval."""
+        patient_vector = self._vector_builder.build(
+            symptoms_text=symptoms_text,
+            ecg_findings=ecg_findings,
+            lab_findings=lab_findings,
+            lab_values=lab_values,
+            age=age,
+            sex=sex,
+            chief_complaint=chief_complaint,
+        )
+        logger.info(
+            "Unified vector built — anomalies: %d, completeness: %s",
+            len(patient_vector.anomalies),
+            patient_vector.data_completeness,
+        )
+        return patient_vector
+
+    def search_textbook(
+        self,
+        *,
+        symptoms_text: str,
+        top_k: int = 5,
+        ecg_findings: Optional[List[str]] = None,
+        lab_findings: Optional[List[str]] = None,
+        lab_values: Optional[Dict[str, float]] = None,
+        age: Optional[int] = None,
+        sex: Optional[str] = None,
+        chief_complaint: Optional[str] = None,
+    ) -> Tuple[Any, str, Dict[str, Any]]:
+        """Run textbook retrieval only and return the reusable patient vector."""
+        patient_vector = self.build_patient_vector(
+            symptoms_text=symptoms_text,
+            ecg_findings=ecg_findings,
+            lab_findings=lab_findings,
+            lab_values=lab_values,
+            age=age,
+            sex=sex,
+            chief_complaint=chief_complaint,
+        )
+
+        textbook_retriever = _get_textbook_retriever()
+        context_str: str = textbook_retriever.get_context_string(
+            patient_vector.main_query,
+            top_k=top_k,
+            include_metadata=True,
+        )
+        quality: Dict[str, Any] = textbook_retriever.calculate_retrieval_quality(
+            patient_vector.main_query,
+            top_k=top_k,
+        )
+
+        textbook_results = textbook_retriever.search(patient_vector.main_query, top_k=1)
+        if textbook_results:
+            quality["top_common_condition"] = textbook_results[0].get("condition", "Unknown")
+        else:
+            quality["top_common_condition"] = "Unknown"
+
+        quality["anomalies_detected"] = patient_vector.anomalies
+        quality["data_completeness"] = patient_vector.data_completeness
+        return patient_vector, context_str, quality
+
+    def should_search_rare_cases(
+        self,
+        *,
+        quality: Dict[str, Any],
+        ecg_findings: Optional[List[str]] = None,
+        lab_findings: Optional[List[str]] = None,
+        lab_values: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Decide whether rare-case retrieval should run.
+
+        The gate is intentionally conservative: rare-case search is enabled when
+        textbook retrieval confidence is weak, anomalies are prominent, or the
+        case has multimodal findings that are not well-covered by textbook hits.
+        """
+        top_score = float(quality.get("top_score", 0.0) or 0.0)
+        avg_score = float(quality.get("avg_score", 0.0) or 0.0)
+        status = str(quality.get("status") or "LOW_CONFIDENCE")
+        anomalies = quality.get("anomalies_detected") or []
+
+        has_multimodal_signal = bool(ecg_findings) or bool(lab_findings) or bool(lab_values)
+        low_textbook_confidence = top_score < 0.72 or avg_score < 0.58 or status != "HIGH_CONFIDENCE"
+        anomalous_case = len(anomalies) >= 2
+        uncertain = low_textbook_confidence or anomalous_case or (has_multimodal_signal and status != "HIGH_CONFIDENCE")
+
+        return {
+            "trigger_rare_search": uncertain,
+            "reason": {
+                "low_textbook_confidence": low_textbook_confidence,
+                "anomalous_case": anomalous_case,
+                "has_multimodal_signal": has_multimodal_signal,
+                "textbook_status": status,
+                "top_score": top_score,
+                "avg_score": avg_score,
+                "anomaly_count": len(anomalies),
+            },
+        }
+
+    def search_rare_cases(
+        self,
+        *,
+        patient_vector: Any,
+        symptoms_text: str,
+        ecg_findings: Optional[List[str]] = None,
+        lab_findings: Optional[List[str]] = None,
+        lab_values: Optional[Dict[str, float]] = None,
+        common_condition: str = "",
+    ) -> Tuple[str, Dict[str, Any], RareCaseAlert]:
+        """Run rare-case retrieval and alert generation only."""
+        rare_retriever = _get_rare_retriever()
+        rare_results = rare_retriever.search(
+            patient_vector.rare_query,
+            top_k=3,
+        )
+
+        if not rare_results:
+            return "", {"rare_cases_searched": 0}, RareCaseAlert(
+                triggered=False,
+                reasoning="No rare-case matches returned",
+            )
+
+        rare_context = rare_retriever.get_context_string(
+            patient_vector.rare_query,
+            top_k=3,
+        )
+        contradiction = self._negative_filter.check(
+            condition=common_condition,
+            ecg_findings=ecg_findings,
+            lab_values=lab_values,
+            lab_findings=lab_findings,
+            symptoms_text=symptoms_text,
+        )
+        rare_alert = self._rare_flag.evaluate(
+            rare_results=rare_results,
+            contradiction_report=contradiction,
+        )
+        rare_quality = {
+            "rare_top_score": rare_results[0].score,
+            "rare_cases_searched": len(rare_results),
+            "rare_alert_triggered": rare_alert.triggered,
+        }
+        if rare_alert.triggered:
+            logger.warning(
+                "🚨 RARE CASE ALERT: %s (score=%.3f, condition=%s)",
+                rare_alert.condition,
+                rare_alert.similarity_score,
+                rare_alert.keyword,
+            )
+        return rare_context, rare_quality, rare_alert
+
     # ------------------------------------------------------------------ #
     #  Main entry  (called from pipeline_service.py)                      #
     # ------------------------------------------------------------------ #
@@ -112,9 +274,9 @@ class SearchService:
             Structured alert (may or may not be triggered).
         """
 
-        # ---- 1. Build Unified Patient Vector ----
-        patient_vector = self._vector_builder.build(
+        patient_vector, context_str, quality = self.search_textbook(
             symptoms_text=symptoms_text,
+            top_k=top_k,
             ecg_findings=ecg_findings,
             lab_findings=lab_findings,
             lab_values=lab_values,
@@ -122,93 +284,46 @@ class SearchService:
             sex=sex,
             chief_complaint=chief_complaint,
         )
-        logger.info(
-            "Unified vector built — anomalies: %d, completeness: %s",
-            len(patient_vector.anomalies),
-            patient_vector.data_completeness,
-        )
 
-        # ---- 2. Textbook search ----
-        textbook_retriever = _get_textbook_retriever()
-        context_str: str = textbook_retriever.get_context_string(
-            patient_vector.main_query,
-            top_k=top_k,
-            include_metadata=True,
-        )
-        quality: Dict[str, Any] = textbook_retriever.calculate_retrieval_quality(
-            patient_vector.main_query,
-            top_k=top_k,
-        )
-
-        # Extract top common condition for negative filter
-        textbook_results = textbook_retriever.search(
-            patient_vector.main_query, top_k=1
-        )
-        common_condition = ""
-        if textbook_results:
-            common_condition = textbook_results[0].get("condition", "Unknown")
-            quality["top_common_condition"] = common_condition
-
-        # ---- 3. Rare-case search ----
         rare_alert = RareCaseAlert(triggered=False, reasoning="Rare search disabled")
 
         if include_rare:
-            try:
-                rare_retriever = _get_rare_retriever()
-                rare_results = rare_retriever.search(
-                    patient_vector.rare_query,
-                    top_k=3,
-                )
+            decision = self.should_search_rare_cases(
+                quality=quality,
+                ecg_findings=ecg_findings,
+                lab_findings=lab_findings,
+                lab_values=lab_values,
+            )
+            quality["rare_search_gate"] = decision["reason"]
 
-                if rare_results:
-                    # Append rare context
-                    rare_context = rare_retriever.get_context_string(
-                        patient_vector.rare_query, top_k=3
-                    )
-                    context_str += "\n\n" + rare_context
-                    quality["rare_top_score"] = rare_results[0].score
-                    quality["rare_cases_searched"] = len(rare_results)
-
-                    # ---- 4. Negative filter ----
-                    contradiction = self._negative_filter.check(
-                        condition=common_condition,
-                        ecg_findings=ecg_findings,
-                        lab_values=lab_values,
-                        lab_findings=lab_findings,
+            if decision["trigger_rare_search"]:
+                try:
+                    rare_context, rare_quality, rare_alert = self.search_rare_cases(
+                        patient_vector=patient_vector,
                         symptoms_text=symptoms_text,
+                        ecg_findings=ecg_findings,
+                        lab_findings=lab_findings,
+                        lab_values=lab_values,
+                        common_condition=str(quality.get("top_common_condition") or ""),
                     )
-
-                    # ---- 5. Rare-case flag ----
-                    rare_alert = self._rare_flag.evaluate(
-                        rare_results=rare_results,
-                        contradiction_report=contradiction,
-                    )
-
-                    if rare_alert.triggered:
-                        logger.warning(
-                            "🚨 RARE CASE ALERT: %s (score=%.3f, condition=%s)",
-                            rare_alert.condition,
-                            rare_alert.similarity_score,
-                            rare_alert.keyword,
-                        )
-                    quality["rare_alert_triggered"] = rare_alert.triggered
-                else:
+                    if rare_context:
+                        context_str += "\n\n" + rare_context
+                    quality.update(rare_quality)
+                except Exception as exc:
+                    logger.warning("Rare-case search failed (non-fatal): %s", exc)
                     rare_alert = RareCaseAlert(
-                        triggered=False, reasoning="No rare-case matches returned"
+                        triggered=False,
+                        reasoning=f"Rare-case search error: {exc}",
                     )
                     quality["rare_cases_searched"] = 0
-
-            except Exception as exc:
-                logger.warning("Rare-case search failed (non-fatal): %s", exc)
+            else:
                 rare_alert = RareCaseAlert(
                     triggered=False,
-                    reasoning=f"Rare-case search error: {exc}",
+                    reasoning="Rare-case search gated off by uncertainty policy",
                 )
                 quality["rare_cases_searched"] = 0
-
-        # Add anomalies to quality for auditing
-        quality["anomalies_detected"] = patient_vector.anomalies
-        quality["data_completeness"] = patient_vector.data_completeness
+        else:
+            quality["rare_cases_searched"] = 0
 
         return context_str, quality, rare_alert
 
@@ -279,3 +394,21 @@ class SearchService:
             rare_ok = False
 
         return textbook_ok and rare_ok
+
+    def readiness_status(self) -> Dict[str, bool]:
+        """Return per-index readiness using cached singleton retrievers."""
+        try:
+            textbook_ok = _get_textbook_retriever().index.ntotal > 0
+        except Exception:
+            textbook_ok = False
+
+        try:
+            rare_ok = _get_rare_retriever().index.ntotal > 0
+        except Exception:
+            rare_ok = False
+
+        return {
+            "faiss_ready": textbook_ok,
+            "rare_cases_ready": rare_ok,
+            "all_ready": textbook_ok and rare_ok,
+        }

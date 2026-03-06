@@ -135,7 +135,7 @@ export default function DoctorDashboard() {
                       <div
                         key={patient._id}
                         className="glass border-border/30 p-8 rounded-[2.5rem] flex items-center justify-between hover:border-primary/40 hover:shadow-2xl transition-all cursor-pointer group"
-                        onClick={() => router.push(`/dashboard/doctor/workspace/${patient._id}`)}
+                        onClick={() => router.push(`/dashboard/doctor/patients/${patient._id}/history`)}
                       >
                         <div className="flex items-center gap-8">
                           <div className="h-16 w-16 rounded-[1.5rem] bg-secondary flex-center text-primary font-black text-2xl border border-border group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300">

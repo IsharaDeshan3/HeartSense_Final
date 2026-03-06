@@ -1,4 +1,4 @@
-// ─── Types matching diagnostic_processor/backend/processing/schemas.py ──────
+// ─── Shared analysis and health types ───────────────────────────────────────
 
 export interface SymptomsPayload {
   text: string;
@@ -28,13 +28,6 @@ export interface LabPayload {
   hemoglobin?: number;
   findings?: string[];
   raw?: Record<string, any>;
-}
-
-export interface AnalyzeRequest {
-  symptoms: SymptomsPayload;
-  ecg?: ECGPayload;
-  labs?: LabPayload;
-  experience_level: "newbie" | "seasoned" | "expert";
 }
 
 export interface PipelineStep {
@@ -69,11 +62,11 @@ export interface AnalysisResponse {
   kra_raw?: string;
   ora_outputs?: {
     newbie?: string;
-    expert?: string;
+    seasoned?: string;
   };
   ora_disclaimers?: {
     newbie?: string;
-    expert?: string;
+    seasoned?: string;
   };
   rare_case_alert?: RareCaseAlert;
   experience_level: string;
@@ -87,51 +80,15 @@ export interface HealthResponse {
   faiss_ready: boolean;
   rare_cases_ready?: boolean;
   supabase_ready: boolean;
-  kra_endpoint: string;
-  ora_endpoint: string;
+  /** True when DeepSeek-R1 8B GGUF is loaded in GPU memory */
+  kra_model_loaded: boolean;
+  /** True when Phi-3.5-mini GGUF is loaded in CPU memory */
+  ora_model_loaded: boolean;
 }
 
 // ─── Service ────────────────────────────────────────────────────────────────
 
 export const DiagnosticService = {
-  /**
-   * Run the full KRA → ORA diagnostic pipeline
-   */
-  async runDiagnosis(
-    request: AnalyzeRequest,
-    signal?: AbortSignal,
-  ): Promise<AnalysisResponse> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 600_000); // 10 min
-
-    // Allow external abort to propagate
-    if (signal) {
-      signal.addEventListener("abort", () => controller.abort());
-    }
-
-    try {
-      const res = await fetch("/api/diagnostic/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request),
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(
-          err.message ||
-            err.error ||
-            `Diagnostic pipeline failed (${res.status})`,
-        );
-      }
-
-      return res.json();
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  },
-
   /**
    * Check pipeline component health
    */
@@ -141,20 +98,12 @@ export const DiagnosticService = {
       return {
         status: "offline",
         faiss_ready: false,
+        rare_cases_ready: false,
         supabase_ready: false,
-        kra_endpoint: "unknown",
-        ora_endpoint: "unknown",
+        kra_model_loaded: false,
+        ora_model_loaded: false,
       };
     }
-    return res.json();
-  },
-
-  /**
-   * Poll session status for a running analysis
-   */
-  async getSession(sessionId: string): Promise<any> {
-    const res = await fetch(`/api/diagnostic/session/${sessionId}`);
-    if (!res.ok) return null;
     return res.json();
   },
 };

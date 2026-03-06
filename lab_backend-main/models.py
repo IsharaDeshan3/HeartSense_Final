@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AliasChoices, BaseModel, EmailStr, Field
 from pydantic_core import core_schema
 from typing import Optional, Literal, Any
 from datetime import datetime
@@ -115,7 +115,7 @@ class UserResponse(BaseModel):
 # Diabetic Models
 class DiabeticCreate(BaseModel):
     """Model for creating/updating diabetic patient data."""
-    userId: str = Field(..., min_length=1)
+    patientId: str = Field(..., min_length=1, validation_alias=AliasChoices("patientId", "userId"))
     Age: Optional[float] = None  # Can accept both int and float
     BMI: Optional[float] = None
     BUN: Optional[float] = None
@@ -130,7 +130,7 @@ class DiabeticCreate(BaseModel):
 class Diabetic(BaseModel):
     """Diabetic patient model."""
     id: Optional[str] = Field(default=None, alias="_id")
-    userId: str
+    patientId: str = Field(..., validation_alias=AliasChoices("patientId", "userId"))
     Age: Optional[float] = None  # Can accept both int and float
     BMI: Optional[float] = None
     BUN: Optional[float] = None
@@ -153,7 +153,7 @@ class Diabetic(BaseModel):
 class DiabeticResponse(BaseModel):
     """Diabetic patient response model."""
     id: str
-    userId: str
+    patientId: str
     Age: Optional[float] = None  # Can accept both int and float
     BMI: Optional[float] = None
     BUN: Optional[float] = None
@@ -174,7 +174,7 @@ class DiabeticResponse(BaseModel):
 # Heart Models
 class HeartCreate(BaseModel):
     """Model for creating/updating heart patient data."""
-    userId: str = Field(..., min_length=1)
+    patientId: str = Field(..., min_length=1, validation_alias=AliasChoices("patientId", "userId"))
     age: Optional[float] = None  # Can accept both int and float
     ca: Optional[float] = None
     chol: Optional[float] = None
@@ -193,7 +193,7 @@ class HeartCreate(BaseModel):
 class Heart(BaseModel):
     """Heart patient model."""
     id: Optional[str] = Field(default=None, alias="_id")
-    userId: str
+    patientId: str = Field(..., validation_alias=AliasChoices("patientId", "userId"))
     age: Optional[float] = None  # Can accept both int and float
     ca: Optional[float] = None
     chol: Optional[float] = None
@@ -220,7 +220,7 @@ class Heart(BaseModel):
 class HeartResponse(BaseModel):
     """Heart patient response model."""
     id: str
-    userId: str
+    patientId: str
     age: Optional[float] = None  # Can accept both int and float
     ca: Optional[float] = None
     chol: Optional[float] = None
@@ -245,7 +245,7 @@ class HeartResponse(BaseModel):
 # Patient History Models
 class PatientHistoryCreate(BaseModel):
     """Model for creating patient history."""
-    userId: str = Field(..., min_length=1)
+    patientId: str = Field(..., min_length=1, validation_alias=AliasChoices("patientId", "userId"))
     extractedJsonGroup1: dict = Field(default_factory=dict)
     extractedJsonGroup2: dict = Field(default_factory=dict)
     isMedical: bool = True
@@ -258,7 +258,7 @@ class PatientHistoryCreate(BaseModel):
 class PatientHistory(BaseModel):
     """Patient history model."""
     id: Optional[str] = Field(default=None, alias="_id")
-    userId: str
+    patientId: str = Field(..., validation_alias=AliasChoices("patientId", "userId"))
     extractedJsonGroup1: dict
     extractedJsonGroup2: dict
     isMedical: bool
@@ -278,7 +278,7 @@ class PatientHistory(BaseModel):
 class PatientHistoryResponse(BaseModel):
     """Patient history response model."""
     id: str
-    userId: str
+    patientId: str
     extractedJsonGroup1: dict
     extractedJsonGroup2: dict
     isMedical: bool

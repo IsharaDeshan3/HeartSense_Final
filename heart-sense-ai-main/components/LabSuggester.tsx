@@ -41,6 +41,7 @@ export interface LabAnalysisResult {
 }
 
 interface LabSuggesterProps {
+  patientId?: string;
   patientContext?: string;
   onAnalysisComplete?: (result: LabAnalysisResult) => void;
 }
@@ -103,7 +104,7 @@ const STATUS_CONFIG = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function LabSuggester({ patientContext, onAnalysisComplete }: LabSuggesterProps) {
+export default function LabSuggester({ patientId, patientContext, onAnalysisComplete }: LabSuggesterProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
@@ -193,27 +194,16 @@ export default function LabSuggester({ patientContext, onAnalysisComplete }: Lab
       setResult(parsed);
       onAnalysisComplete?.(parsed);
 
-      // Non-blocking: persist to lab backend
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("lab_access_token") ?? localStorage.getItem("access_token")
-          : null;
-
-      if (token) {
-        const userId =
-          typeof window !== "undefined"
-            ? localStorage.getItem("lab_user_id") ?? localStorage.getItem("user_id")
-            : null;
-
+      // Non-blocking: persist to lab backend by patientId
+      if (patientId) {
         fetch("/api/lab/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            token,
-            diabeticData: parsed.extractedJsonGroup1 ? { userId, ...parsed.extractedJsonGroup1 } : null,
-            heartData: parsed.extractedJsonGroup2 ? { userId, ...parsed.extractedJsonGroup2 } : null,
+            diabeticData: parsed.extractedJsonGroup1 ? { patientId, ...parsed.extractedJsonGroup1 } : null,
+            heartData: parsed.extractedJsonGroup2 ? { patientId, ...parsed.extractedJsonGroup2 } : null,
             patientHistory: {
-              userId,
+              patientId,
               extractedJsonGroup1: parsed.extractedJsonGroup1,
               extractedJsonGroup2: parsed.extractedJsonGroup2,
               isMedical: true,

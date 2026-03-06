@@ -21,7 +21,7 @@ export async function GET() {
     } else {
       // Admins can see all patients but NOT confidential medical data
       patients = await Patient.find({})
-        .select("-medicalData -diagnosticHistory")
+        .select("-medicalData")
         .sort({ createdAt: -1 });
     }
 

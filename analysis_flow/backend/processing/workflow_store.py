@@ -445,3 +445,21 @@ class WorkflowStore:
             (ora_id, now, session_id),
         )
         conn.commit()
+
+    def get_sessions_for_patient(self, patient_id: str) -> list[str]:
+        """Return all session_ids for a given patient_id."""
+        conn = _get_connection(self.db_path)
+        rows = conn.execute(
+            "SELECT session_id FROM sessions WHERE patient_id = ?",
+            (patient_id,),
+        ).fetchall()
+        return [row["session_id"] for row in rows]
+
+    def delete_session(self, session_id: str) -> None:
+        """Delete a session and all its related data from local SQLite."""
+        conn = _get_connection(self.db_path)
+        conn.execute("DELETE FROM retrieval_context WHERE session_id = ?", (session_id,))
+        conn.execute("DELETE FROM orchestration_events WHERE session_id = ?", (session_id,))
+        conn.execute("DELETE FROM step_payloads WHERE session_id = ?", (session_id,))
+        conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+        conn.commit()

@@ -5,8 +5,9 @@ const DIAGNOSTIC_BACKEND_URL =
 
 export async function GET() {
   try {
-    const res = await fetch(`${DIAGNOSTIC_BACKEND_URL}/api/process/health`, {
+    const res = await fetch(`${DIAGNOSTIC_BACKEND_URL}/api/workflow/v1/health`, {
       next: { revalidate: 0 },
+      signal: AbortSignal.timeout(15_000), // 15s — Supabase ping can take ~5s
     });
 
     if (!res.ok) {
