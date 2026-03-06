@@ -63,8 +63,6 @@ transcript-generation-project-16b1d3bf7ca8.json
 **/*.pkl
 **/*.joblib
 **/*.gguf
-!analysis_flow/knowledge_base/vector_index.faiss
-!analysis_flow/knowledge_base/vector_db_metadata.pkl
 
 # --- Local LLM models (large binary GGUF files) ---
 analysis_flow/models/*.gguf
