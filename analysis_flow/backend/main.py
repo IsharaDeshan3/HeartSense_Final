@@ -306,7 +306,7 @@ async def root ():
 
 
 
-def get_retriever ()->SupabaseRetriever :
+def get_retriever ()->"SupabaseRetriever" :
 
     """Dependency to get retriever instance"""
 
@@ -326,7 +326,7 @@ def get_retriever ()->SupabaseRetriever :
 
 
 
-def get_embedding_service ()->EmbeddingService :
+def get_embedding_service ()->"EmbeddingService" :
 
     """Dependency to get embedding service instance"""
 
