@@ -107,18 +107,19 @@ class RareCaseRetriever:
         else:
             resolved_device = requested_device
 
-        # ----- Load embedding model (lazy import keeps startup fast) -----
+        # ----- Preload embedding model -----
         from sentence_transformers import SentenceTransformer
-        logger.info("Loading rare-case embedding model: %s (device=%s)", model_name, resolved_device)
+        logger.info("Preloading rare-case embedding model: %s (device=%s)", model_name, resolved_device)
         try:
             self.model = SentenceTransformer(model_name, device=resolved_device)
+            logger.info("Rare-case embedding model preloaded successfully.")
         except Exception as exc:
             if resolved_device != "cpu":
-                logger.warning("Model load failed on %s (%s). Retrying on CPU.", resolved_device, exc)
+                logger.warning("Model preload failed on %s (%s). Retrying on CPU.", resolved_device, exc)
                 self.model = SentenceTransformer(model_name, device="cpu")
-                resolved_device = "cpu"
+                logger.info("Rare-case embedding model preloaded successfully on CPU.")
             else:
-                raise
+                raise RuntimeError(f"Failed to preload rare-case embedding model: {exc}")
         self.device = resolved_device
         self._dim = self.model.get_sentence_embedding_dimension()
         logger.info("Model ready — dim=%d, device=%s", self._dim, self.device)

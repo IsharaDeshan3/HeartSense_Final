@@ -159,9 +159,16 @@ async def lifespan (app :FastAPI ):
     # ── Eagerly preload LLM models so first request is fast ──
     try:
         from core.llm_engine import LLMEngine
-        logger.info("Preloading LLM models (KRA=GPU, ORA=CPU) — this takes 30-90 s ...")
-        LLMEngine.instance()
-        logger.info("LLM models loaded and ready for inference")
+        logger.info("Preloading LLM models for analysis_flow ...")
+        engine = LLMEngine.instance()
+        health = engine.health()
+        logger.info(
+            "LLM models loaded and ready (KRA runtime=%s, fallback=%s, KRA model=%s, ORA model=%s)",
+            health.get("kra_runtime"),
+            health.get("kra_fallback_active"),
+            health.get("kra_model"),
+            health.get("ora_model"),
+        )
     except Exception as exc:
         logger.error("LLM preload failed: %s — models will load on first request", exc)
 
