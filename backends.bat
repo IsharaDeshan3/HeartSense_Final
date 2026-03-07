@@ -94,18 +94,7 @@ echo.
 set SVC_NAME=Analysis Flow
 set SVC_DIR=%ROOT%analysis_flow
 set SVC_REQ=%SVC_DIR%\requirements.txt
-
-:: Ensure the virtual environment exists
-if not exist "%SVC_DIR%\.venv" (
-    echo Creating virtual environment for Analysis Flow...
-    python -m venv "%SVC_DIR%\.venv"
-)
-
-:: Activate the virtual environment and install dependencies
-powershell -Command "cd '%SVC_DIR%' ; .\.venv\Scripts\Activate.ps1 ; pip install -r requirements.txt ; pip install llama-cpp-python"
-
-:: Start the backend without WatchFiles reloads
-start "Analysis Flow KRA-ORA - :8080" cmd /k "cd /d \"%SVC_DIR%\" && call .venv\Scripts\activate.bat && python -m uvicorn backend.main:app --host 0.0.0.0 --port 8080"
+call :setup_venv
 
 echo.
 echo [Phase 1] All virtual environments ready.
@@ -115,23 +104,23 @@ echo.
 ::  Phase 2: Ensure llama-cpp-python with CUDA support
 ::           (Analysis Flow only — needs special index URL)
 :: ============================================================
-set AF_PYTHON="%ROOT%analysis_flow\.venv\Scripts\python.exe"
+set AF_PYTHON=%ROOT%analysis_flow\.venv\Scripts\python.exe
 
 echo [Phase 2] Checking llama-cpp-python (CUDA) ...
 
 :: Test if llama_cpp is importable
-%AF_PYTHON% -c "import llama_cpp" >nul 2>&1
+"%AF_PYTHON%" -c "import llama_cpp" >nul 2>&1
 if errorlevel 1 (
     echo   llama-cpp-python not found. Trying pre-built CUDA 11.8 wheel ...
     echo   Using --only-binary to avoid source builds, no C compiler needed.
     echo.
-    %AF_PYTHON% -m pip install llama-cpp-python --only-binary=llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu118 -q
+    "%AF_PYTHON%" -m pip install llama-cpp-python --only-binary=llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu118 -q
     if errorlevel 1 (
         echo   CUDA cu118 wheel not found. Trying cu121 index ...
-        %AF_PYTHON% -m pip install llama-cpp-python --only-binary=llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121 -q
+        "%AF_PYTHON%" -m pip install llama-cpp-python --only-binary=llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121 -q
         if errorlevel 1 (
             echo   Trying CPU-only binary wheel ...
-            %AF_PYTHON% -m pip install llama-cpp-python --only-binary=llama-cpp-python -q
+            "%AF_PYTHON%" -m pip install llama-cpp-python --only-binary=llama-cpp-python -q
             if errorlevel 1 (
                 echo.
                 echo   WARNING: No pre-built llama-cpp-python wheel found.
@@ -160,20 +149,23 @@ echo.
 :: ============================================================
 echo [Phase 3] Checking GGUF models ...
 
-set KRA_MODEL=%ROOT%analysis_flow\models\deepseek-r1-8b-q5_k_m.gguf
+set KRA_GPU_MODEL=%ROOT%analysis_flow\models\deepseek-r1-8b-q5_k_m.gguf
+set KRA_CPU_MODEL=%ROOT%analysis_flow\models\phi-3.5-mini-kra-q4_k_m.gguf
 set ORA_MODEL=%ROOT%analysis_flow\models\phi-3.5-mini-q4_k_m.gguf
 
 set MODELS_NEEDED=0
-if not exist "%KRA_MODEL%" set MODELS_NEEDED=1
+if not exist "%KRA_GPU_MODEL%" set MODELS_NEEDED=1
+if not exist "%KRA_CPU_MODEL%" set MODELS_NEEDED=1
 if not exist "%ORA_MODEL%" set MODELS_NEEDED=1
 
 if %MODELS_NEEDED% EQU 1 (
     echo   Models missing — launching background downloader window.
-    echo   KRA: ~5.5 GB  ORA: ~2.3 GB — download runs in a separate window.
+    echo   KRA GPU: ~5.5 GB  KRA CPU: ~2.3 GB  ORA: ~2.3 GB
+    echo   Download runs in a separate window.
     echo   Services will start now; LLM inference activates once models finish.
-    start "GGUF Model Downloader" cmd /k "cd /d "%ROOT%analysis_flow" && call .venv\Scripts\activate.bat && echo Downloading GGUF models... && python download_models.py && echo Models ready! && pause"
+    start "GGUF Model Downloader" /D "%ROOT%analysis_flow" cmd /k "echo Downloading GGUF models... && .venv\Scripts\python.exe download_models.py && echo Models ready! && pause"
 ) else (
-    echo   Both GGUF models present.
+    echo   All GGUF models present.
 )
 echo.
 
@@ -183,7 +175,7 @@ echo.
 echo [Phase 4] Checking .env configuration ...
 
 set AF_ENV=%ROOT%analysis_flow\.env
-%AF_PYTHON% -c "import os,pathlib; p=pathlib.Path(r'%AF_ENV%'); c=p.read_text(encoding='utf-8') if p.exists() else ''; need='KRA_MODEL_PATH' not in c; print('Adding LLM config...' if need else 'LLM config already present.'); p.write_text(c+'\n# Local LLM Config\nKRA_MODEL_PATH=models/deepseek-r1-8b-q5_k_m.gguf\nKRA_N_GPU_LAYERS=-1\nKRA_N_CTX=8192\nORA_MODEL_PATH=models/phi-3.5-mini-q4_k_m.gguf\nORA_N_GPU_LAYERS=0\nORA_N_CTX=4096\nORA_TEMPERATURE=0.3\n', encoding='utf-8') if need else None"
+"%AF_PYTHON%" -c "import os,pathlib; p=pathlib.Path(r'%AF_ENV%'); c=p.read_text(encoding='utf-8') if p.exists() else ''; need='KRA_MODEL_PATH' not in c; print('Adding LLM config...' if need else 'LLM config already present.'); p.write_text(c+'\n# Local LLM Config\nKRA_MODEL_PATH=models/deepseek-r1-8b-q5_k_m.gguf\nKRA_N_GPU_LAYERS=-1\nKRA_N_CTX=8192\nKRA_CPU_FALLBACK_MODEL_PATH=models/phi-3.5-mini-kra-q4_k_m.gguf\nKRA_CPU_FALLBACK_N_GPU_LAYERS=0\nKRA_CPU_FALLBACK_N_CTX=4096\nKRA_CPU_FALLBACK_TEMPERATURE=0.2\nKRA_CPU_FALLBACK_MAX_TOKENS=1024\nORA_MODEL_PATH=models/phi-3.5-mini-q4_k_m.gguf\nORA_N_GPU_LAYERS=0\nORA_N_CTX=4096\nORA_TEMPERATURE=0.3\n', encoding='utf-8') if need else None"
 echo.
 
 :: ============================================================
@@ -191,20 +183,20 @@ echo.
 :: ============================================================
 echo [Phase 5] Validating model files ...
 
-if exist "%KRA_MODEL%" (
-    for %%F in ("%KRA_MODEL%") do (
-        set /a KRA_SIZE_MB=%%~zF / 1048576
-        echo   KRA model: !KRA_SIZE_MB! MB
-    )
+if exist "%KRA_GPU_MODEL%" (
+    call :report_model_size "%KRA_GPU_MODEL%" "KRA GPU model"
 ) else (
-    echo   WARNING: KRA model file not found — inference will fail.
+    echo   INFO: KRA GPU model not found — will use CPU fallback.
+)
+
+if exist "%KRA_CPU_MODEL%" (
+    call :report_model_size "%KRA_CPU_MODEL%" "KRA CPU model - Qwen2.5-7B"
+) else (
+    echo   WARNING: KRA CPU fallback model not found — inference may fail without GPU.
 )
 
 if exist "%ORA_MODEL%" (
-    for %%F in ("%ORA_MODEL%") do (
-        set /a ORA_SIZE_MB=%%~zF / 1048576
-        echo   ORA model: !ORA_SIZE_MB! MB
-    )
+    call :report_model_size "%ORA_MODEL%" "ORA model"
 ) else (
     echo   WARNING: ORA model file not found — inference will fail.
 )
@@ -218,19 +210,19 @@ echo.
 
 :: ---- 6a. Lab Backend (port 8000) ----
 echo   Starting Lab Backend on :8000 ...
-start "Lab Backend - :8000" cmd /k "cd /d "%ROOT%lab_backend-main" && call .venv\Scripts\activate.bat && python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+start "Lab Backend - :8000" /D "%ROOT%lab_backend-main" cmd /k ".venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
 
 :: ---- 6b. Data Extraction (port 8001) ----
 echo   Starting Data Extraction on :8001 ...
-start "Data Extraction - :8001" cmd /k "cd /d "%ROOT%data_extraction-main" && call .venv\Scripts\activate.bat && python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload"
+start "Data Extraction - :8001" /D "%ROOT%data_extraction-main" cmd /k ".venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload"
 
 :: ---- 6c. ECG Backend (port 5000) ----
 echo   Starting ECG Backend on :5000 ...
-start "ECG Backend - :5000" cmd /k "cd /d "%ROOT%ecg_backend-main" && call .venv\Scripts\activate.bat && python app.py"
+start "ECG Backend - :5000" /D "%ROOT%ecg_backend-main" cmd /k ".venv\Scripts\python.exe app.py"
 
 :: ---- 6d. Analysis Flow (port 8080) — starts and eagerly preloads LLM ----
-echo   Starting Analysis Flow on :8080 (LLM models preload at startup) ...
-start "Analysis Flow KRA-ORA - :8080" cmd /k "cd /d "%SVC_DIR%" && call .venv\Scripts\activate.bat && python -m uvicorn backend.main:app --host 0.0.0.0 --port 8080"
+echo   Starting Analysis Flow on :8080 ...
+start "Analysis Flow KRA-ORA - :8080" /D "%ROOT%analysis_flow" cmd /k ".venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8080"
 
 echo.
 echo ====================================================================
@@ -255,9 +247,9 @@ if errorlevel 1 (
     echo.
     echo   Starting frontend ...
     if exist "%ROOT%heart-sense-ai-main\node_modules" (
-        start "Frontend - :3000" cmd /k "cd /d "%ROOT%heart-sense-ai-main" && pnpm dev"
+        start "Frontend - :3000" /D "%ROOT%heart-sense-ai-main" cmd /k "pnpm dev"
     ) else (
-        start "Frontend - :3000" cmd /k "cd /d "%ROOT%heart-sense-ai-main" && pnpm install && pnpm dev"
+        start "Frontend - :3000" /D "%ROOT%heart-sense-ai-main" cmd /k "pnpm install && pnpm dev"
     )
     echo   Frontend: http://localhost:3000
 )
@@ -269,6 +261,19 @@ echo   HeartSense AI is running! Press any key to exit this launcher.
 echo   (Backend windows will keep running independently.)
 echo ====================================================================
 pause
+exit /b 0
+
+:: ============================================================
+::  Subroutine: report_model_size
+::  Uses PowerShell to avoid 32-bit cmd arithmetic overflow
+:: ============================================================
+:report_model_size
+set "MODEL_PATH=%~1"
+set "MODEL_LABEL=%~2"
+for /f "usebackq delims=" %%S in (`powershell -NoProfile -Command "[int][math]::Round((Get-Item -LiteralPath '%MODEL_PATH%').Length / 1MB)"`) do (
+    set "MODEL_SIZE_MB=%%S"
+)
+echo   %MODEL_LABEL%: %MODEL_SIZE_MB% MB
 exit /b 0
 
 :: ============================================================

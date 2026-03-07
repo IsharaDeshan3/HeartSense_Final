@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import queue
 import threading
 import time
@@ -98,6 +99,35 @@ class WorkflowService:
         kra_ok, ora_ok = LLMEngine.is_loaded()
         logger.info("Model readiness — KRA: %s  ORA: %s", kra_ok, ora_ok)
         return {"kra": kra_ok, "ora": ora_ok, "all_ready": kra_ok and ora_ok}
+
+    @staticmethod
+    def _kra_timeout_seconds() -> float:
+        try:
+            return max(30.0, float(os.getenv("KRA_TIMEOUT_SEC", "900")))
+        except ValueError:
+            return 900.0
+
+    @staticmethod
+    def _ora_timeout_seconds() -> float:
+        try:
+            return max(30.0, float(os.getenv("ORA_TIMEOUT_SEC", "600")))
+        except ValueError:
+            return 600.0
+
+    @staticmethod
+    def _is_valid_kra_result(kra_result: dict[str, Any]) -> bool:
+        diagnoses = kra_result.get("diagnoses")
+        uncertainties = kra_result.get("uncertainties")
+        recommended_tests = kra_result.get("recommended_tests")
+        red_flags = kra_result.get("red_flags")
+        return all(
+            [
+                isinstance(diagnoses, list),
+                isinstance(uncertainties, list),
+                isinstance(recommended_tests, list),
+                isinstance(red_flags, list),
+            ]
+        )
 
     def check_spaces_health(self) -> dict[str, bool]:
         """Backward-compatible alias for older callers."""
@@ -581,7 +611,15 @@ class WorkflowService:
         with ThreadPoolExecutor(max_workers=2) as executor:
             payload_future = executor.submit(run_payload_save)
             kra_future = executor.submit(run_kra_analysis)
-            done, pending = wait({payload_future, kra_future}, return_when=FIRST_EXCEPTION)
+            done, pending = wait(
+                {payload_future, kra_future},
+                timeout=self._kra_timeout_seconds(),
+                return_when=FIRST_EXCEPTION,
+            )
+            if kra_future not in done:
+                cancel_event.set()
+                logger.error("KRA analysis timed out for session %s after %.1fs", session_id, self._kra_timeout_seconds())
+                raise RuntimeError("KRA_TIMEOUT")
             first_error = next((future.exception() for future in done if future.exception() is not None), None)
             if first_error is not None:
                 cancel_event.set()
@@ -598,6 +636,20 @@ class WorkflowService:
         payload_ms = int(payload_result.get("duration_ms") or 0)
         kra_result = kra_run["kra_result"]
         kra_ms = int(kra_run.get("duration_ms") or 0)
+
+        logger.info(
+            "KRA output for session %s\n%s\n%s",
+            session_id,
+            "=" * 80,
+            str(kra_result.get("raw_text") or "[empty KRA output]"),
+        )
+        if not self._is_valid_kra_result(kra_result):
+            logger.error(
+                "KRA produced invalid output for session %s; aborting before ORA. Raw output:\n%s",
+                session_id,
+                str(kra_result.get("raw_text") or "[empty KRA output]"),
+            )
+            raise RuntimeError("KRA_OUTPUT_INVALID_JSON")
 
         processing_steps.append(
             {
@@ -668,7 +720,15 @@ class WorkflowService:
         with ThreadPoolExecutor(max_workers=2) as executor:
             kra_save_future = executor.submit(run_kra_persist)
             ora_future = executor.submit(run_ora_refinement)
-            done, pending = wait({kra_save_future, ora_future}, return_when=FIRST_EXCEPTION)
+            done, pending = wait(
+                {kra_save_future, ora_future},
+                timeout=self._ora_timeout_seconds(),
+                return_when=FIRST_EXCEPTION,
+            )
+            if ora_future not in done:
+                cancel_event.set()
+                logger.error("ORA refinement timed out for session %s after %.1fs", session_id, self._ora_timeout_seconds())
+                raise RuntimeError("ORA_TIMEOUT")
             first_error = next((future.exception() for future in done if future.exception() is not None), None)
             if first_error is not None:
                 cancel_event.set()
@@ -685,6 +745,13 @@ class WorkflowService:
         ora_result = ora_run["ora_result"]
         ora_ms = int(ora_run.get("duration_ms") or 0)
         supabase_available = supabase_available and bool(kra_save_result.get("supabase_available"))
+
+        logger.info(
+            "ORA output for session %s\n%s\n%s",
+            session_id,
+            "=" * 80,
+            str(ora_result.get("refined_output") or "[empty ORA output]"),
+        )
 
         processing_steps.append(
             {

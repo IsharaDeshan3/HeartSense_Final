@@ -37,6 +37,18 @@ function getWorkflowCacheKey(patientId: string) {
   return `workspace:workflow:${patientId}`;
 }
 
+function createInitialSummary() {
+  return {
+    recentObservation: "Awaiting clinical input...",
+    riskScore: "pending",
+    suggestedFocus: "Cardiovascular Screen",
+    symptoms: [] as string[],
+    riskFactors: [] as string[],
+    ecgResult: null as EcgResult | null,
+    labResult: null as LabAnalysisResult | null,
+  };
+}
+
 
 export default function DiagnosticWorkspace() {
   const { patientId } = useParams();
@@ -49,21 +61,25 @@ export default function DiagnosticWorkspace() {
   const [isAdvancing, setIsAdvancing] = useState(false);
 
   // Workspace State System (Persistent between modules)
-  const [summary, setSummary] = useState({
-    recentObservation: "Awaiting clinical input...",
-    riskScore: "pending",
-    suggestedFocus: "Cardiovascular Screen",
-    symptoms: [] as string[],
-    riskFactors: [] as string[],
-    ecgResult: null as EcgResult | null,
-    labResult: null as LabAnalysisResult | null,
-  });
+  const [summary, setSummary] = useState(createInitialSummary);
 
   // Manual symptom entry state
   const [manualSymptom, setManualSymptom] = useState("");
   const [ecgSkipped, setEcgSkipped] = useState(false);
   const [labSkipped, setLabSkipped] = useState(false);
   const resolvedPatientId = String(patientId ?? "");
+
+  useEffect(() => {
+    if (!resolvedPatientId || typeof window === "undefined") return;
+
+    window.localStorage.removeItem(getWorkflowCacheKey(resolvedPatientId));
+    setWorkflowSessionId(null);
+    setWorkflowState(null);
+    setActiveTab("nlp");
+    setEcgSkipped(false);
+    setLabSkipped(false);
+    setSummary(createInitialSummary());
+  }, [resolvedPatientId]);
 
   const handleNlpUpdate = (data: any) => {
     // data contains { updated_state: { symptoms, risk_factors... }, translated_text }
@@ -186,27 +202,6 @@ export default function DiagnosticWorkspace() {
     }));
     toast.success("Lab findings synced to workspace");
   };
-
-  useEffect(() => {
-    if (!resolvedPatientId || typeof window === "undefined") return;
-
-    try {
-      const raw = window.localStorage.getItem(getWorkflowCacheKey(resolvedPatientId));
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as WorkspaceWorkflowCache;
-      if (parsed.sessionId) {
-        setWorkflowSessionId(parsed.sessionId);
-      }
-      if (parsed.state) {
-        setWorkflowState(parsed.state);
-      }
-      if (parsed.activeTab) {
-        setActiveTab(parsed.activeTab);
-      }
-    } catch {
-      // ignore corrupted cache and continue with fresh init
-    }
-  }, [resolvedPatientId]);
 
   useEffect(() => {
     if (!resolvedPatientId || !workflowSessionId || typeof window === "undefined") return;
@@ -749,6 +744,7 @@ export default function DiagnosticWorkspace() {
                 description="AI combines all collected data — symptoms, ECG, and lab results — to generate a comprehensive diagnostic assessment."
               >
                 <AiDiagnostics
+                  patientId={resolvedPatientId}
                   symptoms={summary.symptoms}
                   riskFactors={summary.riskFactors}
                   recentObservation={summary.recentObservation}
