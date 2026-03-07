@@ -84,6 +84,8 @@ export interface HealthResponse {
   kra_model_loaded: boolean;
   /** True when Phi-3.5-mini GGUF is loaded in CPU memory */
   ora_model_loaded: boolean;
+  /** KRA runtime description, e.g. "nvidia_gpu" or "cpu_fallback" */
+  kra_runtime?: string;
 }
 
 // ─── Service ────────────────────────────────────────────────────────────────

@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export const maxDuration = 900;
-
 const WORKFLOW_BACKEND_URL =
   process.env.WORKFLOW_BACKEND_URL ?? process.env.DIAGNOSTIC_BACKEND_URL ?? "http://localhost:8080";
 
@@ -9,8 +7,6 @@ function buildTargetUrl(slug: string[], search: string) {
   const path = slug.join("/");
   return `${WORKFLOW_BACKEND_URL}/api/workflow/v1/${path}${search}`;
 }
-
-const WORKFLOW_PROXY_TIMEOUT_MS = 900_000;
 
 export async function GET(
   req: NextRequest,
@@ -24,7 +20,6 @@ export async function GET(
       method: "GET",
       headers: { Accept: req.headers.get("Accept") ?? "application/json" },
       cache: "no-store",
-      signal: AbortSignal.timeout(WORKFLOW_PROXY_TIMEOUT_MS),
     });
 
     const contentType = backendRes.headers.get("Content-Type") ?? "application/json";
@@ -76,7 +71,7 @@ export async function POST(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
-      signal: AbortSignal.timeout(WORKFLOW_PROXY_TIMEOUT_MS),
+      signal: AbortSignal.timeout(600_000), // 10 min — CPU inference can take 4-5 min
     });
 
     const text = await backendRes.text();

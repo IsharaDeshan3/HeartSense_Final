@@ -90,8 +90,13 @@ class ORAClient:
             cancel_event=cancel_event,
         )
 
+        if not raw_text or not raw_text.strip():
+            logger.error("ORA returned empty output (level=%s)", level)
+            raise RuntimeError("ORA_OUTPUT_EMPTY")
+
         elapsed_ms = int((time.time() - t0) * 1000)
         logger.info("ORA local inference completed (%d ms, level=%s)", elapsed_ms, level)
+        logger.info("ORA raw output (level=%s)\n%s\n%s", level, "=" * 80, raw_text.strip())
 
         return {
             "refined_output": raw_text.strip(),

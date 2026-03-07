@@ -19,8 +19,6 @@ import type {
   PatientHistorySummary,
 } from "@/services/WorkflowService";
 
-const LAB_BACKEND_URL = "http://localhost:8000";
-
 interface PatientInfo {
   _id: string;
   fullName: string;
@@ -84,9 +82,7 @@ export default function PatientHistoryPage() {
 
         // Fetch lab test history from lab_backend
         try {
-          const labRes = await fetch(
-            `${LAB_BACKEND_URL}/api/patient-history?patient_id=${patientId}`
-          );
+          const labRes = await fetch(`/api/lab/patient-history?patient_id=${encodeURIComponent(patientId)}`);
           if (labRes.ok) {
             const labData = await labRes.json();
             setLabHistory(Array.isArray(labData) ? labData : labData.records || []);

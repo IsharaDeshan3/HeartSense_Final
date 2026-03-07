@@ -173,9 +173,14 @@ async def run_analysis(session_id: str, payload: AnalysisRunRequest) -> dict[str
             ),
         )
         return result
-    except ValueError:
-        _workflow.event_bus.emit(session_id, {"step": "analysis_done", "status": "error", "message": "Session not found"})
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    except ValueError as exc:
+        if str(exc) == "SESSION_NOT_FOUND":
+            _workflow.event_bus.emit(session_id, {"step": "analysis_done", "status": "error", "message": "Session not found"})
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+        _workflow.event_bus.emit(session_id, {"step": "analysis_done", "status": "error", "message": str(exc)})
+        logger.error("Analysis pipeline value error:\n%s", traceback.format_exc())
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Analysis failed: {exc}")
     except RuntimeError as exc:
         status_name = "cancelled" if "ANALYSIS_CANCELLED" in str(exc) else "error"
         _workflow.event_bus.emit(session_id, {"step": "analysis_done", "status": status_name, "message": str(exc)})

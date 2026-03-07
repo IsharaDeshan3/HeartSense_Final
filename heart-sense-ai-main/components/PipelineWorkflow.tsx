@@ -32,6 +32,7 @@ interface PipelineWorkflowProps {
   isRunning: boolean;
   currentStep?: string;
   completedSteps?: string[];
+  failedStep?: string;
 }
 
 const STEP_TO_NODE: Record<string, string> = {
@@ -50,9 +51,9 @@ const STEP_LABELS: Record<string, string> = {
   faiss_search: "Searching textbook knowledge index...",
   rare_case_search: "Scanning rare-case FAISS index...",
   supabase_save_payload: "Saving structured payload to Supabase...",
-  kra_analysis: "Running KRA on DeepSeek-R1 GPU...",
+  kra_analysis: "Running KRA diagnostic reasoning...",
   supabase_save_kra: "Saving KRA output...",
-  ora_refinement: "Running ORA on Phi-3.5-mini CPU...",
+  ora_refinement: "Running ORA report refinement...",
   supabase_save_ora: "Saving final ORA report...",
 };
 
@@ -101,6 +102,7 @@ export default function PipelineWorkflow({
   isRunning,
   currentStep,
   completedSteps = [],
+  failedStep,
 }: PipelineWorkflowProps) {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [isChecking, setIsChecking] = useState(true);
@@ -135,6 +137,10 @@ export default function PipelineWorkflow({
       }
       if (nodeSteps.some((step) => completedSteps.includes(step))) return "active";
       return "idle";
+    }
+
+    if (failedStep && STEP_TO_NODE[failedStep] === nodeId) {
+      return "offline";
     }
 
     if (!health) return "offline";
@@ -172,6 +178,10 @@ export default function PipelineWorkflow({
       return "Waiting...";
     }
 
+    if (failedStep && STEP_TO_NODE[failedStep] === nodeId) {
+      return STEP_LABELS[failedStep] ?? "Analysis failed";
+    }
+
     if (!health) return "Unreachable";
 
     switch (nodeId) {
@@ -187,9 +197,13 @@ export default function PipelineWorkflow({
       case "supabase":
         return health.supabase_ready ? "Connected and writable" : "Supabase offline";
       case "kra":
-        return health.kra_model_loaded ? "DeepSeek-R1 loaded in GPU memory" : "Model not loaded yet";
+        return health.kra_model_loaded
+          ? `KRA model loaded (${health.kra_runtime ?? "local"})`
+          : "KRA model not loaded yet";
       case "ora":
-        return health.ora_model_loaded ? "Phi-3.5-mini loaded in CPU memory" : "Model not loaded yet";
+        return health.ora_model_loaded
+          ? `ORA model loaded (CPU)`
+          : "ORA model not loaded yet";
       default:
         return "";
     }
@@ -223,7 +237,7 @@ export default function PipelineWorkflow({
     {
       id: "kra",
       label: "KRA Agent",
-      sublabel: "DeepSeek-R1 8B · GPU",
+      sublabel: "KRA · Local LLM",
       detail: getNodeDetail("kra"),
       icon: <BrainCircuit className="h-5 w-5" />,
       status: getNodeStatus("kra"),
@@ -231,7 +245,7 @@ export default function PipelineWorkflow({
     {
       id: "ora",
       label: "ORA Agent",
-      sublabel: "Phi-3.5-mini · CPU",
+      sublabel: "ORA · Local LLM",
       detail: getNodeDetail("ora"),
       icon: <Sparkles className="h-5 w-5" />,
       status: getNodeStatus("ora"),

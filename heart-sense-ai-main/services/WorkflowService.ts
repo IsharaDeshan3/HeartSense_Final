@@ -45,6 +45,10 @@ export interface PatientHistorySummary {
   summary_text: string;
 }
 
+function normalizeSessionId(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
 export const WorkflowService = {
   async initSession(patientId: string, doctorId?: string) {
     const correlationId = crypto.randomUUID();
@@ -182,6 +186,13 @@ export const WorkflowService = {
       throw new Error(await extractErrorMessage(res, "Failed to fetch patient history"));
     }
     return res.json();
+  },
+
+  async getPatientDiagnosisRecord(patientId: string, sessionId: string) {
+    const history = await this.getPatientHistory(patientId);
+    return (
+      history.records.find((record) => normalizeSessionId(record.session_id) === sessionId) ?? null
+    );
   },
 };
 
