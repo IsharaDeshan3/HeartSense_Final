@@ -9,9 +9,11 @@ import {
     Search,
     Plus,
     HeartPulse,
+    Menu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useState } from "react";
 
 const navItems = [
     { href: "/dashboard/doctor", label: "Workspace", icon: Activity, exact: true },
@@ -22,6 +24,7 @@ const navItems = [
 ];
 
 export default function DoctorLayout({ children }: { children: React.ReactNode }) {
+    const [isCollapsed, setIsCollapsed] = useState(false);
     const pathname = usePathname();
     const router = useRouter();
 
@@ -38,15 +41,28 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     const isActive = (href: string, exact?: boolean) =>
         exact ? pathname === href : pathname.startsWith(href);
 
+    const toggleNavbar = () => {
+        setIsCollapsed(!isCollapsed);
+    };
+
     return (
         <div className="h-screen bg-background text-foreground flex overflow-hidden font-sans">
             {/* Sidebar */}
-            <aside className="w-72 border-r border-border/40 glass hidden lg:flex flex-col relative z-20 shrink-0">
+            <aside
+                className={`border-r border-border/40 glass hidden lg:flex flex-col relative z-20 shrink-0 ${
+                    isCollapsed ? "w-20" : "w-72"
+                }`}
+            >
                 <div className="p-6 flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-[1.25rem] bg-primary/10 flex-center text-primary futuristic-glow">
-                        <HeartPulse className="h-7 w-7" />
-                    </div>
-                    <span className="font-black tracking-tighter text-xl text-gradient">HEARTSENSE</span>
+                    <button
+                        onClick={toggleNavbar}
+                        className="h-8 w-8 rounded-full bg-primary/10 flex-center text-primary"
+                    >
+                        <Menu className="h-5 w-5" />
+                    </button>
+                    {!isCollapsed && (
+                        <span className="font-black tracking-tighter text-xl text-gradient">HEARTSENSE</span>
+                    )}
                 </div>
 
                 <nav className="flex-1 px-6 space-y-2 mt-2">
@@ -56,13 +72,14 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
                             <Link
                                 key={item.href}
                                 href={item.href}
-                                className={`flex items-center gap-4 px-6 py-3 rounded-2xl font-bold transition-all ${active
-                                    ? "bg-primary/10 text-primary font-black shadow-sm"
-                                    : "hover:bg-primary/5 text-muted-foreground hover:text-foreground"
-                                    }`}
+                                className={`flex items-center gap-4 px-6 py-3 rounded-2xl font-bold transition-all ${
+                                    active
+                                        ? "bg-primary/10 text-primary font-black shadow-sm"
+                                        : "hover:bg-primary/5 text-muted-foreground hover:text-foreground"
+                                }`}
                             >
                                 <item.icon className="h-5 w-5" />
-                                {item.label}
+                                {!isCollapsed && item.label}
                             </Link>
                         );
                     })}
@@ -75,7 +92,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
                         onClick={handleLogout}
                     >
                         <LogOut className="h-5 w-5" />
-                        Sign Out
+                        {!isCollapsed && "Sign Out"}
                     </Button>
                 </div>
             </aside>

@@ -1,110 +1,95 @@
 """
 core/ora_prompt.py
-
-Builds the ORA (Output Refinement Agent) prompt for Phi-3.5-mini.
-
-Takes raw KRA JSON output + experience level and produces a
-clinician-facing formatted report.
-
-Supported levels: NEWBIE, SEASONED
+Enhanced for high-readability, visually structured clinical reports.
 """
 
 from __future__ import annotations
-
 import json
 from typing import Any, Dict
 
-
+# Updated rules to allow Markdown (bolding, headers) but still forbid code blocks
 _SHARED_RULES = """\
 RULES:
 1. Base your output ONLY on the KRA analysis provided — do NOT invent findings.
-2. If a diagnosis has low confidence, communicate this honestly.
-3. Always include the disclaimer at the end.
-4. Output the formatted report as plain text. No JSON, no markdown code fences.
+2. Use Markdown formatting (bolding, headers, lists) for visual hierarchy.
+3. Do NOT use markdown code fences (```). Output raw formatted text.
+4. If a diagnosis has low confidence, communicate this honestly.
+5. Always include the disclaimer at the end.
 """
 
 _DISCLAIMER = (
-    "⚠️ DISCLAIMER: This is an AI-assisted analysis for clinical decision "
+    "***\n"
+    "⚠️ **DISCLAIMER:** *This is an AI-assisted analysis for clinical decision "
     "support only. It is NOT a medical diagnosis. All findings must be "
     "verified through clinical judgment, appropriate diagnostic tests, "
-    "and established medical guidelines before any treatment decisions."
+    "and established medical guidelines before any treatment decisions.*"
 )
 
 # ── Experience-level-specific instructions ──────────────────────────────── #
 
 _NEWBIE_INSTRUCTIONS = f"""\
-You are a medical educator creating a diagnostic report for a JUNIOR DOCTOR
-or medical student (newbie level).
+You are a medical educator creating a diagnostic report for a JUNIOR DOCTOR.
+Use clear headers and bolding to emphasize critical information.
 
-Your goal: Make the diagnosis understandable to someone with basic medical
-knowledge but limited clinical experience.
-
-FORMAT YOUR OUTPUT LIKE THIS:
-
-📋 DIAGNOSTIC SUMMARY
----------------------
-[1-2 sentence overview in plain language]
-
-🔍 WHAT WE FOUND
------------------
-For each diagnosis:
-  • [Condition Name] — Likelihood: [High/Moderate/Low]
-    What this means: [Plain-language explanation of the condition]
-    Why we think this: [Evidence in simple terms]
-    Severity: [CRITICAL/HIGH/MODERATE/LOW] — [What this severity level means]
-
-⚠️ RED FLAGS
--------------
-[List any immediate concerns in plain language]
-[Explain WHY each is concerning]
-
-📝 WHAT'S MISSING
-------------------
-[List uncertainties]
-[Explain what information would help and why]
-
-🧪 RECOMMENDED NEXT STEPS
---------------------------
-[Numbered list of recommended tests/actions]
-[Brief explanation of what each test tells us]
-
+## 📋 DIAGNOSTIC SUMMARY
 ---
+**Overview:** [1-2 sentence overview in plain language]
+
+## 🔍 KEY FINDINGS
+---
+| Condition | Likelihood | Severity |
+| :--- | :--- | :--- |
+| **[Condition Name]** | [High/Low] | **[LEVEL]** |
+
+**Clinical Context:**
+* **What this means:** [Plain-language explanation]
+* **The Evidence:** [Explain findings in simple terms]
+
+## ⚠️ URGENT CONCERNS (RED FLAGS)
+---
+* **[Finding]:** [Explanation of WHY this is dangerous]
+
+## 📝 DIAGNOSTIC GAPS
+---
+* **Missing Data:** [What is missing?]
+* **Impact:** [Why we need this information to be sure]
+
+## 🧪 RECOMMENDED WORKUP
+---
+1.  **[Test Name]**: [What it tells us]
+2.  **[Test Name]**: [What it tells us]
+
 {_DISCLAIMER}
 
 {_SHARED_RULES}
 """
 
 _SEASONED_INSTRUCTIONS = f"""\
-You are a senior cardiologist writing a concise diagnostic report for an
-EXPERIENCED CLINICIAN (seasoned level).
+You are a senior cardiologist providing a high-density clinical brief for an 
+EXPERIENCED ATTENDING. Use professional medical terminology and tight structure.
 
-Your goal: Deliver a clinical-grade report using standard medical terminology,
-suitable for a physician with several years of practice.
-
-FORMAT YOUR OUTPUT LIKE THIS:
-
-DIFFERENTIAL DIAGNOSIS
-─────────────────────
-1. [Condition] (confidence: [X]%, severity: [LEVEL])
-   Evidence: [Concise clinical evidence list]
-   Clinical features: [Key features]
-
-2. [Condition] ...
-
-CLINICAL CONCERNS
-─────────────────
-• [Red flag findings with clinical significance]
-
-DIAGNOSTIC GAPS
-───────────────
-• [Missing data / uncertainties with impact on differential]
-
-RECOMMENDED WORKUP
-──────────────────
-• [Tests ordered by clinical priority]
-• [Expected diagnostic yield for each]
-
+# CLINICAL ASSESSMENT BRIEF
 ---
+
+### 🩺 DIFFERENTIAL DIAGNOSIS
+| Differential | Confidence | Severity |
+| :--- | :--- | :--- |
+| **[Condition]** | [X]% | [LEVEL] |
+
+**Clinical Correlation:**
+* **Evidence:** [Concise list of findings]
+* **Key Pathophysiology:** [Key clinical features]
+
+### 🚩 CLINICAL CONCERNS
+* **[Finding]:** [Clinical significance/risk]
+
+### 🔍 DIAGNOSTIC GAPS
+* **Pending/Missing:** [Missing data point] → *Impact: [Effect on differential]*
+
+### ⚡ RECOMMENDED WORKUP (PRIORITIZED)
+* **[Test/Action]** | [Diagnostic Yield/Goal]
+* **[Test/Action]** | [Diagnostic Yield/Goal]
+
 {_DISCLAIMER}
 
 {_SHARED_RULES}
@@ -115,41 +100,24 @@ _LEVEL_MAP = {
     "SEASONED": _SEASONED_INSTRUCTIONS,
 }
 
-
 def build_ora_prompt(
     *,
     kra_result: Dict[str, Any],
     symptoms_text: str,
     experience_level: str,
 ) -> str:
-    """
-    Build the ORA refinement prompt.
-
-    Args:
-        kra_result: Raw KRA output dict (diagnoses, uncertainties, etc.).
-        symptoms_text: Original patient presentation text.
-        experience_level: 'NEWBIE' or 'SEASONED'.
-
-    Returns:
-        Complete prompt string for ORA LLM inference.
-    """
     level = experience_level.upper()
     instructions = _LEVEL_MAP.get(level, _SEASONED_INSTRUCTIONS)
-
     kra_json_str = json.dumps(kra_result, indent=2, ensure_ascii=False)
 
     sections = [
         instructions,
-        "",
-        "═══ ORIGINAL PATIENT PRESENTATION ═══",
-        symptoms_text.strip(),
-        "",
-        "═══ KRA ANALYSIS (raw JSON) ═══",
-        kra_json_str,
-        "",
-        "═══ INSTRUCTION ═══",
-        f"Reformat the KRA analysis above into the {level}-level report format. "
-        "Output ONLY the formatted report. No JSON, no code blocks.",
+        "\n═══ INPUT DATA ═══",
+        f"PATIENT PRESENTATION: {symptoms_text.strip()}",
+        f"KRA ANALYSIS: {kra_json_str}",
+        "\n═══ TASK ═══",
+        f"Generate the {level}-level report using the exact formatting specified. "
+        "Use bolding and tables to make it visually scannable. Do not use code blocks.",
     ]
 
     return "\n".join(sections)
