@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import queue
 import traceback
 from typing import Any, AsyncGenerator, Optional
 
@@ -71,6 +72,17 @@ class AnalysisStopResponse(BaseModel):
 async def health() -> dict[str, Any]:
     readiness = _workflow.readiness_status()
     search_readiness = _workflow._search.readiness_status()
+
+    # Expose the KRA runtime description (e.g. "nvidia_gpu" or "cpu_fallback")
+    kra_runtime: str | None = None
+    try:
+        from core.llm_engine import LLMEngine
+        kra_loaded, _ = LLMEngine.is_loaded()
+        if kra_loaded:
+            kra_runtime = LLMEngine.instance().health().get("kra_runtime")
+    except Exception:
+        pass
+
     return {
         "status": "ok" if readiness["all_ready"] and search_readiness["faiss_ready"] else "degraded",
         "faiss_ready": search_readiness["faiss_ready"],
@@ -78,6 +90,7 @@ async def health() -> dict[str, Any]:
         "supabase_ready": ping_supabase(),
         "kra_model_loaded": readiness["kra"],
         "ora_model_loaded": readiness["ora"],
+        "kra_runtime": kra_runtime,
     }
 
 
@@ -161,10 +174,14 @@ async def run_analysis(session_id: str, payload: AnalysisRunRequest) -> dict[str
         )
         return result
     except ValueError:
+        _workflow.event_bus.emit(session_id, {"step": "analysis_done", "status": "error", "message": "Session not found"})
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     except RuntimeError as exc:
+        status_name = "cancelled" if "ANALYSIS_CANCELLED" in str(exc) else "error"
+        _workflow.event_bus.emit(session_id, {"step": "analysis_done", "status": status_name, "message": str(exc)})
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except Exception as exc:
+        _workflow.event_bus.emit(session_id, {"step": "analysis_done", "status": "error", "message": str(exc)})
         logger.error("Analysis pipeline failed:\n%s", traceback.format_exc())
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Analysis failed: {exc}")
 
@@ -235,21 +252,21 @@ async def analysis_events(session_id: str, request: Request) -> StreamingRespons
             while True:
                 if await request.is_disconnected():
                     break
-                # Poll the thread-safe queue with a short async sleep to keep
-                # the event loop free between polls.
                 try:
                     event = await asyncio.get_event_loop().run_in_executor(
-                        None, lambda: queue.get(timeout=1)
+                        None, lambda: queue.get(timeout=15)
                     )
                 except Exception:
-                    # queue.get timed out – check connection and retry
+                    # Emit a heartbeat comment so long model runs do not look idle
+                    # to the browser or any proxy sitting between frontend/backend.
+                    yield ": keep-alive\n\n"
                     continue
 
                 data = json.dumps(event)
                 yield f"data: {data}\n\n"
 
                 # Close stream once the terminal event arrives
-                if event.get("step") == "analysis_done" or event.get("status") == "error":
+                if event.get("step") == "analysis_done" or event.get("status") in {"error", "cancelled"} or event.get("__eof__"):
                     break
         finally:
             _workflow.event_bus.unsubscribe(session_id, queue)

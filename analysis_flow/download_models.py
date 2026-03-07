@@ -3,8 +3,10 @@ download_models.py
 
 One-time setup script to download GGUF models from HuggingFace Hub.
 Downloads:
-  - DeepSeek-R1-Distill-Llama-8B Q5_K_M  → models/deepseek-r1-8b-q5_k_m.gguf  (KRA, GPU)
-  - Phi-3.5-mini-instruct Q4_K_M          → models/phi-3.5-mini-q4_k_m.gguf    (ORA, CPU)
+  - DeepSeek-R1-Distill-Llama-8B Q5_K_M  → models/deepseek-r1-8b-q5_k_m.gguf
+      Primary KRA model when NVIDIA is available
+  - Phi-3.5-mini-instruct Q4_K_M         → models/phi-3.5-mini-q4_k_m.gguf
+      ORA model and automatic KRA CPU fallback for laptop testing
 
 Usage:
     python download_models.py
@@ -21,13 +23,13 @@ MODELS = [
         "repo_id": "bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
         "filename": "DeepSeek-R1-Distill-Llama-8B-Q5_K_M.gguf",
         "local_name": "deepseek-r1-8b-q5_k_m.gguf",
-        "description": "KRA Agent — DeepSeek-R1-Distill-Llama-8B (Q5_K_M, ~5.5 GB, GPU)",
+        "description": "KRA primary model — DeepSeek-R1-Distill-Llama-8B (Q5_K_M, ~5.5 GB, prefers NVIDIA)",
     },
     {
         "repo_id": "bartowski/Phi-3.5-mini-instruct-GGUF",
         "filename": "Phi-3.5-mini-instruct-Q4_K_M.gguf",
         "local_name": "phi-3.5-mini-q4_k_m.gguf",
-        "description": "ORA Agent — Phi-3.5-mini-instruct (Q4_K_M, ~2.3 GB, CPU)",
+        "description": "ORA model + KRA CPU fallback — Phi-3.5-mini-instruct (Q4_K_M, ~2.3 GB, CPU)",
     },
 ]
 

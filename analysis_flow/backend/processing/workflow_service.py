@@ -4,12 +4,13 @@ import queue
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from typing import Any, Optional
 
 from backend.processing.kra_client import KRAClient
 from backend.processing.ora_client import ORAClient
 from backend.processing.search_service import SearchService
+from core.rare_case_flag import RareCaseAlert
 from backend.processing.supabase_payload import (
     get_patient_history_bundle,
     save_analysis_payload,
@@ -88,9 +89,13 @@ class WorkflowService:
         self.event_bus = PipelineEventBus()
 
     def readiness_status(self) -> dict[str, bool]:
-        """Non-blocking readiness check for local KRA and ORA models."""
-        kra_ok = self._kra.health_check()
-        ora_ok = self._ora.health_check()
+        """Non-blocking readiness check for local KRA and ORA models.
+
+        Uses LLMEngine.is_loaded() so the health endpoint never blocks
+        while models are still loading during startup.
+        """
+        from core.llm_engine import LLMEngine
+        kra_ok, ora_ok = LLMEngine.is_loaded()
         logger.info("Model readiness — KRA: %s  ORA: %s", kra_ok, ora_ok)
         return {"kra": kra_ok, "ora": ora_ok, "all_ready": kra_ok and ora_ok}
 
@@ -223,6 +228,10 @@ class WorkflowService:
                 self.event_bus.emit(session_id, {"step": "cancelled", "status": "cancelled"})
                 raise
             else:
+                self.event_bus.emit(
+                    session_id,
+                    {"step": "analysis_done", "status": "error", "message": str(exc)},
+                )
                 try:
                     self._store.transition_state(
                         session_id=session_id,
@@ -234,6 +243,10 @@ class WorkflowService:
                     pass
                 raise
         except Exception as exc:
+            self.event_bus.emit(
+                session_id,
+                {"step": "analysis_done", "status": "error", "message": str(exc)},
+            )
             try:
                 self._store.transition_state(
                     session_id=session_id,
@@ -397,15 +410,21 @@ class WorkflowService:
         # ── Step 1: Textbook retrieval, then uncertainty-gated rare cases ───
         self._emit(session_id, "faiss_search", "started")
         retrieval_started = time.time()
-        patient_vector = self._search.build_patient_vector(
+        patient_vector, textbook_context, quality = self._search.search_textbook(
             symptoms_text=symptoms_text,
+            top_k=5,
             ecg_findings=ecg_findings,
             lab_findings=lab_findings,
             lab_values=lab_values,
+            age=None,  # Add appropriate value if available
+            sex=None,  # Add appropriate value if available
+            chief_complaint=None  # Add appropriate value if available
         )
-        textbook_context, quality = self._search.search_textbook(patient_vector, top_k=5)
         retrieval_ms = int((time.time() - retrieval_started) * 1000)
-        quality = dict(quality)
+        quality: dict[str, Any] = (
+            dict(quality) if isinstance(quality, dict) else {"status": "LOW_CONFIDENCE"}
+        )
+
         processing_steps.append(
             {
                 "step": "faiss_search",
@@ -419,16 +438,21 @@ class WorkflowService:
 
         context_sections: list[str] = [textbook_context] if textbook_context else []
         rare_context = ""
-        rare_alert = self._search.rare_case_flag.evaluate(textbook_context or "", symptoms_text)
+        rare_alert = RareCaseAlert(
+            triggered=False,
+            reasoning="Rare-case search gated off by uncertainty policy",
+        )
+
         rare_gate = self._search.should_search_rare_cases(
-            symptoms_text=symptoms_text,
-            textbook_context=textbook_context,
             quality=quality,
             ecg_findings=ecg_findings,
             lab_findings=lab_findings,
             lab_values=lab_values,
         )
+
         quality["rare_search_gate"] = rare_gate.get("reason")
+        quality.setdefault("rare_cases_searched", 0)
+        quality.setdefault("rare_top_score", 0.0)
 
         self._store.save_retrieval_context(
             session_id=session_id,
@@ -441,12 +465,16 @@ class WorkflowService:
             },
         )
 
-        if rare_gate.get("triggered"):
+        if rare_gate.get("trigger_rare_search"):
             self._emit(session_id, "rare_case_search", "started")
             rare_started = time.time()
             rare_context, rare_quality, rare_alert = self._search.search_rare_cases(
-                patient_vector,
+                patient_vector=patient_vector,
                 symptoms_text=symptoms_text,
+                ecg_findings=ecg_findings,
+                lab_findings=lab_findings,
+                lab_values=lab_values,
+                common_condition=str(quality.get("top_common_condition") or ""),
             )
             rare_ms = int((time.time() - rare_started) * 1000)
             quality.update(rare_quality)
@@ -481,8 +509,6 @@ class WorkflowService:
                 top_score=float(quality.get("rare_top_score", 0.0) or 0.0),
             )
         else:
-            quality.setdefault("rare_cases_searched", 0)
-            quality.setdefault("rare_top_score", 0.0)
             processing_steps.append(
                 {
                     "step": "rare_case_search",
@@ -531,7 +557,7 @@ class WorkflowService:
                 labs_json=labs_json,
                 context_text=context_text,
                 quality=quality,
-                history_json=history_summary,
+                history_json=history_bundle,
                 patient_id=patient_id,
             )
             result["duration_ms"] = int((time.time() - started_at) * 1000)
@@ -555,6 +581,13 @@ class WorkflowService:
         with ThreadPoolExecutor(max_workers=2) as executor:
             payload_future = executor.submit(run_payload_save)
             kra_future = executor.submit(run_kra_analysis)
+            done, pending = wait({payload_future, kra_future}, return_when=FIRST_EXCEPTION)
+            first_error = next((future.exception() for future in done if future.exception() is not None), None)
+            if first_error is not None:
+                cancel_event.set()
+                for future in pending:
+                    future.cancel()
+                raise first_error
             payload_result = payload_future.result()
             self._raise_if_cancelled(session_id)
             kra_run = kra_future.result()
@@ -635,6 +668,13 @@ class WorkflowService:
         with ThreadPoolExecutor(max_workers=2) as executor:
             kra_save_future = executor.submit(run_kra_persist)
             ora_future = executor.submit(run_ora_refinement)
+            done, pending = wait({kra_save_future, ora_future}, return_when=FIRST_EXCEPTION)
+            first_error = next((future.exception() for future in done if future.exception() is not None), None)
+            if first_error is not None:
+                cancel_event.set()
+                for future in pending:
+                    future.cancel()
+                raise first_error
             kra_save_result = kra_save_future.result()
             self._raise_if_cancelled(session_id)
             ora_run = ora_future.result()
@@ -766,6 +806,9 @@ class WorkflowService:
             return None
 
     def _normalize_symptoms_payload(self, extraction_payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
+        if not isinstance(extraction_payload, dict):
+            extraction_payload = {"translated_text": str(extraction_payload or "")}
+
         symptoms = extraction_payload.get("symptoms", []) or []
         risk_factors = extraction_payload.get("risk_factors", []) or []
         translated = str(extraction_payload.get("translated_text") or "").strip()

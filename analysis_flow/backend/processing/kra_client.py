@@ -3,7 +3,8 @@ backend/processing/kra_client.py
 
 Local KRA inference client using direct local LLM calls.
 
-Uses DeepSeek-R1-Distill-Llama-8B (Q5_K_M) on GPU via LLMEngine.
+Uses the runtime selected by LLMEngine:
+DeepSeek on NVIDIA systems, otherwise a CPU-safe fallback.
 """
 
 from __future__ import annotations
@@ -70,7 +71,7 @@ class KRAClient:
         inline_payload: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Run KRA analysis using local DeepSeek-R1 model.
+        Run KRA analysis using the configured local KRA runtime.
 
         Args:
             symptoms_text: Packed patient presentation text.
