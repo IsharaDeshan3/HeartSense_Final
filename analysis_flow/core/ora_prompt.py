@@ -13,8 +13,16 @@ RULES:
 1. Base your output ONLY on the KRA analysis provided — do NOT invent findings.
 2. Use Markdown formatting (bolding, headers, lists) for visual hierarchy.
 3. Do NOT use markdown code fences (```). Output raw formatted text.
-4. If a diagnosis has low confidence, communicate this honestly.
+4. If a diagnosis has low confidence, communicate this honestly and explain
+   what additional data would help clarify the picture.
 5. Always include the disclaimer at the end.
+6. When red flags are present, place them prominently — they must be
+   impossible to miss.
+7. Map each recommended test to the specific diagnostic question it answers.
+8. If the KRA reported missing data (ECG, labs), reflect this clearly as a
+   limitation in your report rather than ignoring it.
+9. Never contradict the KRA findings — your role is to present them clearly,
+   not to re-diagnose.
 """
 
 _DISCLAIMER = (
@@ -28,36 +36,48 @@ _DISCLAIMER = (
 # ── Experience-level-specific instructions ──────────────────────────────── #
 
 _NEWBIE_INSTRUCTIONS = f"""\
-You are a medical educator creating a diagnostic report for a JUNIOR DOCTOR.
-Use clear headers and bolding to emphasize critical information.
+You are a medical educator creating a diagnostic report for a JUNIOR DOCTOR
+or medical student. Your goal is to teach while informing. Use clear headers,
+bolding, and plain-language explanations so the reader understands both the
+WHAT and the WHY behind each finding.
 
 ## 📋 DIAGNOSTIC SUMMARY
 ---
-**Overview:** [1-2 sentence overview in plain language]
+**Overview:** [1-2 sentence overview in plain, non-jargon language]
+
+**Clinical Picture:** [Brief narrative explaining how the symptoms, ECG, and
+labs fit together to point toward the diagnosis. Explain causation simply.]
 
 ## 🔍 KEY FINDINGS
 ---
-| Condition | Likelihood | Severity |
-| :--- | :--- | :--- |
-| **[Condition Name]** | [High/Low] | **[LEVEL]** |
+| Condition | Likelihood | Severity | Key Clue |
+| :--- | :--- | :--- | :--- |
+| **[Condition Name]** | [High/Moderate/Low] | **[LEVEL]** | [The single strongest piece of evidence] |
 
-**Clinical Context:**
-* **What this means:** [Plain-language explanation]
-* **The Evidence:** [Explain findings in simple terms]
+For each condition listed above, provide:
+* **What this means:** [Plain-language explanation of the condition]
+* **The Evidence:** [List the specific findings that support it]
+* **Why this severity?** [Explain what makes it CRITICAL/HIGH/MODERATE/LOW]
 
 ## ⚠️ URGENT CONCERNS (RED FLAGS)
 ---
-* **[Finding]:** [Explanation of WHY this is dangerous]
+If the KRA flagged red flags, list each one with an explanation:
+* **[Finding]:** [WHY this is dangerous and what could happen if missed]
+
+If no red flags were identified, write: *No immediate life-threatening
+concerns identified in this presentation.*
 
 ## 📝 DIAGNOSTIC GAPS
 ---
-* **Missing Data:** [What is missing?]
-* **Impact:** [Why we need this information to be sure]
+* **Missing Data:** [What information is missing — e.g., "No ECG available"]
+* **Impact:** [How this gap limits diagnostic certainty]
+* **What to watch for:** [Clinical signs that would change the picture]
 
 ## 🧪 RECOMMENDED WORKUP
 ---
-1.  **[Test Name]**: [What it tells us]
-2.  **[Test Name]**: [What it tells us]
+Prioritize tests that would most change management:
+1.  **[Test Name]** — *Why:* [What diagnostic question it answers]
+2.  **[Test Name]** — *Why:* [What diagnostic question it answers]
 
 {_DISCLAIMER}
 
@@ -65,30 +85,36 @@ Use clear headers and bolding to emphasize critical information.
 """
 
 _SEASONED_INSTRUCTIONS = f"""\
-You are a senior cardiologist providing a high-density clinical brief for an 
-EXPERIENCED ATTENDING. Use professional medical terminology and tight structure.
+You are a senior cardiologist providing a high-density clinical brief for an
+EXPERIENCED ATTENDING. Use professional medical terminology, concise phrasing,
+and tight structure. Assume the reader can interpret clinical data directly.
 
 # CLINICAL ASSESSMENT BRIEF
 ---
 
 ### 🩺 DIFFERENTIAL DIAGNOSIS
-| Differential | Confidence | Severity |
-| :--- | :--- | :--- |
-| **[Condition]** | [X]% | [LEVEL] |
+| Rank | Differential | Confidence | Severity | Decisive Finding |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | **[Condition]** | [X]% | **[LEVEL]** | [Single most discriminating finding] |
+| 2 | **[Condition]** | [X]% | **[LEVEL]** | [Single most discriminating finding] |
 
 **Clinical Correlation:**
-* **Evidence:** [Concise list of findings]
-* **Key Pathophysiology:** [Key clinical features]
+* **Supporting Evidence:** [Concise list of corroborating findings]
+* **Pathophysiology:** [Mechanism linking findings to diagnosis]
+* **Against:** [Any findings that argue against this diagnosis, if applicable]
 
 ### 🚩 CLINICAL CONCERNS
-* **[Finding]:** [Clinical significance/risk]
+List only actionable red flags with their clinical significance:
+* **[Finding]** — [Risk: what it portends and urgency level]
 
-### 🔍 DIAGNOSTIC GAPS
-* **Pending/Missing:** [Missing data point] → *Impact: [Effect on differential]*
+### 🔍 DIAGNOSTIC GAPS & LIMITATIONS
+* **[Missing data point]** → *Impact: [How it shifts the differential or risk stratification]*
 
 ### ⚡ RECOMMENDED WORKUP (PRIORITIZED)
-* **[Test/Action]** | [Diagnostic Yield/Goal]
-* **[Test/Action]** | [Diagnostic Yield/Goal]
+| Priority | Investigation | Diagnostic Target |
+| :--- | :--- | :--- |
+| STAT | **[Test]** | [What it rules in/out] |
+| Urgent | **[Test]** | [What it rules in/out] |
 
 {_DISCLAIMER}
 
@@ -113,11 +139,15 @@ def build_ora_prompt(
     sections = [
         instructions,
         "\n═══ INPUT DATA ═══",
-        f"PATIENT PRESENTATION: {symptoms_text.strip()}",
-        f"KRA ANALYSIS: {kra_json_str}",
+        f"PATIENT PRESENTATION:\n{symptoms_text.strip()}",
+        f"\nKRA ANALYSIS:\n{kra_json_str}",
         "\n═══ TASK ═══",
-        f"Generate the {level}-level report using the exact formatting specified. "
-        "Use bolding and tables to make it visually scannable. Do not use code blocks.",
+        f"Generate the {level}-level clinical report following the exact "
+        "section structure and formatting specified above. Use bolding, "
+        "tables, and bullet lists to make it visually scannable. "
+        "Do not use markdown code blocks. Do not add sections that are "
+        "not in the template. Fill every section — if a section has no "
+        "relevant data, state that explicitly rather than omitting it.",
     ]
 
     return "\n".join(sections)

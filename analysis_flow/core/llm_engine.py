@@ -41,16 +41,14 @@ _DEFAULTS: Dict[str, Any] = {
     "KRA_TEMPERATURE": "0.6",
     "KRA_MAX_TOKENS": "4096",
     # KRA CPU fallback (used automatically when NVIDIA is not available)
-    # CPU fallback uses a separate Phi-3.5-mini GGUF copy.
-    # The dedicated path avoids shared-model lock contention with ORA while
-    # keeping a model family that is known to work with the current
-    # llama-cpp-python runtime in this repository.
+    # CPU fallback uses Qwen2.5-7B-Instruct (Q4_K_M) — a stronger 7B model
+    # that avoids shared-model lock contention with ORA.
     "KRA_FORCE_CPU": "0",
-    "KRA_CPU_FALLBACK_MODEL_PATH": str(_ROOT / "models" / "phi-3.5-mini-kra-q4_k_m.gguf"),
+    "KRA_CPU_FALLBACK_MODEL_PATH": str(_ROOT / "models" / "Qwen2.5-7B-Instruct-Q4_K_M.gguf"),
     "KRA_CPU_FALLBACK_N_GPU_LAYERS": "0",
-    "KRA_CPU_FALLBACK_N_CTX": "4096",
+    "KRA_CPU_FALLBACK_N_CTX": "3072",
     "KRA_CPU_FALLBACK_TEMPERATURE": "0.2",
-    "KRA_CPU_FALLBACK_MAX_TOKENS": "1024",
+    "KRA_CPU_FALLBACK_MAX_TOKENS": "1536",
 
     # ORA (CPU)
     "ORA_MODEL_PATH": str(_ROOT / "models" / "phi-3.5-mini-q4_k_m.gguf"),
