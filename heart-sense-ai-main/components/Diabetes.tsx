@@ -83,6 +83,26 @@ function applyExtracted(base: FormData, data?: Record<string, any>): FormData {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function DiabeticModal({ open, onClose, extractedData, onAutoResult }: DiabeticModalProps) {
+    // Conversion factors for mg/dL to mmol/L
+    const conversionFactors: Record<string, number> = {
+      Chol: 0.0259, // Cholesterol
+      TG: 0.0113,   // Triglycerides
+      HDL: 0.0259,  // HDL Cholesterol
+      LDL: 0.0259,  // LDL Cholesterol
+      // Add more if needed
+    };
+
+    // Convert mg/dL to mmol/L for relevant fields
+    function convertFormDataToMmolL(data: FormData): FormData {
+      const converted: FormData = { ...data };
+      for (const key of Object.keys(conversionFactors)) {
+        const val = Number(data[key as keyof FormData]);
+        if (!isNaN(val) && val !== 0) {
+          converted[key as keyof FormData] = (val * conversionFactors[key]).toFixed(2);
+        }
+      }
+      return converted;
+    }
   const [formData, setFormData] = useState<FormData>(EMPTY_FORM)
   const [errors, setErrors]     = useState<FormErrors>({})
   const [result, setResult]     = useState<any>(null)
@@ -99,36 +119,38 @@ export default function DiabeticModal({ open, onClose, extractedData, onAutoResu
 
     const hasExtracted = !!extractedData && Object.values(extractedData).some(v => v != null && v !== "")
     if (hasExtracted) {
-      setFormData(applyExtracted(EMPTY_FORM, extractedData))
-      setPrefilled(true)
-      setFetching(false)
+      // Apply extracted and convert values
+      const extracted = applyExtracted(EMPTY_FORM, extractedData);
+      setFormData(convertFormDataToMmolL(extracted));
+      setPrefilled(true);
+      setFetching(false);
       setTimeout(() => {
         if (!loading && !result) {
-          handleSubmit({ preventDefault: () => {} } as React.FormEvent)
+          handleSubmit({ preventDefault: () => {} } as React.FormEvent);
         }
-      }, 500)
-      return
+      }, 500);
+      return;
     }
 
-    setFormData(EMPTY_FORM)
-    setFetching(true)
+    setFormData(EMPTY_FORM);
+    setFetching(true);
 
     const fetchData = async () => {
       try {
-        const userId = localStorage.getItem("user_id")
-        const token  = localStorage.getItem("access_token")
-        if (!userId || !token) { setFetching(false); return }
+        const userId = localStorage.getItem("user_id");
+        const token  = localStorage.getItem("access_token");
+        if (!userId || !token) { setFetching(false); return; }
 
-        const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"
+        const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
         const res  = await fetch(`${base}/api/diabetic/user/${userId}`, {
           headers: { Authorization: `Bearer ${token}` },
-        })
+        });
 
         if (res.ok) {
-          const data = await res.json()
+          const data = await res.json();
           // Only use a saved value if it is a meaningful non-zero value
-          const nz = (v: any) => (v != null && Number(v) !== 0) ? String(v) : ""
-          setFormData({
+          const nz = (v: any) => (v != null && Number(v) !== 0) ? String(v) : "";
+          const loaded: FormData = {
             Age:    nz(data.Age),
             Gender: data.Gender ?? "",
             BMI:    nz(data.BMI),
@@ -138,16 +160,17 @@ export default function DiabeticModal({ open, onClose, extractedData, onAutoResu
             LDL:    nz(data.LDL),
             Cr:     nz(data.Cr),
             BUN:    nz(data.BUN),
-          })
+          };
+          setFormData(convertFormDataToMmolL(loaded));
         }
       } catch (e) {
-        console.error("DiabeticModal fetch:", e)
+        console.error("DiabeticModal fetch:", e);
       } finally {
-        setFetching(false)
+        setFetching(false);
       }
-    }
+    };
 
-    fetchData()
+    fetchData();
   }, [open, extractedData])
 
   const handleChange = (name: string, value: string) => {
@@ -173,20 +196,23 @@ export default function DiabeticModal({ open, onClose, extractedData, onAutoResu
     setLoading(true)
     setResult(null)
 
+    // Convert relevant fields to mmol/L before sending
+    const converted = convertFormDataToMmolL(formData);
+
     try {
       const res = await fetch("https://diabetesnew-1051190728028.asia-south1.run.app", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          Age:    Number(formData.Age),
-          Gender: formData.Gender,
-          BMI:    Number(formData.BMI),
-          Chol:   Number(formData.Chol),
-          TG:     Number(formData.TG),
-          HDL:    Number(formData.HDL),
-          LDL:    Number(formData.LDL),
-          Cr:     Number(formData.Cr),
-          BUN:    Number(formData.BUN),
+          Age:    Number(converted.Age),
+          Gender: converted.Gender,
+          BMI:    Number(converted.BMI),
+          Chol:   Number(converted.Chol),
+          TG:     Number(converted.TG),
+          HDL:    Number(converted.HDL),
+          LDL:    Number(converted.LDL),
+          Cr:     Number(converted.Cr),
+          BUN:    Number(converted.BUN),
         }),
       })
       if (!res.ok) throw new Error("API request failed")

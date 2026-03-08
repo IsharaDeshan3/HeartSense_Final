@@ -5,7 +5,6 @@ import LabSuggester from "@/components/LabSuggester";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import DiagnosticButtons from "@/components/DiagnosticButtons";
 
 export default function LabAnalysisPage() {
 	const [isNightMode, setIsNightMode] = useState(false);
@@ -65,10 +64,6 @@ export default function LabAnalysisPage() {
 							<div className="h-10 w-1 bg-primary rounded-full"></div>
 							<h2 className="text-xl font-bold tracking-tight">Lab Report Analyzer</h2>
 						</div>
-							{/* Only show DiagnosticButtons after extraction */}
-						{labExtracted && (
-							<DiagnosticButtons extractedGroup1={extractedGroup1} extractedGroup2={extractedGroup2}/>
-						)}
 						<LabSuggester
 							// Pass handler to update parent state with extracted groups
 							onAnalysisComplete={res => {

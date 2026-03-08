@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { PatientService } from "@/services/PatientService";
+import DiagnosticButtons from "./DiagnosticButtons";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -68,9 +69,9 @@ You are a medical document analysis AI.
 
 IMPORTANT MEDICAL SAFETY RULES:
 - Abnormal lab values do NOT automatically require further testing.
-- Recommend follow-up tests only if abnormalities indicate a clinically significant health risk or affect the patient’s main condition (e.g., cardiac, renal, diabetic).
-- Mild, isolated, or diet-related lab value variations should NOT trigger new tests; monitoring or repeat labs is preferred.
-- Diagnostic tests (ECG, Echocardiogram, CT, MRI, Ultrasound, etc.) must only be suggested if abnormalities or patient context justify them.
+- Recommend follow-up lab tests only if abnormalities indicate a clinically significant health risk or affect the patient’s main condition (e.g., cardiac, renal, diabetic).
+- Mild, isolated, or diet-related lab value variations should NOT trigger new lab tests; monitoring or repeat labs is preferred.
+- Only include future **lab tests** in recommendations. Do NOT include clinical assessments.
 - Daily health advice should only be provided for values that are clearly High or Low.
 
 STEP 1 – VALIDATION
@@ -154,39 +155,29 @@ Examples:
 
 Return these items inside the "dailyHealthAdvice" array.
 
-STEP 6 – RECOMMENDED NEXT TESTS WITH REASONS
+STEP 6 – RECOMMENDED FUTURE LAB TESTS WITH REASONS
 
-Universal rules for ANY lab report:
+Rules for ANY lab report:
 
-1. Recommend follow-up tests ONLY if abnormal values:
+1. Only recommend **future lab tests**, not clinical assessments, risk scores, or imaging.
+2. Recommend follow-up lab tests ONLY if abnormal values:
    - Indicate clinically significant health risk
    - OR affect the patient’s main condition (e.g., cardiac, renal, diabetic)
-   
-2. Mild or isolated abnormalities (e.g., slightly low RBC, mild RDW elevation, minor iron variation) **should NOT trigger new tests**.  
-   - For these, suggest **monitoring or repeat lab tests**.
-
-3. Functional diagnostic tests (ECG, Echocardiogram, CT, MRI, Ultrasound) should only be suggested if:
-   - Multiple risk markers are abnormal  
-   - OR patient context indicates risk (e.g., cardiac patient)  
-   - OR relevant symptoms exist
-
+3. Mild or isolated abnormalities (e.g., slightly high cholesterol, low RBC, mild RDW elevation) **should NOT trigger new lab tests**; suggest **monitoring or repeat labs** instead.
 4. Nutritional or specialized tests (Iron studies, Vitamin B12, Ferritin, etc.) should only be suggested if:
-   - Values indicate moderate/severe abnormality  
-   - OR patient context makes it clinically relevant  
-
+   - Values indicate moderate/severe abnormality
+   - OR patient context makes it clinically relevant
 5. Format each recommendation:
-"Test Name - Reason for recommendation"
+"Lab Test Name - Reason for recommendation"
 
-6. Examples of appropriate recommendations:
-- "Repeat Lipid Profile in 3–6 months - To monitor elevated cholesterol levels in a cardiac patient."
-- "HbA1c Test - To assess blood glucose control in a patient at risk for diabetes."
-- "Kidney Function Test - Elevated creatinine may indicate impaired kidney function."
+Examples for lipid report:
+- "Repeat Lipid Profile in 3–6 months - To monitor elevated LDL and total cholesterol levels and assess response to lifestyle changes."
 
-7. Examples of tests NOT recommended for mild/isolated abnormalities:
-- Iron studies for slightly low RBC without anemia symptoms  
-- ECG for high RDW alone in a patient with no cardiac history or symptoms
+Examples NOT recommended for mild/isolated abnormalities:
+- Iron studies for slightly low RBC without symptoms  
+- Repeat labs for minor variations close to normal
 
-If no follow-up tests are needed, return an empty array [].
+If no follow-up lab tests are needed, return an empty array [].
 
 STEP 7 – OUTPUT
 
@@ -719,6 +710,11 @@ export default function LabSuggester({
               {/* Recommended tests */}
               <TabsContent value="recommended" className="flex-1 mt-0">
                 <div className="glass rounded-[2rem] border border-white/5 overflow-hidden p-6">
+                  {/* DiagnosticButtons added here */}
+                  <DiagnosticButtons
+                    extractedGroup1={result?.extractedJsonGroup1}
+                    extractedGroup2={result?.extractedJsonGroup2}
+                  />
                   {!result!.recommendedTests || result!.recommendedTests.length === 0 ? (
                     <div className="text-center py-10">
                       <CheckCircle className="h-16 w-16 text-emerald-400 mx-auto mb-4 opacity-50" />
