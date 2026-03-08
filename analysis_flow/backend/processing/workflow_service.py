@@ -89,7 +89,7 @@ class WorkflowService:
         self._cancel_events: dict[str, threading.Event] = {}  # per-session cancel events
         self.event_bus = PipelineEventBus()
 
-    def readiness_status(self) -> dict[str, bool]:
+    def readiness_status(self) -> dict[str, Any]:
         """Non-blocking readiness check for local KRA and ORA models.
 
         Uses LLMEngine.is_loaded() so the health endpoint never blocks
@@ -97,8 +97,20 @@ class WorkflowService:
         """
         from core.llm_engine import LLMEngine
         kra_ok, ora_ok = LLMEngine.is_loaded()
-        logger.info("Model readiness — KRA: %s  ORA: %s", kra_ok, ora_ok)
-        return {"kra": kra_ok, "ora": ora_ok, "all_ready": kra_ok and ora_ok}
+        diagnostics = LLMEngine.diagnostics()
+        logger.info(
+            "Model readiness — KRA: %s  ORA: %s  python_ok=%s  init_error=%s",
+            kra_ok,
+            ora_ok,
+            diagnostics.get("python_version_supported"),
+            diagnostics.get("init_error_type"),
+        )
+        return {
+            "kra": kra_ok,
+            "ora": ora_ok,
+            "all_ready": kra_ok and ora_ok,
+            "diagnostics": diagnostics,
+        }
 
     @staticmethod
     def _kra_timeout_seconds() -> float:

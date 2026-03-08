@@ -169,8 +169,11 @@ async def lifespan (app :FastAPI ):
             health.get("kra_model"),
             health.get("ora_model"),
         )
-    except Exception as exc:
-        logger.error("LLM preload failed: %s — models will load on first request", exc)
+    except Exception:
+        from core.llm_engine import LLMEngine
+        logger.error("LLM preload failed — models are unavailable until the environment issue is fixed")
+        logger.error("LLM diagnostics: %s", LLMEngine.diagnostics())
+        logger.exception("LLM preload exception")
 
     logger .info ("System ready!")
 

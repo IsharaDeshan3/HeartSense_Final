@@ -33,12 +33,17 @@ for /f "tokens=1,2 delims=." %%a in ("%PY_VER%") do (
     set PY_MAJOR=%%a
     set PY_MINOR=%%b
 )
-if %PY_MAJOR% LSS 3 (
-    echo ERROR: Detected Python %PY_VER%. Python 3.10+ is required.
+:: Strictly require Python 3.10.11
+if not "%PY_VER%" == "3.10" (
+    echo ERROR: Detected Python %PY_VER%. Python 3.10.11 is strictly required for all backend venvs.
+    echo Please install Python 3.10.11 and ensure "py -3.10" or "python" points to it.
     pause & exit /b 1
 )
-if %PY_MAJOR% EQU 3 if %PY_MINOR% LSS 10 (
-    echo ERROR: Detected Python %PY_VER%. Python 3.10+ is required.
+:: Optionally check patch version
+for /f %%p in ('%PY_CMD% -c "import sys; print(sys.version_info.micro)"') do set PY_PATCH=%%p
+if not "%PY_PATCH%" == "11" (
+    echo ERROR: Detected Python 3.10.%PY_PATCH%. Python 3.10.11 is strictly required for all backend venvs.
+    echo Please install Python 3.10.11 and ensure "py -3.10" or "python" points to it.
     pause & exit /b 1
 )
 
@@ -106,42 +111,75 @@ echo.
 :: ============================================================
 set AF_PYTHON=%ROOT%analysis_flow\.venv\Scripts\python.exe
 
+set CUDA_TOOLKIT_DIR=
+set CUDA_TOOLKIT_VERSION=
+set CUDA_BIN_DIR=
+set CUDA_BIN_X64_DIR=
+
+for /f "usebackq delims=" %%D in (`powershell -NoProfile -Command "$root='C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA'; if (Test-Path $root) { Get-ChildItem $root -Directory | Sort-Object {[version]($_.Name.TrimStart('v'))} -Descending | Select-Object -First 1 -ExpandProperty FullName }"`) do set CUDA_TOOLKIT_DIR=%%D
+if defined CUDA_TOOLKIT_DIR (
+    for %%V in ("%CUDA_TOOLKIT_DIR%") do set CUDA_TOOLKIT_VERSION=%%~nxV
+    if exist "%CUDA_TOOLKIT_DIR%\bin\x64" set CUDA_BIN_X64_DIR=%CUDA_TOOLKIT_DIR%\bin\x64
+    if exist "%CUDA_TOOLKIT_DIR%\bin" set CUDA_BIN_DIR=%CUDA_TOOLKIT_DIR%\bin
+    if defined CUDA_BIN_X64_DIR set PATH=%CUDA_BIN_X64_DIR%;%PATH%
+    if defined CUDA_BIN_DIR set PATH=%CUDA_BIN_DIR%;%PATH%
+    echo   Detected CUDA toolkit: %CUDA_TOOLKIT_DIR%
+) else (
+    echo   No local CUDA toolkit detected under Program Files.
+)
+echo.
+
 echo [Phase 2] Checking llama-cpp-python (CUDA) ...
 
 :: Test if llama_cpp is importable
 "%AF_PYTHON%" -c "import llama_cpp" >nul 2>&1
 if errorlevel 1 (
-    echo   llama-cpp-python not found. Trying pre-built CUDA 11.8 wheel ...
-    echo   Using --only-binary to avoid source builds, no C compiler needed.
-    echo.
-    "%AF_PYTHON%" -m pip install llama-cpp-python --only-binary=llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu118 -q
-    if errorlevel 1 (
-        echo   CUDA cu118 wheel not found. Trying cu121 index ...
-        "%AF_PYTHON%" -m pip install llama-cpp-python --only-binary=llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121 -q
-        if errorlevel 1 (
-            echo   Trying CPU-only binary wheel ...
-            "%AF_PYTHON%" -m pip install llama-cpp-python --only-binary=llama-cpp-python -q
-            if errorlevel 1 (
-                echo.
-                echo   WARNING: No pre-built llama-cpp-python wheel found.
-                echo   Local LLM inference will NOT work until this is resolved.
-                echo   To fix: install Visual Studio Build Tools, then re-run.
-                echo   Download: https://visualstudio.microsoft.com/visual-cpp-build-tools/
-                echo   Continuing to start other services ...
-                echo.
-            ) else (
-                echo   Installed CPU-only llama-cpp-python. No GPU inference.
-            )
-        ) else (
-            echo   llama-cpp-python installed with CUDA 12.1 support.
-        )
-    ) else (
+    if /I "%CUDA_TOOLKIT_VERSION%" == "v11.8" (
+        echo   llama-cpp-python not importable. Trying pre-built CUDA 11.8 wheel ...
+        "%AF_PYTHON%" -m pip install llama-cpp-python --only-binary=llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu118 -q
+        if errorlevel 1 goto :install_llama_cpp_cpu
         echo   llama-cpp-python installed with CUDA 11.8 support.
+    ) else if /I "%CUDA_TOOLKIT_VERSION%" == "v12.1" (
+        echo   llama-cpp-python not importable. Trying pre-built CUDA 12.1 wheel ...
+        "%AF_PYTHON%" -m pip install llama-cpp-python --only-binary=llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121 -q
+        if errorlevel 1 goto :install_llama_cpp_cpu
+        echo   llama-cpp-python installed with CUDA 12.1 support.
+    ) else if defined CUDA_TOOLKIT_DIR (
+        echo   Building llama-cpp-python against local CUDA toolkit %CUDA_TOOLKIT_VERSION% ...
+        set "CMAKE_GENERATOR=Visual Studio 17 2022"
+        set "CMAKE_ARGS=-DGGML_CUDA=ON -DCUDAToolkit_ROOT=%CUDA_TOOLKIT_DIR%"
+        set "CUDACXX=%CUDA_TOOLKIT_DIR%\bin\nvcc.exe"
+        set "FORCE_CMAKE=1"
+        set "PATH=C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%PATH%"
+        "%AF_PYTHON%" -m pip install --force-reinstall --no-cache-dir --no-binary llama-cpp-python llama-cpp-python -q
+        if errorlevel 1 goto :install_llama_cpp_cpu
+        echo   llama-cpp-python built for local CUDA toolkit %CUDA_TOOLKIT_VERSION%.
+    ) else (
+        goto :install_llama_cpp_cpu
     )
 ) else (
     echo   llama-cpp-python already installed.
 )
 echo.
+goto :after_llama_cpp
+
+:install_llama_cpp_cpu
+echo   GPU wheel/build unavailable. Trying CPU-only binary wheel ...
+"%AF_PYTHON%" -m pip install llama-cpp-python --only-binary=llama-cpp-python -q
+if errorlevel 1 (
+    echo.
+    echo   WARNING: No usable llama-cpp-python installation could be created.
+    echo   Local LLM inference will NOT work until this is resolved.
+    echo   To fix GPU builds: install Visual Studio Build Tools with CUDA integration, then re-run.
+    echo   Download: https://visualstudio.microsoft.com/visual-cpp-build-tools/
+    echo   Continuing to start other services ...
+    echo.
+) else (
+    echo   Installed CPU-only llama-cpp-python. No GPU inference.
+)
+echo.
+
+:after_llama_cpp
 
 :: ============================================================
 ::  Phase 3: Download GGUF models in background (first-time only)

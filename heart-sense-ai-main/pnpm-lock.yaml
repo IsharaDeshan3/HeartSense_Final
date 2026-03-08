@@ -39,7 +39,7 @@ importers:
         specifier: ^9.2.1
         version: 9.2.1
       next:
-        specifier: 16.1.6
+        specifier: ^16.1.6
         version: 16.1.6(@babel/core@7.29.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       next-themes:
         specifier: ^0.4.6

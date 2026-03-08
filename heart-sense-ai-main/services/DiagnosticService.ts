@@ -86,6 +86,9 @@ export interface HealthResponse {
   ora_model_loaded: boolean;
   /** KRA runtime description, e.g. "nvidia_gpu" or "cpu_fallback" */
   kra_runtime?: string;
+  cuda_toolkit_path?: string;
+  cuda_toolkit_version?: string;
+  dll_search_paths?: string[];
 }
 
 // ─── Service ────────────────────────────────────────────────────────────────
