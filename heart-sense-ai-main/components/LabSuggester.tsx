@@ -232,6 +232,7 @@ export default function LabSuggester({
   isLoggedIn = true,
   onRiskResults,
 }: LabSuggesterProps) {
+  const [diagnosticRefresh, setDiagnosticRefresh] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile]             = useState<File | null>(null);
@@ -261,6 +262,27 @@ export default function LabSuggester({
 
   // ── File handling ─────────────────────────────────────────────────────────
 
+    // Conversion factors for mg/dL to mmol/L
+    const conversionFactors: Record<string, number> = {
+      Chol: 0.0259, // Cholesterol
+      TG: 0.0113,   // Triglycerides
+      HDL: 0.0259,  // HDL Cholesterol
+      LDL: 0.0259,  // LDL Cholesterol
+      Cr: 88.4,     // Creatinine (mg/dL to µmol/L)
+      BUN: 0.357,   // BUN (mg/dL to mmol/L)
+    };
+
+    function convertFormDataToMmolL(data: Record<string, any>): Record<string, any> {
+      const converted: Record<string, any> = { ...data };
+      for (const key of Object.keys(conversionFactors)) {
+        const val = Number(data[key]);
+        if (!isNaN(val) && val !== 0) {
+          converted[key] = (val * conversionFactors[key]).toFixed(2);
+        }
+      }
+      return converted;
+    }
+
     useEffect(() => {
       if (!result) {
         setDiabeticAutoResult(null);
@@ -270,10 +292,11 @@ export default function LabSuggester({
 
       // Diabetic risk
       if (result.extractedJsonGroup1 && Object.keys(result.extractedJsonGroup1).length > 0) {
+        const diabeticData = convertFormDataToMmolL(result.extractedJsonGroup1);
         fetch("https://diabetesnew-1051190728028.asia-south1.run.app", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(result.extractedJsonGroup1),
+          body: JSON.stringify(diabeticData),
         })
           .then(res => res.json())
             .then(data => {
@@ -287,10 +310,11 @@ export default function LabSuggester({
 
       // Heart risk
       if (result.extractedJsonGroup2 && Object.keys(result.extractedJsonGroup2).length > 0) {
+        const heartData = convertFormDataToMmolL(result.extractedJsonGroup2);
         fetch("https://cardiac-1051190728028.asia-south1.run.app", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(result.extractedJsonGroup2),
+          body: JSON.stringify(heartData),
         })
           .then(res => res.json())
             .then(data => {
@@ -326,6 +350,8 @@ export default function LabSuggester({
     setError(null);
     setImageZoomed(false);
     setFromHistory(false);
+    setDiabeticAutoResult(null);
+    setHeartAutoResult(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -645,7 +671,13 @@ export default function LabSuggester({
 
           {/* Tabbed results */}
           <div className="flex-1">
-            <Tabs defaultValue="comparison" className="h-full flex flex-col">
+            <Tabs defaultValue="comparison" className="h-full flex flex-col"
+              onValueChange={val => {
+                if (val === "recommended") {
+                  setDiagnosticRefresh(r => r + 1);
+                }
+              }}
+            >
               <TabsList className="h-16 bg-white/5 border border-white/5 rounded-2xl p-1.5 gap-1.5 self-start mb-4 w-full">
                 <TabsTrigger
                   value="comparison"
@@ -712,6 +744,7 @@ export default function LabSuggester({
                 <div className="glass rounded-[2rem] border border-white/5 overflow-hidden p-6">
                   {/* DiagnosticButtons added here */}
                   <DiagnosticButtons
+                    key={diagnosticRefresh + '-' + JSON.stringify(result?.extractedJsonGroup1) + JSON.stringify(result?.extractedJsonGroup2)}
                     extractedGroup1={result?.extractedJsonGroup1}
                     extractedGroup2={result?.extractedJsonGroup2}
                   />

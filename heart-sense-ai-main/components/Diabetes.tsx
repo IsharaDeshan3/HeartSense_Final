@@ -89,7 +89,8 @@ export default function DiabeticModal({ open, onClose, extractedData, onAutoResu
       TG: 0.0113,   // Triglycerides
       HDL: 0.0259,  // HDL Cholesterol
       LDL: 0.0259,  // LDL Cholesterol
-      // Add more if needed
+      Cr: 88.4,     // Creatinine (mg/dL to µmol/L)
+      BUN: 0.357,   // BUN (mg/dL to mmol/L)
     };
 
     // Convert mg/dL to mmol/L for relevant fields
