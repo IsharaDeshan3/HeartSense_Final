@@ -264,6 +264,47 @@ def get_analysis_payload(payload_id: str) -> Optional[Dict[str, Any]]:
     return _get("analysis_payloads", f"id=eq.{payload_id}&select=*", single=True)
 
 
+def _history_record_rank(record: Dict[str, Any]) -> tuple[int, int, int, int]:
+    experience_level = str(record.get("experience_level") or "").strip().lower()
+    if experience_level in {"seasoned", "expert"}:
+        experience_rank = 3
+    elif experience_level in {"newbie", "junior"}:
+        experience_rank = 2
+    elif experience_level:
+        experience_rank = 1
+    else:
+        experience_rank = 0
+
+    return (
+        1 if record.get("refined_output") else 0,
+        experience_rank,
+        1 if record.get("ora_id") else 0,
+        1 if record.get("kra_id") else 0,
+    )
+
+
+def _dedupe_history_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    deduped: List[Dict[str, Any]] = []
+    payload_index: Dict[str, int] = {}
+
+    for record in records:
+        payload_id = str(record.get("payload_id") or "").strip()
+        if not payload_id:
+            deduped.append(record)
+            continue
+
+        existing_index = payload_index.get(payload_id)
+        if existing_index is None:
+            payload_index[payload_id] = len(deduped)
+            deduped.append(record)
+            continue
+
+        if _history_record_rank(record) > _history_record_rank(deduped[existing_index]):
+            deduped[existing_index] = record
+
+    return deduped
+
+
 def get_patient_diagnosis_history(patient_id: str) -> list:
     """
     Fetch all past diagnoses for a patient from the diagnosis_history view.
@@ -272,10 +313,11 @@ def get_patient_diagnosis_history(patient_id: str) -> list:
     """
     try:
         _init()
-        return _get(
+        records = _get(
             "diagnosis_history",
             f"patient_id=eq.{patient_id}&order=created_at.desc"
         )
+        return _dedupe_history_records(records)
     except Exception as exc:
         logger.warning(
             "get_patient_diagnosis_history(%s) failed: %s", patient_id, exc
@@ -386,6 +428,76 @@ def get_patient_history_bundle(patient_id: str) -> Dict[str, Any]:
         "summary": summary,
         "records": records,
     }
+
+
+def delete_history_record(payload_id: str) -> Dict[str, Any]:
+    """Delete one history entry and its dependent KRA/ORA rows."""
+    _init()
+
+    deleted: Dict[str, int] = {
+        "analysis_payloads": 0,
+        "kra_outputs": 0,
+        "ora_outputs": 0,
+        "local_sessions": 0,
+    }
+
+    payload = get_analysis_payload(payload_id)
+    if not payload:
+        raise ValueError("PAYLOAD_NOT_FOUND")
+
+    session_id = str(payload.get("session_id") or "").strip()
+
+    try:
+        kra_rows = _get("kra_outputs", f"payload_id=eq.{payload_id}&select=id")
+    except Exception as exc:
+        logger.warning("Failed to enumerate kra_outputs for payload %s: %s", payload_id, exc)
+        kra_rows = []
+
+    for kra_row in kra_rows:
+        kra_id = str(kra_row.get("id") or "").strip()
+        if not kra_id:
+            continue
+        try:
+            url = f"{_base_url}/rest/v1/ora_outputs?kra_output_id=eq.{kra_id}"
+            resp = requests.delete(url, headers=_headers, timeout=30)
+            if resp.status_code >= 400:
+                resp.raise_for_status()
+            deleted["ora_outputs"] += len(resp.json()) if resp.text.strip() else 0
+        except Exception as exc:
+            logger.warning("Failed to delete ora_outputs for kra_output %s: %s", kra_id, exc)
+
+    try:
+        url = f"{_base_url}/rest/v1/kra_outputs?payload_id=eq.{payload_id}"
+        resp = requests.delete(url, headers=_headers, timeout=30)
+        if resp.status_code >= 400:
+            resp.raise_for_status()
+        deleted["kra_outputs"] += len(resp.json()) if resp.text.strip() else 0
+    except Exception as exc:
+        logger.warning("Failed to delete kra_outputs for payload %s: %s", payload_id, exc)
+
+    try:
+        url = f"{_base_url}/rest/v1/analysis_payloads?id=eq.{payload_id}"
+        resp = requests.delete(url, headers=_headers, timeout=30)
+        if resp.status_code >= 400:
+            resp.raise_for_status()
+        deleted["analysis_payloads"] += len(resp.json()) if resp.text.strip() else 0
+    except Exception as exc:
+        logger.warning("Failed to delete analysis_payloads for payload %s: %s", payload_id, exc)
+
+    if session_id:
+        try:
+            from .workflow_store import WorkflowStore
+
+            store = WorkflowStore()
+            session = store.get_session(session_id)
+            if session and str(session.get("supabase_payload_id") or "") == payload_id:
+                store.delete_session(session_id)
+                deleted["local_sessions"] = 1
+        except Exception as exc:
+            logger.warning("Failed to delete local workflow session %s: %s", session_id, exc)
+
+    logger.info("History payload %s cleanup: %s", payload_id, deleted)
+    return deleted
 
 
 def ping_supabase() -> bool:

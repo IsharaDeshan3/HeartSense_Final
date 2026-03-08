@@ -16,7 +16,11 @@ logger = logging.getLogger(__name__)
 from backend.processing.workflow_state import WorkflowState
 from backend.processing.workflow_store import WorkflowStore
 from backend.processing.workflow_service import WorkflowService
-from backend.processing.supabase_payload import get_patient_history_bundle, ping_supabase
+from backend.processing.supabase_payload import (
+    delete_history_record,
+    get_patient_history_bundle,
+    ping_supabase,
+)
 
 
 router = APIRouter()
@@ -228,6 +232,26 @@ async def get_patient_history(patient_id: str) -> dict[str, Any]:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"History fetch failed: {exc}",
+        )
+
+
+@router.delete("/history/{payload_id}")
+async def delete_patient_history(payload_id: str) -> dict[str, Any]:
+    try:
+        result = delete_history_record(payload_id)
+        return {"status": "ok", "payload_id": payload_id, "deleted": result}
+    except ValueError as exc:
+        if str(exc) == "PAYLOAD_NOT_FOUND":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="History record not found",
+            )
+        raise
+    except Exception as exc:
+        logger.error("History delete failed for %s: %s", payload_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"History delete failed: {exc}",
         )
 
 
