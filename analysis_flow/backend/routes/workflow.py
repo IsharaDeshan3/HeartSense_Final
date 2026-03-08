@@ -76,16 +76,8 @@ class AnalysisStopResponse(BaseModel):
 async def health() -> dict[str, Any]:
     readiness = _workflow.readiness_status()
     search_readiness = _workflow._search.readiness_status()
-
-    # Expose the KRA runtime description (e.g. "nvidia_gpu" or "cpu_fallback")
-    kra_runtime: str | None = None
-    try:
-        from core.llm_engine import LLMEngine
-        kra_loaded, _ = LLMEngine.is_loaded()
-        if kra_loaded:
-            kra_runtime = LLMEngine.instance().health().get("kra_runtime")
-    except Exception:
-        pass
+    diagnostics = readiness.get("diagnostics", {})
+    nvidia_probe = diagnostics.get("nvidia_probe", {})
 
     return {
         "status": "ok" if readiness["all_ready"] and search_readiness["faiss_ready"] else "degraded",
@@ -94,7 +86,19 @@ async def health() -> dict[str, Any]:
         "supabase_ready": ping_supabase(),
         "kra_model_loaded": readiness["kra"],
         "ora_model_loaded": readiness["ora"],
-        "kra_runtime": kra_runtime,
+        "kra_runtime": diagnostics.get("kra_runtime"),
+        "llm_init_error": diagnostics.get("init_error"),
+        "llm_init_error_type": diagnostics.get("init_error_type"),
+        "python_version": diagnostics.get("python_version"),
+        "python_expected": diagnostics.get("python_expected"),
+        "python_version_supported": diagnostics.get("python_version_supported"),
+        "python_executable": diagnostics.get("python_executable"),
+        "llama_cpp_installed": diagnostics.get("llama_cpp_installed"),
+        "cuda_toolkit_path": diagnostics.get("cuda_toolkit_path") or diagnostics.get("toolkit_path"),
+        "cuda_toolkit_version": diagnostics.get("cuda_toolkit_version") or diagnostics.get("toolkit_version"),
+        "dll_search_paths": diagnostics.get("dll_search_paths", []),
+        "nvidia_gpu_visible": nvidia_probe.get("gpu_visible"),
+        "nvidia_smi_path": nvidia_probe.get("nvidia_smi_path"),
     }
 
 

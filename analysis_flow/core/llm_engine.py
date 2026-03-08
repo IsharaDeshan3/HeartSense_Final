@@ -13,10 +13,13 @@ ORA always runs on CPU.
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import os
+import platform
 import shutil
 import subprocess
+import sys
 import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -32,6 +35,7 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 
 _ROOT = Path(__file__).resolve().parent.parent  # analysis_flow/
+_EXPECTED_PYTHON = (3, 10, 11)
 
 _DEFAULTS: Dict[str, Any] = {
     # KRA primary path (preferred when NVIDIA is available)
@@ -63,6 +67,17 @@ def _env(key: str) -> str:
     return os.getenv(key, _DEFAULTS.get(key, ""))
 
 
+def _python_runtime_details() -> Dict[str, Any]:
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    expected_python = ".".join(str(part) for part in _EXPECTED_PYTHON)
+    return {
+        "python_version": python_version,
+        "python_expected": expected_python,
+        "python_version_supported": sys.version_info[:3] == _EXPECTED_PYTHON,
+        "python_executable": sys.executable,
+    }
+
+
 def _resolve_model_path(raw_path: str) -> Path:
     candidate = Path(raw_path).expanduser()
     if candidate.is_absolute():
@@ -70,26 +85,64 @@ def _resolve_model_path(raw_path: str) -> Path:
     return (_ROOT / candidate).resolve()
 
 
-def _has_nvidia_gpu() -> bool:
-    if _env("KRA_FORCE_CPU").strip() == "1":
-        return False
-
+def _probe_nvidia_gpu() -> Dict[str, Any]:
+    forced_cpu = _env("KRA_FORCE_CPU").strip() == "1"
     nvidia_smi = shutil.which("nvidia-smi")
+    result: Dict[str, Any] = {
+        "forced_cpu": forced_cpu,
+        "nvidia_smi_path": nvidia_smi,
+        "gpu_visible": False,
+        "returncode": None,
+        "stdout": "",
+        "stderr": "",
+    }
+
+    if forced_cpu:
+        result["stderr"] = "KRA_FORCE_CPU=1"
+        return result
+
     if not nvidia_smi:
-        return False
+        result["stderr"] = "nvidia-smi not found on PATH"
+        return result
 
     try:
-        result = subprocess.run(
+        probe = subprocess.run(
             [nvidia_smi, "-L"],
             capture_output=True,
             text=True,
             timeout=3,
             check=False,
         )
-    except Exception:
-        return False
+    except Exception as exc:
+        result["stderr"] = str(exc)
+        return result
 
-    return result.returncode == 0 and bool(result.stdout.strip())
+    result["returncode"] = probe.returncode
+    result["stdout"] = probe.stdout.strip()
+    result["stderr"] = probe.stderr.strip()
+    result["gpu_visible"] = probe.returncode == 0 and bool(probe.stdout.strip())
+    return result
+
+
+def _ensure_model_file(path: Path, *, label: str) -> None:
+    if not path.exists():
+        raise FileNotFoundError(f"{label} model file not found: {path}")
+
+
+def _ensure_llama_cpp_available() -> None:
+    if importlib.util.find_spec("llama_cpp") is not None:
+        return
+
+    details = _python_runtime_details()
+    raise RuntimeError(
+        "llama_cpp is not installed in the active analysis_flow environment "
+        f"({details['python_executable']}, Python {details['python_version']}). "
+        "Recreate analysis_flow/.venv with Python 3.10.11 and install llama-cpp-python there."
+    )
+
+
+def _has_nvidia_gpu() -> bool:
+    return bool(_probe_nvidia_gpu()["gpu_visible"])
 
 
 def _resolve_kra_runtime() -> Dict[str, Any]:
@@ -139,20 +192,134 @@ def _resolve_kra_runtime() -> Dict[str, Any]:
 
 _instance: Optional["LLMEngine"] = None
 _lock = threading.Lock()
+_last_init_error: Optional[str] = None
+_last_init_error_type: Optional[str] = None
+_dll_dir_handles: list[Any] = []
+_registered_dll_dirs: set[str] = set()
+
+
+def _detect_windows_cuda_toolkit() -> Dict[str, Any]:
+    info: Dict[str, Any] = {
+        "platform": platform.system(),
+        "toolkit_path": None,
+        "toolkit_version": None,
+        "bin_dirs": [],
+    }
+    if os.name != "nt":
+        return info
+
+    candidates: list[Path] = []
+    env_candidates = [
+        os.getenv("CUDA_PATH"),
+        *(value for key, value in os.environ.items() if key.startswith("CUDA_PATH_V")),
+    ]
+    for value in env_candidates:
+        if value:
+            path = Path(value)
+            if path.exists():
+                candidates.append(path)
+
+    toolkit_root = Path(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA")
+    if toolkit_root.exists():
+        candidates.extend(path for path in toolkit_root.iterdir() if path.is_dir())
+
+    unique_candidates: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate.resolve()).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_candidates.append(candidate)
+
+    def _version_key(path: Path) -> tuple[int, ...]:
+        text = path.name.lstrip("vV")
+        parts: list[int] = []
+        for chunk in text.split("."):
+            try:
+                parts.append(int(chunk))
+            except ValueError:
+                parts.append(0)
+        return tuple(parts)
+
+    if not unique_candidates:
+        return info
+
+    selected = max(unique_candidates, key=_version_key)
+    bin_dirs = [selected / "bin" / "x64", selected / "bin"]
+    info["toolkit_path"] = str(selected)
+    info["toolkit_version"] = selected.name.lstrip("vV") or None
+    info["bin_dirs"] = [str(path) for path in bin_dirs if path.exists()]
+    return info
+
+
+def _configure_windows_dll_search_paths() -> Dict[str, Any]:
+    info = _detect_windows_cuda_toolkit()
+    info["dll_search_paths"] = []
+
+    if os.name != "nt" or not hasattr(os, "add_dll_directory"):
+        return info
+
+    spec = importlib.util.find_spec("llama_cpp")
+    llama_lib_dir: Optional[Path] = None
+    if spec and spec.origin:
+        candidate = Path(spec.origin).resolve().parent / "lib"
+        if candidate.exists():
+            llama_lib_dir = candidate
+
+    candidate_dirs: list[Path] = []
+    if llama_lib_dir is not None:
+        candidate_dirs.append(llama_lib_dir)
+    candidate_dirs.extend(Path(path) for path in info.get("bin_dirs", []))
+
+    for directory in candidate_dirs:
+        resolved = str(directory.resolve())
+        if resolved in _registered_dll_dirs:
+            info["dll_search_paths"].append(resolved)
+            continue
+        try:
+            handle = os.add_dll_directory(resolved)
+        except OSError:
+            continue
+        _dll_dir_handles.append(handle)
+        _registered_dll_dirs.add(resolved)
+        info["dll_search_paths"].append(resolved)
+
+    return info
 
 
 class LLMEngine:
     """Thread-safe singleton that holds both LLM model handles."""
 
     def __init__(self) -> None:
+        python_details = _python_runtime_details()
+        self._cuda_runtime = _configure_windows_dll_search_paths()
+        if not python_details["python_version_supported"]:
+            logger.warning(
+                "analysis_flow models are pinned to Python %s, current runtime is Python %s (%s)",
+                python_details["python_expected"],
+                python_details["python_version"],
+                python_details["python_executable"],
+            )
+
+        _ensure_llama_cpp_available()
         from llama_cpp import Llama
 
         self._kra_runtime = _resolve_kra_runtime()
+        nvidia_probe = _probe_nvidia_gpu()
+        logger.info(
+            "NVIDIA probe — forced_cpu=%s visible=%s nvidia_smi=%s cuda_toolkit=%s",
+            nvidia_probe["forced_cpu"],
+            nvidia_probe["gpu_visible"],
+            nvidia_probe["nvidia_smi_path"],
+            self._cuda_runtime.get("toolkit_path"),
+        )
 
         # Initialize progress bar
         with tqdm(total=2, desc="Loading Models", unit="model") as pbar:
             # ---- KRA model ------------------------------------------------------
-            kra_path = self._kra_runtime["model_path"]
+            kra_path = Path(self._kra_runtime["model_path"])
+            _ensure_model_file(kra_path, label="KRA")
             logger.info(
                 "Loading KRA model: %s (runtime=%s, n_gpu_layers=%s)",
                 kra_path,
@@ -160,7 +327,7 @@ class LLMEngine:
                 self._kra_runtime["n_gpu_layers"],
             )
             self.kra_model = Llama(
-                model_path=kra_path,
+                model_path=str(kra_path),
                 n_gpu_layers=int(self._kra_runtime["n_gpu_layers"]),
                 n_ctx=int(self._kra_runtime["n_ctx"]),
                 verbose=False,
@@ -174,7 +341,8 @@ class LLMEngine:
             pbar.update(1)
 
             # ---- ORA model (CPU) ------------------------------------------------
-            ora_path = str(_resolve_model_path(_env("ORA_MODEL_PATH")))
+            ora_path = _resolve_model_path(_env("ORA_MODEL_PATH"))
+            _ensure_model_file(ora_path, label="ORA")
             kra_resolved = str(Path(kra_path).resolve())
             ora_resolved = str(Path(ora_path).resolve())
 
@@ -187,7 +355,7 @@ class LLMEngine:
             else:
                 logger.info("Loading ORA model: %s (CPU)", ora_path)
                 self.ora_model = Llama(
-                    model_path=ora_path,
+                    model_path=str(ora_path),
                     n_gpu_layers=int(_env("ORA_N_GPU_LAYERS")),
                     n_ctx=int(_env("ORA_N_CTX")),
                     verbose=False,
@@ -215,13 +383,40 @@ class LLMEngine:
         return loaded, loaded
 
     @classmethod
+    def diagnostics(cls) -> Dict[str, Any]:
+        global _instance, _last_init_error, _last_init_error_type
+        python_details = _python_runtime_details()
+        diagnostics: Dict[str, Any] = {
+            "initialized": _instance is not None,
+            "kra_loaded": _instance is not None,
+            "ora_loaded": _instance is not None,
+            "llama_cpp_installed": importlib.util.find_spec("llama_cpp") is not None,
+            "init_error": _last_init_error,
+            "init_error_type": _last_init_error_type,
+            "nvidia_probe": _probe_nvidia_gpu(),
+        }
+        diagnostics.update(_configure_windows_dll_search_paths())
+        diagnostics.update(python_details)
+        if _instance is not None:
+            diagnostics.update(_instance.health())
+        return diagnostics
+
+    @classmethod
     def instance(cls) -> "LLMEngine":
         """Return the singleton LLMEngine, creating it on first call."""
-        global _instance
+        global _instance, _last_init_error, _last_init_error_type
         if _instance is None:
             with _lock:
                 if _instance is None:
-                    _instance = cls()
+                    try:
+                        _instance = cls()
+                        _last_init_error = None
+                        _last_init_error_type = None
+                    except Exception as exc:
+                        _last_init_error = str(exc)
+                        _last_init_error_type = type(exc).__name__
+                        logger.exception("LLM engine initialization failed")
+                        raise
         return _instance
 
     # -- KRA inference ------------------------------------------------------ #
@@ -325,4 +520,9 @@ class LLMEngine:
             "kra_fallback_active": bool(self._kra_runtime["fallback_active"]),
             "kra_runtime_reason": self._kra_runtime["reason"],
             "shared_model": getattr(self, "_shared_model", False),
+            "init_error": None,
+            "init_error_type": None,
+            "cuda_toolkit_path": self._cuda_runtime.get("toolkit_path"),
+            "cuda_toolkit_version": self._cuda_runtime.get("toolkit_version"),
+            "dll_search_paths": self._cuda_runtime.get("dll_search_paths", []),
         }
