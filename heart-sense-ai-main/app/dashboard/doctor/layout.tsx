@@ -20,6 +20,7 @@ const navItems = [
     { href: "/dashboard/doctor/new-case", label: "New Case", icon: Plus },
     { href: "/dashboard/doctor/patients", label: "My Patients", icon: Users },
     { href: "/dashboard/doctor/diagnostics", label: "ECG Analysis", icon: Activity },
+    { href: "/dashboard/doctor/lab-analysis", label: "Lab Analysis", icon: Activity },
     { href: "/dashboard/doctor/search", label: "Find Patient", icon: Search },
 ];
 

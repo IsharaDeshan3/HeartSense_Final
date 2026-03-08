@@ -17,13 +17,12 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import EcgInterpreter from "@/components/EcgInterpreter";
 import NlpProcessor from "@/components/NlpProcessor";
 import LabSuggester from "@/components/LabSuggester";
-import type { LabAnalysisResult } from "@/components/LabSuggester";
 import AiDiagnostics from "@/components/AiDiagnostics";
+import type { LabAnalysisResult } from "@/components/LabSuggester";
 import type { EcgResult } from "@/lib/diagnosticMapper";
 import { WorkflowService, type WorkflowState } from "@/services/WorkflowService";
 
@@ -67,19 +66,6 @@ export default function DiagnosticWorkspace() {
   const [manualSymptom, setManualSymptom] = useState("");
   const [ecgSkipped, setEcgSkipped] = useState(false);
   const [labSkipped, setLabSkipped] = useState(false);
-  const resolvedPatientId = String(patientId ?? "");
-
-  useEffect(() => {
-    if (!resolvedPatientId || typeof window === "undefined") return;
-
-    window.localStorage.removeItem(getWorkflowCacheKey(resolvedPatientId));
-    setWorkflowSessionId(null);
-    setWorkflowState(null);
-    setActiveTab("nlp");
-    setEcgSkipped(false);
-    setLabSkipped(false);
-    setSummary(createInitialSummary());
-  }, [resolvedPatientId]);
 
   const handleNlpUpdate = (data: any) => {
     // data contains { updated_state: { symptoms, risk_factors... }, translated_text }
@@ -102,19 +88,11 @@ export default function DiagnosticWorkspace() {
   const handleAddManualSymptom = () => {
     const symptom = manualSymptom.trim();
     if (!symptom) return;
-    setSummary((prev) => {
-      const updatedSymptoms = [...prev.symptoms, symptom];
-      const fallbackObservation = `Manual symptom entry: ${updatedSymptoms.join(", ")}`;
-      return {
-        ...prev,
-        symptoms: updatedSymptoms,
-        recentObservation:
-          prev.recentObservation === "Awaiting clinical input..."
-            ? fallbackObservation
-            : prev.recentObservation,
-        riskScore: prev.riskFactors.length > 2 ? "High" : prev.riskFactors.length > 0 ? "Moderate" : "Low",
-      };
-    });
+    setSummary((prev) => ({
+      ...prev,
+      symptoms: [...prev.symptoms, symptom],
+      riskScore: prev.riskFactors.length > 2 ? "High" : prev.riskFactors.length > 0 ? "Moderate" : "Low",
+    }));
     setManualSymptom("");
     toast.success(`Added: ${symptom}`);
   };
@@ -135,13 +113,6 @@ export default function DiagnosticWorkspace() {
     setIsAdvancing(true);
     try {
       if (activeTab === "ecg") {
-        // Guard: if ECG is already done or beyond, just navigate
-        if (workflowState && ["ECG_DONE", "LAB_DONE", "ANALYSIS_RUNNING", "ANALYSIS_DONE"].includes(workflowState)) {
-          setEcgSkipped(true);
-          setActiveTab("lab");
-          toast.info("ECG already recorded — navigating to Lab");
-          return;
-        }
         const saved = await WorkflowService.saveEcg(workflowSessionId, {
           status: "skipped",
           reason: "user_skipped",
@@ -151,13 +122,6 @@ export default function DiagnosticWorkspace() {
         setActiveTab("lab");
         toast.info("ECG skipped and recorded");
       } else if (activeTab === "lab") {
-        // Guard: if Lab is already done or beyond, just navigate
-        if (workflowState && ["LAB_DONE", "ANALYSIS_RUNNING", "ANALYSIS_DONE"].includes(workflowState)) {
-          setLabSkipped(true);
-          setActiveTab("ai");
-          toast.info("Lab already recorded — navigating to Analysis");
-          return;
-        }
         const saved = await WorkflowService.saveLab(workflowSessionId, {
           status: "skipped",
           reason: "user_skipped",
@@ -168,20 +132,7 @@ export default function DiagnosticWorkspace() {
         toast.info("Lab Reports skipped and recorded");
       }
     } catch (error: any) {
-      // Treat 409 (conflict) as "already done" and continue
-      if (error.message?.includes("409")) {
-        if (activeTab === "ecg") {
-          setEcgSkipped(true);
-          setActiveTab("lab");
-          toast.info("ECG step already completed — moving to Lab");
-        } else if (activeTab === "lab") {
-          setLabSkipped(true);
-          setActiveTab("ai");
-          toast.info("Lab step already completed — moving to Analysis");
-        }
-      } else {
-        toast.error("Failed to skip step", { description: error.message });
-      }
+      toast.error("Failed to skip step", { description: error.message });
     } finally {
       setIsAdvancing(false);
     }
@@ -202,44 +153,6 @@ export default function DiagnosticWorkspace() {
     }));
     toast.success("Lab findings synced to workspace");
   };
-
-  useEffect(() => {
-    if (!resolvedPatientId || !workflowSessionId || typeof window === "undefined") return;
-
-    const payload: WorkspaceWorkflowCache = {
-      sessionId: workflowSessionId,
-      state: workflowState,
-      activeTab,
-    };
-    window.localStorage.setItem(getWorkflowCacheKey(resolvedPatientId), JSON.stringify(payload));
-  }, [resolvedPatientId, workflowSessionId, workflowState, activeTab]);
-
-  useEffect(() => {
-    if (!workflowSessionId) return;
-
-    const syncSessionState = async () => {
-      try {
-        const session = await WorkflowService.getSession(workflowSessionId);
-        setWorkflowState(session.current_state);
-        if (["LAB_DONE", "ANALYSIS_RUNNING", "ANALYSIS_DONE"].includes(session.current_state)) {
-          setActiveTab("ai");
-        }
-      } catch (err: any) {
-        // If session is gone (404/500), clear stale cache and reset so a new session is created
-        if (err.message?.includes("404") || err.message?.includes("500")) {
-          console.warn("Stale workflow session detected, resetting...", workflowSessionId);
-          if (resolvedPatientId && typeof window !== "undefined") {
-            window.localStorage.removeItem(getWorkflowCacheKey(resolvedPatientId));
-          }
-          setWorkflowSessionId(null);
-          setWorkflowState(null);
-        }
-        // otherwise keep locally cached state
-      }
-    };
-
-    syncSessionState();
-  }, [workflowSessionId]);
 
   useEffect(() => {
     const fetchPatientData = async () => {
@@ -282,7 +195,7 @@ export default function DiagnosticWorkspace() {
     };
 
     initWorkflow();
-  }, [patient, patientId, workflowSessionId]);
+  }, [patient, patientId]);
 
   const canAccessTab = (tab: "nlp" | "ecg" | "lab" | "ai") => {
     if (tab === "nlp") return true;
@@ -305,6 +218,25 @@ export default function DiagnosticWorkspace() {
     }
     setActiveTab(typedTab);
   };
+  // Save a diagnostic entry to the patient's history
+  const saveDiagnosticEntry = async (type: string, entrySummary: string, entryData: any) => {
+    try {
+      const resolvedPatientId = String(patient?._id ?? patientId);
+      const res = await fetch(`/api/patients/${resolvedPatientId}/diagnostics`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, summary: entrySummary, data: entryData }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.warn("Diagnostic history save skipped:", err?.message || `HTTP ${res.status}`);
+      }
+    } catch (error) {
+      console.error("Failed to save diagnostic entry:", error);
+    }
+  };
+
   const handleNextToEcg = async () => {
     if (summary.symptoms.length === 0) {
       toast.warning("Capture symptoms before proceeding");
@@ -324,18 +256,19 @@ export default function DiagnosticWorkspace() {
 
     setIsAdvancing(true);
     try {
-      const extractionNarrative =
-        summary.recentObservation && summary.recentObservation !== "Awaiting clinical input..."
-          ? summary.recentObservation
-          : `Manual symptom entry: ${summary.symptoms.join(", ")}`;
-
       const saved = await WorkflowService.saveExtraction(workflowSessionId, {
         symptoms: summary.symptoms,
         risk_factors: summary.riskFactors,
-        translated_text: extractionNarrative,
+        translated_text: summary.recentObservation,
         raw: { summary },
       });
       setWorkflowState(saved.state);
+
+      // Save to patient diagnostic history
+      await saveDiagnosticEntry("NLP",
+        `Symptoms: ${summary.symptoms.join(", ")}. Risk factors: ${summary.riskFactors.join(", ") || "None"}`,
+        { symptoms: summary.symptoms, riskFactors: summary.riskFactors, observation: summary.recentObservation }
+      );
 
       setActiveTab("ecg");
       toast.success("Symptoms saved. Proceeding to ECG");
@@ -371,16 +304,16 @@ export default function DiagnosticWorkspace() {
       );
       setWorkflowState(saved.state);
 
+      // Save to patient diagnostic history
+      await saveDiagnosticEntry("ECG",
+        `${summary.ecgResult.rhythm_analysis.rhythm_type} - ${summary.ecgResult.rhythm_analysis.heart_rate} BPM - ${summary.ecgResult.abnormalities.severity}`,
+        summary.ecgResult
+      );
+
       setActiveTab("lab");
       toast.success("ECG saved. Proceeding to Lab");
     } catch (error: any) {
-      // Treat 409 as "ECG already saved" and proceed
-      if (error.message?.includes("409")) {
-        setActiveTab("lab");
-        toast.info("ECG already saved — proceeding to Lab");
-      } else {
-        toast.error("Could not proceed to Lab", { description: error.message });
-      }
+      toast.error("Could not proceed to Lab", { description: error.message });
     } finally {
       setIsAdvancing(false);
     }
@@ -411,16 +344,22 @@ export default function DiagnosticWorkspace() {
       );
       setWorkflowState(saved.state);
 
+      // Save to patient diagnostic history
+      let abnormalCount = 0;
+      let labCount = 0;
+      if (summary.labResult && summary.labResult.labComparison) {
+        abnormalCount = summary.labResult.labComparison.filter(l => l.status !== "Normal").length;
+        labCount = summary.labResult.labComparison.length;
+      }
+      await saveDiagnosticEntry("Lab",
+        `${labCount} tests analyzed, ${abnormalCount} abnormal`,
+        summary.labResult
+      );
+
       setActiveTab("ai");
       toast.success("Lab saved. Proceeding to Analysis");
     } catch (error: any) {
-      // Treat 409 as "Lab already saved" and proceed
-      if (error.message?.includes("409")) {
-        setActiveTab("ai");
-        toast.info("Lab already saved — proceeding to Analysis");
-      } else {
-        toast.error("Could not proceed to Analysis", { description: error.message });
-      }
+      toast.error("Could not proceed to Analysis", { description: error.message });
     } finally {
       setIsAdvancing(false);
     }
@@ -726,7 +665,6 @@ export default function DiagnosticWorkspace() {
                 description="Upload a lab report image to extract values, compare against normal ranges, and get recommended follow-up tests."
               >
                 <LabSuggester
-                  patientId={String(patient?._id ?? patientId)}
                   patientContext={
                     patient
                       ? `Patient: ${patient.fullName}, Age: ${patient.age}, Gender: ${patient.gender}`
@@ -744,7 +682,7 @@ export default function DiagnosticWorkspace() {
                 description="AI combines all collected data — symptoms, ECG, and lab results — to generate a comprehensive diagnostic assessment."
               >
                 <AiDiagnostics
-                  patientId={resolvedPatientId}
+                  patientId={String(patient?._id ?? patientId)}
                   symptoms={summary.symptoms}
                   riskFactors={summary.riskFactors}
                   recentObservation={summary.recentObservation}
@@ -756,7 +694,7 @@ export default function DiagnosticWorkspace() {
                   workflowState={workflowState}
                   ecgSkipped={ecgSkipped}
                   labSkipped={labSkipped}
-                  onWorkflowStateChange={(state) => setWorkflowState(state)}
+                  onWorkflowStateChange={(state: WorkflowState) => setWorkflowState(state)}
                 />
               </WorkspaceModule>
             )}
