@@ -7,7 +7,6 @@ import {
   Activity,
   Microscope,
   BrainCircuit,
-  Stethoscope,
   ChevronRight,
   ShieldCheck,
   ClipboardList,
@@ -20,11 +19,15 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import EcgInterpreter from "@/components/EcgInterpreter";
 import NlpProcessor from "@/components/NlpProcessor";
+import type { CurrentState, SymptomData } from "@/components/ApprovalEditor";
 import LabSuggester from "@/components/LabSuggester";
 import AiDiagnostics from "@/components/AiDiagnostics";
 import type { LabAnalysisResult } from "@/components/LabSuggester";
 import type { EcgResult } from "@/lib/diagnosticMapper";
-import { WorkflowService, type WorkflowState } from "@/services/WorkflowService";
+import {
+  WorkflowService,
+  type WorkflowState,
+} from "@/services/WorkflowService";
 
 type WorkspaceWorkflowCache = {
   sessionId: string;
@@ -48,15 +51,20 @@ function createInitialSummary() {
   };
 }
 
-
 export default function DiagnosticWorkspace() {
   const { patientId } = useParams();
   const router = useRouter();
   const [patient, setPatient] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"nlp" | "ecg" | "lab" | "ai">("nlp");
-  const [workflowSessionId, setWorkflowSessionId] = useState<string | null>(null);
-  const [workflowState, setWorkflowState] = useState<WorkflowState | null>(null);
+  const [activeTab, setActiveTab] = useState<"nlp" | "ecg" | "lab" | "ai">(
+    "nlp",
+  );
+  const [workflowSessionId, setWorkflowSessionId] = useState<string | null>(
+    null,
+  );
+  const [workflowState, setWorkflowState] = useState<WorkflowState | null>(
+    null,
+  );
   const [isAdvancing, setIsAdvancing] = useState(false);
 
   // Workspace State System (Persistent between modules)
@@ -67,41 +75,67 @@ export default function DiagnosticWorkspace() {
   const [ecgSkipped, setEcgSkipped] = useState(false);
   const [labSkipped, setLabSkipped] = useState(false);
 
-  const handleNlpUpdate = (data: any) => {
-    // data contains { updated_state: { symptoms, risk_factors... }, translated_text }
-    const { updated_state, translated_text } = data;
+  // Shared NLP state — single source of truth for both voice and manual entry
+  const [nlpCurrentState, setNlpCurrentState] = useState<CurrentState>({
+    symptoms: {},
+    medical_history: {},
+    allergies: {},
+    risk_factors: {},
+  });
+
+  // Keep summary.symptoms and riskFactors in sync with approved NLP state
+  useEffect(() => {
+    const approvedSymptoms = Object.values(nlpCurrentState.symptoms)
+      .filter((v) => v.status === "approved")
+      .map((v) => v.value);
+    const approvedRiskFactors = Object.values(nlpCurrentState.risk_factors)
+      .filter((v) => v.status === "approved")
+      .map((v) => v.value);
     setSummary((prev) => ({
       ...prev,
-      recentObservation: translated_text || prev.recentObservation,
-      symptoms: updated_state.symptoms || prev.symptoms,
-      riskFactors: updated_state.risk_factors || prev.riskFactors,
+      symptoms: approvedSymptoms,
+      riskFactors: approvedRiskFactors,
       riskScore:
-        updated_state.risk_factors?.length > 2
+        approvedRiskFactors.length > 2
           ? "High"
-          : updated_state.risk_factors?.length > 0
-            ? "Moderate"
-            : "Low",
+          : approvedRiskFactors.length > 0
+          ? "Moderate"
+          : "Low",
     }));
+  }, [nlpCurrentState]);
+
+  const handleNlpUpdate = (data: any) => {
+    // Only sync translated text from voice — symptoms come through nlpCurrentState
+    const { translated_text } = data;
+    if (translated_text) {
+      setSummary((prev) => ({
+        ...prev,
+        recentObservation: translated_text,
+      }));
+    }
     toast.success("Clinical Summary Synchronized");
   };
 
   const handleAddManualSymptom = () => {
     const symptom = manualSymptom.trim();
     if (!symptom) return;
-    setSummary((prev) => ({
+    const key = `manual_${Date.now()}`;
+    setNlpCurrentState((prev) => ({
       ...prev,
-      symptoms: [...prev.symptoms, symptom],
-      riskScore: prev.riskFactors.length > 2 ? "High" : prev.riskFactors.length > 0 ? "Moderate" : "Low",
+      symptoms: {
+        ...prev.symptoms,
+        [key]: { value: symptom, status: "approved" as const },
+      },
     }));
     setManualSymptom("");
     toast.success(`Added: ${symptom}`);
   };
 
-  const handleRemoveSymptom = (index: number) => {
-    setSummary((prev) => ({
-      ...prev,
-      symptoms: prev.symptoms.filter((_, i) => i !== index),
-    }));
+  const handleRemoveSymptom = (key: string) => {
+    setNlpCurrentState((prev) => {
+      const { [key]: _, ...rest } = prev.symptoms;
+      return { ...prev, symptoms: rest as Record<string, SymptomData> };
+    });
   };
 
   const handleSkipStep = async () => {
@@ -202,12 +236,25 @@ export default function DiagnosticWorkspace() {
     if (!workflowState) return false;
 
     if (tab === "ecg") {
-      return ["EXTRACTION_DONE", "ECG_DONE", "LAB_DONE", "ANALYSIS_RUNNING", "ANALYSIS_DONE"].includes(workflowState);
+      return [
+        "EXTRACTION_DONE",
+        "ECG_DONE",
+        "LAB_DONE",
+        "ANALYSIS_RUNNING",
+        "ANALYSIS_DONE",
+      ].includes(workflowState);
     }
     if (tab === "lab") {
-      return ["ECG_DONE", "LAB_DONE", "ANALYSIS_RUNNING", "ANALYSIS_DONE"].includes(workflowState);
+      return [
+        "ECG_DONE",
+        "LAB_DONE",
+        "ANALYSIS_RUNNING",
+        "ANALYSIS_DONE",
+      ].includes(workflowState);
     }
-    return ["LAB_DONE", "ANALYSIS_RUNNING", "ANALYSIS_DONE"].includes(workflowState);
+    return ["LAB_DONE", "ANALYSIS_RUNNING", "ANALYSIS_DONE"].includes(
+      workflowState,
+    );
   };
 
   const handleTabChange = (tab: string) => {
@@ -219,18 +266,32 @@ export default function DiagnosticWorkspace() {
     setActiveTab(typedTab);
   };
   // Save a diagnostic entry to the patient's history
-  const saveDiagnosticEntry = async (type: string, entrySummary: string, entryData: any) => {
+  const saveDiagnosticEntry = async (
+    type: string,
+    entrySummary: string,
+    entryData: any,
+  ) => {
     try {
       const resolvedPatientId = String(patient?._id ?? patientId);
-      const res = await fetch(`/api/patients/${resolvedPatientId}/diagnostics`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, summary: entrySummary, data: entryData }),
-      });
+      const res = await fetch(
+        `/api/patients/${resolvedPatientId}/diagnostics`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type,
+            summary: entrySummary,
+            data: entryData,
+          }),
+        },
+      );
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        console.warn("Diagnostic history save skipped:", err?.message || `HTTP ${res.status}`);
+        console.warn(
+          "Diagnostic history save skipped:",
+          err?.message || `HTTP ${res.status}`,
+        );
       }
     } catch (error) {
       console.error("Failed to save diagnostic entry:", error);
@@ -244,7 +305,16 @@ export default function DiagnosticWorkspace() {
     }
 
     // If extraction is already done, just navigate (don't re-save)
-    if (workflowState && ["EXTRACTION_DONE", "ECG_DONE", "LAB_DONE", "ANALYSIS_RUNNING", "ANALYSIS_DONE"].includes(workflowState)) {
+    if (
+      workflowState &&
+      [
+        "EXTRACTION_DONE",
+        "ECG_DONE",
+        "LAB_DONE",
+        "ANALYSIS_RUNNING",
+        "ANALYSIS_DONE",
+      ].includes(workflowState)
+    ) {
       setActiveTab("ecg");
       return;
     }
@@ -265,9 +335,16 @@ export default function DiagnosticWorkspace() {
       setWorkflowState(saved.state);
 
       // Save to patient diagnostic history
-      await saveDiagnosticEntry("NLP",
-        `Symptoms: ${summary.symptoms.join(", ")}. Risk factors: ${summary.riskFactors.join(", ") || "None"}`,
-        { symptoms: summary.symptoms, riskFactors: summary.riskFactors, observation: summary.recentObservation }
+      await saveDiagnosticEntry(
+        "NLP",
+        `Symptoms: ${summary.symptoms.join(", ")}. Risk factors: ${
+          summary.riskFactors.join(", ") || "None"
+        }`,
+        {
+          symptoms: summary.symptoms,
+          riskFactors: summary.riskFactors,
+          observation: summary.recentObservation,
+        },
       );
 
       setActiveTab("ecg");
@@ -286,7 +363,12 @@ export default function DiagnosticWorkspace() {
     }
 
     // If ECG is already done, just navigate
-    if (workflowState && ["ECG_DONE", "LAB_DONE", "ANALYSIS_RUNNING", "ANALYSIS_DONE"].includes(workflowState)) {
+    if (
+      workflowState &&
+      ["ECG_DONE", "LAB_DONE", "ANALYSIS_RUNNING", "ANALYSIS_DONE"].includes(
+        workflowState,
+      )
+    ) {
       setActiveTab("lab");
       return;
     }
@@ -305,9 +387,10 @@ export default function DiagnosticWorkspace() {
       setWorkflowState(saved.state);
 
       // Save to patient diagnostic history
-      await saveDiagnosticEntry("ECG",
+      await saveDiagnosticEntry(
+        "ECG",
         `${summary.ecgResult.rhythm_analysis.rhythm_type} - ${summary.ecgResult.rhythm_analysis.heart_rate} BPM - ${summary.ecgResult.abnormalities.severity}`,
-        summary.ecgResult
+        summary.ecgResult,
       );
 
       setActiveTab("lab");
@@ -326,7 +409,10 @@ export default function DiagnosticWorkspace() {
     }
 
     // If Lab is already done, just navigate
-    if (workflowState && ["LAB_DONE", "ANALYSIS_RUNNING", "ANALYSIS_DONE"].includes(workflowState)) {
+    if (
+      workflowState &&
+      ["LAB_DONE", "ANALYSIS_RUNNING", "ANALYSIS_DONE"].includes(workflowState)
+    ) {
       setActiveTab("ai");
       return;
     }
@@ -348,18 +434,23 @@ export default function DiagnosticWorkspace() {
       let abnormalCount = 0;
       let labCount = 0;
       if (summary.labResult && summary.labResult.labComparison) {
-        abnormalCount = summary.labResult.labComparison.filter(l => l.status !== "Normal").length;
+        abnormalCount = summary.labResult.labComparison.filter(
+          (l) => l.status !== "Normal",
+        ).length;
         labCount = summary.labResult.labComparison.length;
       }
-      await saveDiagnosticEntry("Lab",
+      await saveDiagnosticEntry(
+        "Lab",
         `${labCount} tests analyzed, ${abnormalCount} abnormal`,
-        summary.labResult
+        summary.labResult,
       );
 
       setActiveTab("ai");
       toast.success("Lab saved. Proceeding to Analysis");
     } catch (error: any) {
-      toast.error("Could not proceed to Analysis", { description: error.message });
+      toast.error("Could not proceed to Analysis", {
+        description: error.message,
+      });
     } finally {
       setIsAdvancing(false);
     }
@@ -424,15 +515,6 @@ export default function DiagnosticWorkspace() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-white/5 p-3 bg-white/[0.02]">
-                <p className="text-[10px] font-bold text-muted-foreground mb-2 flex items-center gap-2">
-                  <Stethoscope className="h-3 w-3" /> LAST OBSERVATION
-                </p>
-                <p className="text-xs text-muted-foreground leading-relaxed italic">
-                  &quot;{summary.recentObservation}&quot;
-                </p>
-              </div>
-
               {summary.symptoms.length > 0 && (
                 <div className="rounded-2xl border border-white/5 p-4 bg-white/[0.02]">
                   <p className="text-[10px] font-bold text-muted-foreground mb-2 flex items-center gap-2 text-orange-400">
@@ -465,12 +547,13 @@ export default function DiagnosticWorkspace() {
                       {summary.ecgResult.rhythm_analysis.regularity}
                     </p>
                     <span
-                      className={`inline-block text-[8px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${summary.ecgResult.abnormalities.severity === "normal"
-                        ? "bg-emerald-500/10 text-emerald-400"
-                        : summary.ecgResult.abnormalities.severity === "mild"
+                      className={`inline-block text-[8px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                        summary.ecgResult.abnormalities.severity === "normal"
+                          ? "bg-emerald-500/10 text-emerald-400"
+                          : summary.ecgResult.abnormalities.severity === "mild"
                           ? "bg-amber-500/10 text-amber-400"
                           : "bg-rose-500/10 text-rose-400"
-                        }`}
+                      }`}
                     >
                       {summary.ecgResult.abnormalities.severity}
                     </span>
@@ -490,10 +573,11 @@ export default function DiagnosticWorkspace() {
                       .map((l, i) => (
                         <span
                           key={i}
-                          className={`text-[8px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${l.status === "High"
-                            ? "bg-rose-500/10 text-rose-400"
-                            : "bg-amber-500/10 text-amber-400"
-                            }`}
+                          className={`text-[8px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                            l.status === "High"
+                              ? "bg-rose-500/10 text-rose-400"
+                              : "bg-amber-500/10 text-amber-400"
+                          }`}
                         >
                           {l.test}: {l.status}
                         </span>
@@ -501,21 +585,20 @@ export default function DiagnosticWorkspace() {
                     {summary.labResult.labComparison.filter(
                       (l) => l.status === "Normal",
                     ).length > 0 && (
-                        <span className="text-[8px] font-bold text-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 rounded uppercase tracking-wider">
-                          {
-                            summary.labResult.labComparison.filter(
-                              (l) => l.status === "Normal",
-                            ).length
-                          }{" "}
-                          normal
-                        </span>
-                      )}
+                      <span className="text-[8px] font-bold text-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 rounded uppercase tracking-wider">
+                        {
+                          summary.labResult.labComparison.filter(
+                            (l) => l.status === "Normal",
+                          ).length
+                        }{" "}
+                        normal
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
             </div>
           </div>
-
         </div>
 
         <div className="pt-3 border-t border-white/5">
@@ -532,18 +615,37 @@ export default function DiagnosticWorkspace() {
         {/* WIZARD STEPPER HEADER */}
         <div className="border-b border-border/30 bg-background/80 backdrop-blur-xl px-6 py-3 shrink-0">
           <div className="flex items-center justify-center gap-0 max-w-4xl mx-auto">
-            {([
-              { key: "nlp" as const, label: "Patient Symptoms", icon: <ClipboardList className="h-4 w-4" />, step: 1 },
-              { key: "ecg" as const, label: "ECG Analysis", icon: <Activity className="h-4 w-4" />, step: 2 },
-              { key: "lab" as const, label: "Lab Reports", icon: <Microscope className="h-4 w-4" />, step: 3 },
-              { key: "ai" as const, label: "Analysis", icon: <BrainCircuit className="h-4 w-4" />, step: 4 },
-            ]).map((item, idx) => {
+            {[
+              {
+                key: "nlp" as const,
+                label: "Patient Symptoms",
+                icon: <ClipboardList className="h-4 w-4" />,
+                step: 1,
+              },
+              {
+                key: "ecg" as const,
+                label: "ECG Analysis",
+                icon: <Activity className="h-4 w-4" />,
+                step: 2,
+              },
+              {
+                key: "lab" as const,
+                label: "Lab Reports",
+                icon: <Microscope className="h-4 w-4" />,
+                step: 3,
+              },
+              {
+                key: "ai" as const,
+                label: "Analysis",
+                icon: <BrainCircuit className="h-4 w-4" />,
+                step: 4,
+              },
+            ].map((item, idx) => {
               const isActive = activeTab === item.key;
-              const isCompleted = (
+              const isCompleted =
                 (item.key === "nlp" && summary.symptoms.length > 0) ||
                 (item.key === "ecg" && summary.ecgResult !== null) ||
-                (item.key === "lab" && summary.labResult !== null)
-              );
+                (item.key === "lab" && summary.labResult !== null);
               const isAccessible = canAccessTab(item.key);
 
               return (
@@ -552,17 +654,25 @@ export default function DiagnosticWorkspace() {
                   <button
                     onClick={() => isAccessible && handleTabChange(item.key)}
                     disabled={!isAccessible}
-                    className={`flex items-center gap-3 px-5 py-3 rounded-2xl transition-all duration-300 whitespace-nowrap ${isActive
-                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105"
-                      : isCompleted
+                    className={`flex items-center gap-3 px-5 py-3 rounded-2xl transition-all duration-300 whitespace-nowrap ${
+                      isActive
+                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105"
+                        : isCompleted
                         ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20 cursor-pointer"
                         : isAccessible
-                          ? "bg-white/5 text-foreground border border-border/30 hover:bg-white/10 cursor-pointer"
-                          : "bg-white/[0.02] text-muted-foreground/40 border border-border/10 cursor-not-allowed"
-                      }`}
+                        ? "bg-white/5 text-foreground border border-border/30 hover:bg-white/10 cursor-pointer"
+                        : "bg-white/[0.02] text-muted-foreground/40 border border-border/10 cursor-not-allowed"
+                    }`}
                   >
-                    <div className={`h-7 w-7 rounded-lg flex-center text-xs font-black ${isActive ? "bg-primary-foreground/20" : isCompleted ? "bg-emerald-500/20" : "bg-white/10"
-                      }`}>
+                    <div
+                      className={`h-7 w-7 rounded-lg flex-center text-xs font-black ${
+                        isActive
+                          ? "bg-primary-foreground/20"
+                          : isCompleted
+                          ? "bg-emerald-500/20"
+                          : "bg-white/10"
+                      }`}
+                    >
                       {isCompleted && !isActive ? (
                         <ShieldCheck className="h-3.5 w-3.5" />
                       ) : (
@@ -585,21 +695,29 @@ export default function DiagnosticWorkspace() {
         </div>
 
         {/* STEP CONTENT */}
-        <div className="p-6 flex-1 overflow-y-auto flex flex-col min-h-0">
-          <div className="flex-1 min-h-0">
+        <div className="p-6 flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             {activeTab === "nlp" && (
               <WorkspaceModule
                 icon={<ClipboardList className="h-10 w-10" />}
                 title="Patient Symptoms"
                 description="Use voice recognition to capture patient symptoms in Sinhala. The AI will automatically extract and translate medical information."
               >
-                <NlpProcessor onUpdateSummary={handleNlpUpdate} />
+                <NlpProcessor
+                  onUpdateSummary={handleNlpUpdate}
+                  currentState={nlpCurrentState}
+                  onCurrentStateChange={setNlpCurrentState}
+                />
 
                 {/* Manual Symptom Entry */}
                 <div className="flex-1 glass rounded-2xl border border-white/5 p-6 flex flex-col shadow-xl">
                   <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-sm font-black uppercase tracking-widest text-primary/80">Manual Symptom Entry</h4>
-                    <span className="text-[10px] font-bold text-muted-foreground px-2 py-1 bg-white/5 rounded-lg uppercase">Keyboard Input</span>
+                    <h4 className="text-sm font-black uppercase tracking-widest text-primary/80">
+                      Manual Symptom Entry
+                    </h4>
+                    <span className="text-[10px] font-bold text-muted-foreground px-2 py-1 bg-white/5 rounded-lg uppercase">
+                      Keyboard Input
+                    </span>
                   </div>
 
                   <div className="flex gap-3 mb-5">
@@ -607,7 +725,9 @@ export default function DiagnosticWorkspace() {
                       type="text"
                       value={manualSymptom}
                       onChange={(e) => setManualSymptom(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleAddManualSymptom()}
+                      onKeyDown={(e) =>
+                        e.key === "Enter" && handleAddManualSymptom()
+                      }
                       placeholder="Type a symptom and press Enter..."
                       className="flex-1 h-12 px-5 rounded-xl bg-black/20 border border-white/10 text-sm text-foreground focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all shadow-inner"
                     />
@@ -621,23 +741,34 @@ export default function DiagnosticWorkspace() {
                   </div>
 
                   <div className="flex-1 bg-black/10 rounded-xl border border-white/5 p-4 overflow-y-auto">
-                    {summary.symptoms.length > 0 ? (
+                    {Object.values(nlpCurrentState.symptoms).filter(
+                      (v) => v.status === "approved",
+                    ).length > 0 ? (
                       <div className="flex flex-wrap gap-2">
-                        {summary.symptoms.map((s, i) => (
-                          <span key={i} className="group inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-500/10 text-orange-400 text-xs font-bold border border-orange-500/20 shadow-sm animate-in zoom-in-95">
-                            {s}
-                            <button
-                              onClick={() => handleRemoveSymptom(i)}
-                              className="opacity-50 group-hover:opacity-100 hover:text-orange-200 hover:bg-orange-500/20 p-0.5 rounded transition-all"
+                        {Object.entries(nlpCurrentState.symptoms)
+                          .filter(([_, v]) => v.status === "approved")
+                          .map(([key, v]) => (
+                            <span
+                              key={key}
+                              className="group inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-500/10 text-orange-400 text-xs font-bold border border-orange-500/20 shadow-sm animate-in zoom-in-95"
                             >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </span>
-                        ))}
+                              {v.value}
+                              <button
+                                onClick={() => handleRemoveSymptom(key)}
+                                className="opacity-50 group-hover:opacity-100 hover:text-orange-200 hover:bg-orange-500/20 p-0.5 rounded transition-all"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ))}
                       </div>
                     ) : (
                       <div className="h-full flex items-center justify-center text-center opacity-40">
-                        <p className="text-xs italic text-muted-foreground">No symptoms entered manually.<br />Use the input above to add symptoms.</p>
+                        <p className="text-xs italic text-muted-foreground">
+                          No symptoms added yet.
+                          <br />
+                          Use the input above or voice capture to add symptoms.
+                        </p>
                       </div>
                     )}
                   </div>
@@ -694,15 +825,17 @@ export default function DiagnosticWorkspace() {
                   workflowState={workflowState}
                   ecgSkipped={ecgSkipped}
                   labSkipped={labSkipped}
-                  onWorkflowStateChange={(state: WorkflowState) => setWorkflowState(state)}
+                  onWorkflowStateChange={(state: WorkflowState) =>
+                    setWorkflowState(state)
+                  }
                 />
               </WorkspaceModule>
             )}
           </div>
 
-          {/* WIZARD NEXT BUTTON — bottom right */}
+          {/* WIZARD NEXT BUTTON — pinned footer */}
           {activeTab !== "ai" && (
-            <div className="flex justify-end items-center gap-3 pt-4 pb-1 shrink-0">
+            <div className="flex justify-end items-center gap-3 pt-4 pb-1 shrink-0 border-t border-white/5 mt-4">
               {(activeTab === "ecg" || activeTab === "lab") && (
                 <Button
                   onClick={handleSkipStep}
@@ -715,19 +848,23 @@ export default function DiagnosticWorkspace() {
               )}
               <Button
                 onClick={
-                  activeTab === "nlp" ? handleNextToEcg :
-                    activeTab === "ecg" ? handleNextToLab :
-                      handleNextToAnalysis
+                  activeTab === "nlp"
+                    ? handleNextToEcg
+                    : activeTab === "ecg"
+                    ? handleNextToLab
+                    : handleNextToAnalysis
                 }
                 disabled={
-                  isAdvancing || !workflowSessionId ||
+                  isAdvancing ||
                   (activeTab === "nlp" && summary.symptoms.length === 0) ||
                   (activeTab === "ecg" && !summary.ecgResult) ||
                   (activeTab === "lab" && !summary.labResult && !labSkipped)
                 }
                 className="h-12 px-6 rounded-xl bg-primary text-primary-foreground font-bold text-sm shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all gap-2 group"
               >
-                {isAdvancing ? "Saving..." : (
+                {isAdvancing ? (
+                  "Saving..."
+                ) : (
                   <>
                     Next Step
                     <ChevronRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
@@ -754,10 +891,11 @@ function Badge({
 }) {
   return (
     <div
-      className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest ${active
-        ? "bg-primary/10 border-primary/20 text-primary glow-primary-sm"
-        : "bg-white/5 border-white/10 text-muted-foreground"
-        }`}
+      className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest ${
+        active
+          ? "bg-primary/10 border-primary/20 text-primary glow-primary-sm"
+          : "bg-white/5 border-white/10 text-muted-foreground"
+      }`}
     >
       {icon}
       {text}

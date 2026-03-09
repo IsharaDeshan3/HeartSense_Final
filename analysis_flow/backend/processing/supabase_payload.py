@@ -310,6 +310,7 @@ def get_patient_diagnosis_history(patient_id: str) -> list:
     Fetch all past diagnoses for a patient from the diagnosis_history view.
 
     Returns a list of dicts with payload, KRA, and ORA data, newest first.
+    Each record is enriched with `doctor_name` looked up from the profiles table.
     """
     try:
         _init()
@@ -317,7 +318,26 @@ def get_patient_diagnosis_history(patient_id: str) -> list:
             "diagnosis_history",
             f"patient_id=eq.{patient_id}&order=created_at.desc"
         )
-        return _dedupe_history_records(records)
+        records = _dedupe_history_records(records)
+
+        # Batch-fetch doctor names for all unique doctor_ids
+        doctor_ids = list({r.get("doctor_id") for r in records if r.get("doctor_id")})
+        doctor_map: Dict[str, str] = {}
+        if doctor_ids:
+            try:
+                id_filter = ",".join(doctor_ids)
+                profiles = _get("profiles", f"id=in.({id_filter})&select=id,full_name")
+                for profile in (profiles or []):
+                    if profile.get("id") and profile.get("full_name"):
+                        doctor_map[profile["id"]] = profile["full_name"]
+            except Exception as e:
+                logger.warning("Failed to fetch doctor profiles: %s", e)
+
+        for record in records:
+            did = record.get("doctor_id")
+            record["doctor_name"] = doctor_map.get(did) if did else None
+
+        return records
     except Exception as exc:
         logger.warning(
             "get_patient_diagnosis_history(%s) failed: %s", patient_id, exc
