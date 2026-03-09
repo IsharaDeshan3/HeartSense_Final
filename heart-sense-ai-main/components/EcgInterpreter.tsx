@@ -17,6 +17,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EcgAnalysisResult } from "./EcgAnalysisResult";
+import { EcgVisualizationHub } from "./EcgVisualizationHub";
+import { EcgResearchPanel } from "./EcgResearchPanel";
+import type { SignalData } from "@/lib/ecg-types";
 import { toast } from "sonner";
 import {
   Popover,
@@ -188,11 +191,17 @@ interface EcgSegment {
 interface EcgInterpreterProps {
   initialContext?: string;
   onAnalysisComplete?: (result: any) => void;
+  patientId?: string;
+  sessionId?: string;
+  patientSymptoms?: string[];
 }
 
 export default function EcgInterpreter({
   initialContext = "",
   onAnalysisComplete,
+  patientId,
+  sessionId,
+  patientSymptoms,
 }: EcgInterpreterProps) {
   const [view, setView] = useState<"acquisition" | "interpretation">(
     "acquisition",
@@ -201,10 +210,16 @@ export default function EcgInterpreter({
   const [activeSegmentIndex, setActiveSegmentIndex] = useState<number | null>(
     null,
   );
-  const [patientContext, setPatientContext] = useState(initialContext);
+  const symptomsContext = patientSymptoms?.length
+    ? `\nPatient Symptoms: ${patientSymptoms.join(", ")}`
+    : "";
+  const [patientContext, setPatientContext] = useState(
+    initialContext + symptomsContext,
+  );
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [activeViewSegment, setActiveViewSegment] = useState(0);
+  const [signalData, setSignalData] = useState<SignalData | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -254,6 +269,7 @@ export default function EcgInterpreter({
     setAnalysisResult(null);
     setPatientContext("");
     setView("acquisition");
+    setSignalData(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -287,6 +303,40 @@ export default function EcgInterpreter({
       onAnalysisComplete?.(data);
       setView("interpretation");
       toast.success("Interpretation Synthesized");
+
+      // Save ECG record to database (non-blocking)
+      if (patientId) {
+        fetch("/api/ecg/records", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            patient_id: patientId,
+            session_id: sessionId,
+            analysis: data,
+            patient_context: patientContext,
+            segments_count: segments.length,
+          }),
+        }).catch(() => {
+          /* non-critical — record save is best effort */
+        });
+      }
+
+      // Non-blocking: fetch real signal arrays for visualization hub
+      fetch("/api/ecg/signal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          images: segments.map((s) => s.url),
+          leads: segments.map((s) => s.leads),
+        }),
+      })
+        .then((r) => r.json())
+        .then((sd) => {
+          if (sd?.segments) setSignalData(sd);
+        })
+        .catch(() => {
+          /* visualization is optional */
+        });
     } catch (error: any) {
       console.error("ECG Analysis Error:", error);
       toast.error(error.message || "Failed to analyze ECG");
@@ -488,7 +538,6 @@ export default function EcgInterpreter({
   }
 
   // --- INTERPRETATION VIEW ---
-  const singleSegment = segments.length === 1;
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6 animate-in slide-in-from-right-12 duration-1000">
@@ -520,129 +569,22 @@ export default function EcgInterpreter({
         </Button>
       </div>
 
-      {/* ── SPLIT PANE ─────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        {/* LEFT: ECG Images Panel */}
-        <div className="glass rounded-[2.5rem] border border-white/5 overflow-hidden flex flex-col">
-          {/* Panel header */}
-          <div className="flex items-center justify-between px-8 py-5 border-b border-white/5">
-            <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-lg bg-primary/10 flex-center text-primary">
-                <Activity className="h-4 w-4" />
-              </div>
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                  {singleSegment
-                    ? "ECG Recording"
-                    : `Segment ${activeViewSegment + 1} of ${segments.length}`}
-                </span>
-                {segments[activeViewSegment]?.leads?.length > 0 && (
-                  <div className="flex gap-1 mt-1 flex-wrap">
-                    {segments[activeViewSegment].leads.map((l) => (
-                      <span
-                        key={l}
-                        className="text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/10"
-                      >
-                        {l}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span
-                className={`h-6 px-3 rounded-full text-[8px] font-black uppercase tracking-widest border flex-center ${
-                  segments[activeViewSegment]?.quality === "optimal"
-                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                    : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                }`}
-              >
-                {segments[activeViewSegment]?.quality === "optimal"
-                  ? "Research Grade"
-                  : "Sub-optimal"}
-              </span>
-            </div>
-          </div>
+      {/* ── DIAGNOSTIC REPORT (Overview + ECG Viewer + Tabs + Chat) ── */}
+      <EcgAnalysisResult
+        analysis={analysisResult}
+        patientId={patientId}
+        sessionId={sessionId}
+        patientContext={patientContext}
+        segments={segments}
+        activeViewSegment={activeViewSegment}
+        onActiveViewSegmentChange={setActiveViewSegment}
+      />
 
-          {/* Main image */}
-          <div
-            className="relative bg-black flex-center overflow-hidden"
-            style={{ minHeight: singleSegment ? "440px" : "320px" }}
-          >
-            {/* ECG grid background */}
-            <div
-              className="absolute inset-0 opacity-[0.04]"
-              style={{
-                backgroundImage:
-                  "linear-gradient(#f00 1px, transparent 1px), linear-gradient(90deg, #f00 1px, transparent 1px)",
-                backgroundSize: "20px 20px",
-              }}
-            />
-            {segments[activeViewSegment] && (
-              <img
-                src={segments[activeViewSegment].url}
-                alt={`ECG Segment ${activeViewSegment + 1}`}
-                className="relative z-10 w-full object-contain transition-all duration-500"
-                style={{ maxHeight: singleSegment ? "440px" : "320px" }}
-              />
-            )}
-          </div>
+      {/* ── RESEARCH VISUALIZATION HUB ─────────────────────────────────── */}
+      {signalData && <EcgVisualizationHub data={signalData} />}
 
-          {/* Multi-segment thumbnail strip */}
-          {!singleSegment && (
-            <div className="border-t border-white/5 p-4">
-              <p className="text-[8px] font-black uppercase tracking-[0.3em] text-muted-foreground/40 mb-3 px-2">
-                All Segments — Click to View
-              </p>
-              <div className="flex gap-3 overflow-x-auto pb-1 custom-scrollbar">
-                {segments.map((seg, i) => (
-                  <button
-                    key={seg.id}
-                    onClick={() => setActiveViewSegment(i)}
-                    className={`relative shrink-0 h-20 w-28 rounded-2xl overflow-hidden border-2 transition-all duration-300 ${
-                      activeViewSegment === i
-                        ? "border-primary shadow-lg shadow-primary/20 scale-105"
-                        : "border-white/10 opacity-50 hover:opacity-80 hover:border-white/20"
-                    }`}
-                  >
-                    <img
-                      src={seg.url}
-                      alt={`seg ${i + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                    {/* Lead label overlay */}
-                    <div className="absolute bottom-0 left-0 right-0 bg-black/70 backdrop-blur-sm px-2 py-1">
-                      <p className="text-[7px] font-black text-white/80 uppercase tracking-wider truncate">
-                        {seg.leads.length > 0
-                          ? seg.leads.join(", ")
-                          : `Seg ${i + 1}`}
-                      </p>
-                    </div>
-                    {activeViewSegment === i && (
-                      <div className="absolute top-1.5 right-1.5 h-3 w-3 rounded-full bg-primary animate-pulse" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Footer hint */}
-          <div className="px-8 py-4 border-t border-white/5">
-            <p className="text-[8px] text-muted-foreground/30 uppercase tracking-[0.3em] font-bold text-center">
-              {singleSegment
-                ? "Full ECG Recording — Neural Synthesis Complete"
-                : `${segments.length} Panoramic Segments Correlated`}
-            </p>
-          </div>
-        </div>
-
-        {/* RIGHT: Diagnostics */}
-        <div className="animate-in fade-in zoom-in-95 duration-1000">
-          <EcgAnalysisResult analysis={analysisResult} />
-        </div>
-      </div>
+      {/* ── RESEARCH TOOLS ─────────────────────────────────────────────── */}
+      {signalData && <EcgResearchPanel data={signalData} />}
 
       {/* Download footer */}
       <div className="flex justify-center pt-4">
