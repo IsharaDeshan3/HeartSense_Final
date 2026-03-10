@@ -1,8 +1,21 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
-import { Mic, MicOff, Activity, AlertCircle, History, Check, Shield, Edit3, Heart, Video } from "lucide-react";
+import SpeechRecognition, {
+  useSpeechRecognition,
+} from "react-speech-recognition";
+import {
+  Mic,
+  MicOff,
+  Activity,
+  AlertCircle,
+  History,
+  Check,
+  Shield,
+  Edit3,
+  Heart,
+  Video,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -283,17 +296,28 @@ export default function NlpProcessor({
                   : "Tap the button below to start capturing"}
               </p>
 
-              <Button
-                onClick={toggleListening}
-                disabled={isProcessing}
-                className={`h-10 px-6 rounded-lg font-black uppercase tracking-[0.12em] transition-all text-xs ${
-                  listening
-                    ? "bg-destructive/10 text-destructive border-2 border-destructive/20 hover:bg-destructive/20"
-                    : "bg-primary text-primary-foreground shadow-lg glow-primary border-none hover:scale-105"
-                }`}
-              >
-                {listening ? "Stop Capture" : "Start Voice Capture"}
-              </Button>
+              <div className="flex items-center gap-3">
+                <Button
+                  onClick={toggleListening}
+                  disabled={isProcessing}
+                  className={`h-10 px-6 rounded-lg font-black uppercase tracking-[0.12em] transition-all text-xs ${
+                    listening
+                      ? "bg-destructive/10 text-destructive border-2 border-destructive/20 hover:bg-destructive/20"
+                      : "bg-primary text-primary-foreground shadow-lg glow-primary border-none hover:scale-105"
+                  }`}
+                >
+                  {listening ? "Stop Capture" : "Start Voice Capture"}
+                </Button>
+
+                <Button
+                  onClick={() => setShowVideoCall(true)}
+                  disabled={isProcessing || listening}
+                  className="h-10 w-10 p-0 rounded-lg bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-600/20 transition-all hover:scale-105"
+                  title="Start Video Call"
+                >
+                  <Video className="h-4 w-4" />
+                </Button>
+              </div>
 
               {isProcessing && (
                 <div className="absolute bottom-3 flex items-center gap-2 text-[9px] font-black text-primary animate-pulse">
@@ -302,81 +326,49 @@ export default function NlpProcessor({
               )}
             </div>
 
-            <h3 className="text-sm font-black tracking-tight mb-0.5">
-              {listening ? "Capturing Voice..." : "AI Voice Recognition is Active"}
-            </h3>
-            <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-bold opacity-60 mb-3 max-w-[220px]">
-              {listening ? "Listening to patient conversation in Sinhala" : "Tap the button below to start capturing"}
-            </p>
-
-            <div className="flex items-center gap-3">
-              <Button
-                onClick={toggleListening}
-                disabled={isProcessing}
-                className={`h-10 px-6 rounded-lg font-black uppercase tracking-[0.12em] transition-all text-xs ${listening
-                  ? 'bg-destructive/10 text-destructive border-2 border-destructive/20 hover:bg-destructive/20'
-                  : 'bg-primary text-primary-foreground shadow-lg glow-primary border-none hover:scale-105'
-                  }`}
-              >
-                {listening ? "Stop Capture" : "Start Voice Capture"}
-              </Button>
-
-              <Button
-                onClick={() => setShowVideoCall(true)}
-                disabled={isProcessing || listening}
-                className="h-10 w-10 p-0 rounded-lg bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-600/20 transition-all hover:scale-105"
-                title="Start Video Call"
-              >
-                <Video className="h-4 w-4" />
-              </Button>
-            </div>
-
-                  <div className="p-4 space-y-4">
-                    {backendResponse.missing_critical.symptoms?.length > 0 && (
-                      <div>
-                        <p className="text-[10px] font-black text-red-300/80 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                          <span className="h-1.5 w-1.5 rounded-full bg-red-400 inline-block" />
-                          Symptoms to Clarify
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {backendResponse.missing_critical.symptoms.map(
-                            (s) => (
-                              <span
-                                key={s}
-                                className="px-3 py-1.5 rounded-xl bg-red-500/15 text-red-300 text-xs font-bold border border-red-500/30 hover:bg-red-500/25 transition-colors"
-                              >
-                                {s}
-                              </span>
-                            ),
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {backendResponse.missing_critical.risk_factors?.length >
-                      0 && (
-                      <div>
-                        <p className="text-[10px] font-black text-orange-300/80 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                          <span className="h-1.5 w-1.5 rounded-full bg-orange-400 inline-block" />
-                          Risk Factors to Verify
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {backendResponse.missing_critical.risk_factors.map(
-                            (r) => (
-                              <span
-                                key={r}
-                                className="px-3 py-1.5 rounded-xl bg-orange-500/15 text-orange-300 text-xs font-bold border border-orange-500/30 hover:bg-orange-500/25 transition-colors"
-                              >
-                                {r}
-                              </span>
-                            ),
-                          )}
-                        </div>
-                      </div>
-                    )}
+            {backendResponse && (
+              <div className="p-4 space-y-4">
+                {backendResponse.missing_critical.symptoms?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-black text-red-300/80 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-red-400 inline-block" />
+                      Symptoms to Clarify
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {backendResponse.missing_critical.symptoms.map((s) => (
+                        <span
+                          key={s}
+                          className="px-3 py-1.5 rounded-xl bg-red-500/15 text-red-300 text-xs font-bold border border-red-500/30 hover:bg-red-500/25 transition-colors"
+                        >
+                          {s}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+
+                {backendResponse.missing_critical.risk_factors?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-black text-orange-300/80 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-orange-400 inline-block" />
+                      Risk Factors to Verify
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {backendResponse.missing_critical.risk_factors.map(
+                        (r) => (
+                          <span
+                            key={r}
+                            className="px-3 py-1.5 rounded-xl bg-orange-500/15 text-orange-300 text-xs font-bold border border-orange-500/30 hover:bg-orange-500/25 transition-colors"
+                          >
+                            {r}
+                          </span>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 📊 EXTRACTED DATA PANEL */}

@@ -27,7 +27,10 @@ interface VideoCallModalProps {
 
 const POLL_INTERVAL = 1500;
 
-export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalProps) {
+export default function VideoCallModal({
+  onCallEnd,
+  onClose,
+}: VideoCallModalProps) {
   const [callId, setCallId] = useState<string | null>(null);
   const [joinUrl, setJoinUrl] = useState<string>("");
   const [copied, setCopied] = useState(false);
@@ -67,7 +70,11 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
   }, [remoteStream]);
 
   useEffect(() => {
-    if (connectionState === "connected" && remoteVideoRef.current && remoteStream) {
+    if (
+      connectionState === "connected" &&
+      remoteVideoRef.current &&
+      remoteStream
+    ) {
       remoteVideoRef.current.srcObject = remoteStream;
     }
   }, [connectionState, remoteStream]);
@@ -85,7 +92,9 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = null;
     if (peerRef.current) {
-      try { peerRef.current.destroy(); } catch {}
+      try {
+        peerRef.current.destroy();
+      } catch {}
       peerRef.current = null;
     }
     if (streamRef.current) {
@@ -98,7 +107,9 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
   // --- Simple Speech Recognition (NO auto-restart to avoid crashes) ---
   function startRecognition() {
     // Get the constructor
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SR =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
     if (!SR) {
       toast.error("Speech recognition not supported — use Chrome or Edge");
       return;
@@ -133,10 +144,20 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
           if (full) {
             setTranscriptLines((prev) => {
               const last = prev[prev.length - 1];
-              if (last && last.role === "doctor" && Date.now() - last.timestamp < 30000) {
-                return [...prev.slice(0, -1), { ...last, text: full, timestamp: Date.now() }];
+              if (
+                last &&
+                last.role === "doctor" &&
+                Date.now() - last.timestamp < 30000
+              ) {
+                return [
+                  ...prev.slice(0, -1),
+                  { ...last, text: full, timestamp: Date.now() },
+                ];
               }
-              return [...prev, { role: "doctor", text: full, timestamp: Date.now() }];
+              return [
+                ...prev,
+                { role: "doctor", text: full, timestamp: Date.now() },
+              ];
             });
           }
         }
@@ -166,7 +187,9 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
       console.log("Doctor SR started successfully");
     } catch (err: any) {
       console.error("Failed to start Doctor SR:", err);
-      toast.error("Failed to start speech recognition: " + (err?.message || err));
+      toast.error(
+        "Failed to start speech recognition: " + (err?.message || err),
+      );
     }
   }
 
@@ -194,7 +217,10 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
       setJoinUrl(data.joinUrl);
       setConnectionState("waiting");
 
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
       streamRef.current = stream;
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
@@ -206,7 +232,11 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
         await fetch("/api/call/signal", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ callId: data.callId, role: "doctor", signal: sig }),
+          body: JSON.stringify({
+            callId: data.callId,
+            role: "doctor",
+            signal: sig,
+          }),
         });
       });
 
@@ -225,10 +255,20 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
           if (msg.type === "transcript" && msg.text) {
             setTranscriptLines((prev) => {
               const last = prev[prev.length - 1];
-              if (last && last.role === "patient" && Date.now() - last.timestamp < 30000) {
-                return [...prev.slice(0, -1), { ...last, text: msg.text, timestamp: Date.now() }];
+              if (
+                last &&
+                last.role === "patient" &&
+                Date.now() - last.timestamp < 30000
+              ) {
+                return [
+                  ...prev.slice(0, -1),
+                  { ...last, text: msg.text, timestamp: Date.now() },
+                ];
               }
-              return [...prev, { role: "patient", text: msg.text, timestamp: Date.now() }];
+              return [
+                ...prev,
+                { role: "patient", text: msg.text, timestamp: Date.now() },
+              ];
             });
           }
         } catch {}
@@ -249,10 +289,14 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
       // Poll for patient signals
       pollRef.current = setInterval(async () => {
         try {
-          const r = await fetch(`/api/call/signal?callId=${data.callId}&role=doctor`);
+          const r = await fetch(
+            `/api/call/signal?callId=${data.callId}&role=doctor`,
+          );
           const { signals } = await r.json();
           if (signals?.length > 0) {
-            setConnectionState((prev) => (prev === "waiting" ? "connecting" : prev));
+            setConnectionState((prev) =>
+              prev === "waiting" ? "connecting" : prev,
+            );
             for (const s of signals) peer.signal(s);
           }
         } catch {}
@@ -271,7 +315,9 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
   };
 
   const endCall = () => {
-    const merged = transcriptRef.current.map((l) => `${l.role}: ${l.text}`).join("\n");
+    const merged = transcriptRef.current
+      .map((l) => `${l.role}: ${l.text}`)
+      .join("\n");
     cleanupAll();
     setConnectionState("ended");
     onCallEnd(merged);
@@ -279,10 +325,12 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
 
   const remoteVideoCallbackRef = useCallback(
     (node: HTMLVideoElement | null) => {
-      (remoteVideoRef as React.MutableRefObject<HTMLVideoElement | null>).current = node;
+      (
+        remoteVideoRef as React.MutableRefObject<HTMLVideoElement | null>
+      ).current = node;
       if (node && remoteStream) node.srcObject = remoteStream;
     },
-    [remoteStream]
+    [remoteStream],
   );
 
   return (
@@ -290,12 +338,17 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <div className={`h-3 w-3 rounded-full ${
-            connectionState === "connected" ? "bg-emerald-500 animate-pulse"
-              : connectionState === "connecting" ? "bg-yellow-500 animate-pulse"
-              : connectionState === "ended" ? "bg-red-500"
-              : "bg-white/20"
-          }`} />
+          <div
+            className={`h-3 w-3 rounded-full ${
+              connectionState === "connected"
+                ? "bg-emerald-500 animate-pulse"
+                : connectionState === "connecting"
+                ? "bg-yellow-500 animate-pulse"
+                : connectionState === "ended"
+                ? "bg-red-500"
+                : "bg-white/20"
+            }`}
+          />
           <h2 className="text-sm font-black uppercase tracking-widest">
             {connectionState === "creating" && "Initializing..."}
             {connectionState === "waiting" && "Waiting for Patient"}
@@ -307,7 +360,9 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
         <div className="flex items-center gap-2">
           {connectionState === "connected" && (
             <Button
-              onClick={() => isListening ? stopRecognition() : startRecognition()}
+              onClick={() =>
+                isListening ? stopRecognition() : startRecognition()
+              }
               variant="outline"
               className={`h-9 px-4 rounded-lg text-xs font-bold border ${
                 isListening
@@ -315,17 +370,30 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
                   : "border-white/10 text-muted-foreground"
               }`}
             >
-              {isListening ? <Mic className="h-3.5 w-3.5 mr-1.5" /> : <MicOff className="h-3.5 w-3.5 mr-1.5" />}
+              {isListening ? (
+                <Mic className="h-3.5 w-3.5 mr-1.5" />
+              ) : (
+                <MicOff className="h-3.5 w-3.5 mr-1.5" />
+              )}
               {isListening ? "Listening (si)" : "Mic Off — Click to Start"}
             </Button>
           )}
-          {(connectionState === "connected" || connectionState === "waiting" || connectionState === "connecting") && (
-            <Button onClick={endCall} className="h-9 px-5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold">
+          {(connectionState === "connected" ||
+            connectionState === "waiting" ||
+            connectionState === "connecting") && (
+            <Button
+              onClick={endCall}
+              className="h-9 px-5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold"
+            >
               <PhoneOff className="h-3.5 w-3.5 mr-1.5" /> End Call
             </Button>
           )}
           {connectionState === "ended" && (
-            <Button onClick={onClose} variant="outline" className="h-9 px-4 rounded-lg text-xs font-bold border-white/10">
+            <Button
+              onClick={onClose}
+              variant="outline"
+              className="h-9 px-4 rounded-lg text-xs font-bold border-white/10"
+            >
               Close
             </Button>
           )}
@@ -335,22 +403,44 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
       {/* Main Content */}
       <div className="flex-1 flex gap-4 p-4 min-h-0">
         <div className="flex-1 flex flex-col gap-3 min-w-0">
-          {(connectionState === "waiting" || connectionState === "connecting") && joinUrl && (
-            <div className="glass rounded-xl p-4 border border-primary/20 bg-primary/5">
-              <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-2">Send this URL to the patient</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 text-xs font-mono text-foreground/80 bg-black/30 p-3 rounded-lg overflow-x-auto whitespace-nowrap">{joinUrl}</code>
-                <Button onClick={copyUrl} size="sm" className="h-9 px-4 rounded-lg text-xs font-bold shrink-0">
-                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                </Button>
+          {(connectionState === "waiting" ||
+            connectionState === "connecting") &&
+            joinUrl && (
+              <div className="glass rounded-xl p-4 border border-primary/20 bg-primary/5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-2">
+                  Send this URL to the patient
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs font-mono text-foreground/80 bg-black/30 p-3 rounded-lg overflow-x-auto whitespace-nowrap">
+                    {joinUrl}
+                  </code>
+                  <Button
+                    onClick={copyUrl}
+                    size="sm"
+                    className="h-9 px-4 rounded-lg text-xs font-bold shrink-0"
+                  >
+                    {copied ? (
+                      <Check className="h-3.5 w-3.5" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
           <div className="flex-1 grid grid-cols-2 gap-3 min-h-0">
             <div className="relative rounded-xl overflow-hidden bg-black/40 border border-white/10">
-              <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
-              <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-black/60 text-[9px] font-bold text-white uppercase tracking-wider">You (Doctor)</div>
+              <video
+                ref={localVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-black/60 text-[9px] font-bold text-white uppercase tracking-wider">
+                You (Doctor)
+              </div>
               {isListening && (
                 <div className="absolute top-2 right-2 px-2 py-1 rounded-md bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[9px] font-bold flex items-center gap-1 animate-pulse">
                   <Mic className="h-3 w-3" /> Listening
@@ -358,58 +448,105 @@ export default function VideoCallModal({ onCallEnd, onClose }: VideoCallModalPro
               )}
             </div>
             <div className="relative rounded-xl overflow-hidden bg-black/40 border border-white/10">
-              <video ref={remoteVideoCallbackRef} autoPlay playsInline className={`w-full h-full object-cover ${!remoteStream ? "hidden" : ""}`} />
+              <video
+                ref={remoteVideoCallbackRef}
+                autoPlay
+                playsInline
+                className={`w-full h-full object-cover ${
+                  !remoteStream ? "hidden" : ""
+                }`}
+              />
               {!remoteStream && (
                 <div className="w-full h-full flex items-center justify-center absolute inset-0">
                   {connectionState === "waiting" ? (
-                    <div className="text-center"><Loader2 className="h-10 w-10 text-primary/30 animate-spin mx-auto mb-3" /><p className="text-xs text-muted-foreground font-bold">Waiting for patient...</p></div>
+                    <div className="text-center">
+                      <Loader2 className="h-10 w-10 text-primary/30 animate-spin mx-auto mb-3" />
+                      <p className="text-xs text-muted-foreground font-bold">
+                        Waiting for patient...
+                      </p>
+                    </div>
                   ) : connectionState === "connecting" ? (
-                    <div className="text-center"><Activity className="h-10 w-10 text-yellow-400/50 animate-pulse mx-auto mb-3" /><p className="text-xs text-muted-foreground font-bold">Connecting...</p></div>
+                    <div className="text-center">
+                      <Activity className="h-10 w-10 text-yellow-400/50 animate-pulse mx-auto mb-3" />
+                      <p className="text-xs text-muted-foreground font-bold">
+                        Connecting...
+                      </p>
+                    </div>
                   ) : connectionState === "connected" ? (
-                    <div className="text-center"><Loader2 className="h-10 w-10 text-primary/30 animate-spin mx-auto mb-3" /><p className="text-xs text-muted-foreground font-bold">Loading stream...</p></div>
+                    <div className="text-center">
+                      <Loader2 className="h-10 w-10 text-primary/30 animate-spin mx-auto mb-3" />
+                      <p className="text-xs text-muted-foreground font-bold">
+                        Loading stream...
+                      </p>
+                    </div>
                   ) : null}
                 </div>
               )}
-              <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-black/60 text-[9px] font-bold text-white uppercase tracking-wider">Patient</div>
+              <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-black/60 text-[9px] font-bold text-white uppercase tracking-wider">
+                Patient
+              </div>
             </div>
           </div>
 
           {currentDoctorText && (
             <div className="glass rounded-lg p-3 border border-white/10">
-              <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-1">You are saying...</p>
-              <p className="text-xs text-foreground/60 italic">{currentDoctorText}</p>
+              <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-1">
+                You are saying...
+              </p>
+              <p className="text-xs text-foreground/60 italic">
+                {currentDoctorText}
+              </p>
             </div>
           )}
         </div>
 
         {/* Transcript Panel */}
-        <div className="w-80 flex flex-col glass rounded-xl border border-white/10 shrink-0">
+        {/* <div className="w-80 flex flex-col glass rounded-xl border border-white/10 shrink-0">
           <div className="px-4 py-3 border-b border-white/10">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-primary">Live Transcription</h3>
-            <p className="text-[9px] text-muted-foreground mt-0.5">{transcriptLines.length} entries</p>
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-primary">
+              Live Transcription
+            </h3>
+            <p className="text-[9px] text-muted-foreground mt-0.5">
+              {transcriptLines.length} entries
+            </p>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
             {transcriptLines.length === 0 ? (
               <div className="h-full flex items-center justify-center">
                 <p className="text-[10px] text-muted-foreground/40 italic text-center">
-                  Speak in Sinhala to see<br />transcription here...
+                  Speak in Sinhala to see
+                  <br />
+                  transcription here...
                 </p>
               </div>
             ) : (
               transcriptLines.map((line, i) => (
-                <div key={i} className={`p-2.5 rounded-lg text-xs ${
-                  line.role === "doctor" ? "bg-primary/10 border border-primary/20 ml-2" : "bg-violet-500/10 border border-violet-500/20 mr-2"
-                }`}>
-                  <span className={`text-[9px] font-black uppercase tracking-widest ${line.role === "doctor" ? "text-primary" : "text-violet-400"}`}>
+                <div
+                  key={i}
+                  className={`p-2.5 rounded-lg text-xs ${
+                    line.role === "doctor"
+                      ? "bg-primary/10 border border-primary/20 ml-2"
+                      : "bg-violet-500/10 border border-violet-500/20 mr-2"
+                  }`}
+                >
+                  <span
+                    className={`text-[9px] font-black uppercase tracking-widest ${
+                      line.role === "doctor"
+                        ? "text-primary"
+                        : "text-violet-400"
+                    }`}
+                  >
                     {line.role}:
                   </span>
-                  <p className="text-foreground/80 mt-1 leading-relaxed">{line.text}</p>
+                  <p className="text-foreground/80 mt-1 leading-relaxed">
+                    {line.text}
+                  </p>
                 </div>
               ))
             )}
             <div ref={transcriptEndRef} />
           </div>
-        </div>
+        </div> */}
       </div>
     </div>
   );

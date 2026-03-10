@@ -99,8 +99,8 @@ export default function DiagnosticWorkspace() {
         approvedRiskFactors.length > 2
           ? "High"
           : approvedRiskFactors.length > 0
-            ? "Moderate"
-            : "Low",
+          ? "Moderate"
+          : "Low",
     }));
   }, [nlpCurrentState]);
 
@@ -551,8 +551,8 @@ export default function DiagnosticWorkspace() {
                         summary.ecgResult.abnormalities.severity === "normal"
                           ? "bg-emerald-500/10 text-emerald-400"
                           : summary.ecgResult.abnormalities.severity === "mild"
-                            ? "bg-amber-500/10 text-amber-400"
-                            : "bg-rose-500/10 text-rose-400"
+                          ? "bg-amber-500/10 text-amber-400"
+                          : "bg-rose-500/10 text-rose-400"
                       }`}
                     >
                       {summary.ecgResult.abnormalities.severity}
@@ -658,10 +658,10 @@ export default function DiagnosticWorkspace() {
                       isActive
                         ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105"
                         : isCompleted
-                          ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20 cursor-pointer"
-                          : isAccessible
-                            ? "bg-white/5 text-foreground border border-border/30 hover:bg-white/10 cursor-pointer"
-                            : "bg-white/[0.02] text-muted-foreground/40 border border-border/10 cursor-not-allowed"
+                        ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20 cursor-pointer"
+                        : isAccessible
+                        ? "bg-white/5 text-foreground border border-border/30 hover:bg-white/10 cursor-pointer"
+                        : "bg-white/[0.02] text-muted-foreground/40 border border-border/10 cursor-not-allowed"
                     }`}
                   >
                     <div
@@ -669,8 +669,8 @@ export default function DiagnosticWorkspace() {
                         isActive
                           ? "bg-primary-foreground/20"
                           : isCompleted
-                            ? "bg-emerald-500/20"
-                            : "bg-white/10"
+                          ? "bg-emerald-500/20"
+                          : "bg-white/10"
                       }`}
                     >
                       {isCompleted && !isActive ? (
@@ -710,7 +710,7 @@ export default function DiagnosticWorkspace() {
                 />
 
                 {/* Manual Symptom Entry */}
-                <div className="flex-1 glass rounded-2xl border border-white/5 p-6 flex flex-col shadow-xl">
+                {/* <div className="flex-1 glass rounded-2xl border border-white/5 p-6 flex flex-col shadow-xl">
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="text-sm font-black uppercase tracking-widest text-primary/80">
                       Manual Symptom Entry
@@ -772,7 +772,7 @@ export default function DiagnosticWorkspace() {
                       </div>
                     )}
                   </div>
-                </div>
+                </div> */}
               </WorkspaceModule>
             )}
 
@@ -856,8 +856,8 @@ export default function DiagnosticWorkspace() {
                   activeTab === "nlp"
                     ? handleNextToEcg
                     : activeTab === "ecg"
-                      ? handleNextToLab
-                      : handleNextToAnalysis
+                    ? handleNextToLab
+                    : handleNextToAnalysis
                 }
                 disabled={
                   isAdvancing ||

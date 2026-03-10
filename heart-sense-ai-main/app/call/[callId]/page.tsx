@@ -3,13 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import type SimplePeerType from "simple-peer";
-import {
-  Mic,
-  MicOff,
-  PhoneOff,
-  Loader2,
-  Heart,
-} from "lucide-react";
+import { Mic, MicOff, PhoneOff, Loader2, Heart } from "lucide-react";
 
 const POLL_INTERVAL = 1500;
 
@@ -31,7 +25,12 @@ export default function PatientCallPage() {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   // Check SR support
-  const hasSR = typeof window !== "undefined" && !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+  const hasSR =
+    typeof window !== "undefined" &&
+    !!(
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition
+    );
 
   // Attach remote stream
   useEffect(() => {
@@ -41,7 +40,11 @@ export default function PatientCallPage() {
   }, [remoteStream]);
 
   useEffect(() => {
-    if (connectionState === "connected" && remoteVideoRef.current && remoteStream) {
+    if (
+      connectionState === "connected" &&
+      remoteVideoRef.current &&
+      remoteStream
+    ) {
       remoteVideoRef.current.srcObject = remoteStream;
     }
   }, [connectionState, remoteStream]);
@@ -56,7 +59,9 @@ export default function PatientCallPage() {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = null;
     if (peerRef.current) {
-      try { peerRef.current.destroy(); } catch {}
+      try {
+        peerRef.current.destroy();
+      } catch {}
       peerRef.current = null;
     }
     if (streamRef.current) {
@@ -68,7 +73,9 @@ export default function PatientCallPage() {
 
   // --- Simple Speech Recognition (NO auto-restart) ---
   function startRecognition() {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SR =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
     if (!SR) return;
 
     stopRecognition();
@@ -99,7 +106,9 @@ export default function PatientCallPage() {
           // Send to doctor via data channel
           if (full && peerRef.current) {
             try {
-              peerRef.current.send(JSON.stringify({ type: "transcript", text: full }));
+              peerRef.current.send(
+                JSON.stringify({ type: "transcript", text: full }),
+              );
             } catch {}
           }
         }
@@ -144,7 +153,10 @@ export default function PatientCallPage() {
     try {
       const SimplePeer = (await import("simple-peer")).default;
 
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
       streamRef.current = stream;
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
@@ -164,7 +176,7 @@ export default function PatientCallPage() {
 
       peer.on("connect", () => {
         setConnectionState("connected");
-        // Start speech recognition directly 
+        // Start speech recognition directly
         startRecognition();
       });
 
@@ -182,7 +194,9 @@ export default function PatientCallPage() {
       setConnectionState("connecting");
       pollRef.current = setInterval(async () => {
         try {
-          const res = await fetch(`/api/call/signal?callId=${callId}&role=patient`);
+          const res = await fetch(
+            `/api/call/signal?callId=${callId}&role=patient`,
+          );
           const { signals } = await res.json();
           if (signals?.length > 0) {
             for (const s of signals) peer.signal(s);
@@ -201,10 +215,12 @@ export default function PatientCallPage() {
 
   const remoteVideoCallbackRef = useCallback(
     (node: HTMLVideoElement | null) => {
-      (remoteVideoRef as React.MutableRefObject<HTMLVideoElement | null>).current = node;
+      (
+        remoteVideoRef as React.MutableRefObject<HTMLVideoElement | null>
+      ).current = node;
       if (node && remoteStream) node.srcObject = remoteStream;
     },
-    [remoteStream]
+    [remoteStream],
   );
 
   return (
@@ -216,16 +232,23 @@ export default function PatientCallPage() {
           </div>
           <div>
             <h1 className="text-sm font-black tracking-tight">HeartSense AI</h1>
-            <p className="text-[9px] text-white/40 uppercase tracking-widest font-bold">Telemedicine</p>
+            <p className="text-[9px] text-white/40 uppercase tracking-widest font-bold">
+              Telemedicine
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <div className={`h-2.5 w-2.5 rounded-full ${
-            connectionState === "connected" ? "bg-emerald-500 animate-pulse"
-              : connectionState === "connecting" ? "bg-yellow-500 animate-pulse"
-              : connectionState === "ended" ? "bg-red-500"
-              : "bg-white/20"
-          }`} />
+          <div
+            className={`h-2.5 w-2.5 rounded-full ${
+              connectionState === "connected"
+                ? "bg-emerald-500 animate-pulse"
+                : connectionState === "connecting"
+                ? "bg-yellow-500 animate-pulse"
+                : connectionState === "ended"
+                ? "bg-red-500"
+                : "bg-white/20"
+            }`}
+          />
           <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">
             {connectionState === "joining" && "Joining..."}
             {connectionState === "connecting" && "Connecting..."}
@@ -242,14 +265,24 @@ export default function PatientCallPage() {
               <PhoneOff className="h-8 w-8 text-white/30" />
             </div>
             <h2 className="text-xl font-black">Consultation Ended</h2>
-            <p className="text-sm text-white/50 max-w-xs">You may close this window.</p>
+            <p className="text-sm text-white/50 max-w-xs">
+              You may close this window.
+            </p>
           </div>
         ) : (
           <>
             <div className="w-full max-w-4xl grid grid-cols-2 gap-4 flex-1 min-h-0">
               <div className="relative rounded-2xl overflow-hidden bg-black/60 border border-white/10 shadow-2xl">
-                <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
-                <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-lg bg-black/60 backdrop-blur text-[10px] font-bold uppercase tracking-wider">You (Patient)</div>
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-lg bg-black/60 backdrop-blur text-[10px] font-bold uppercase tracking-wider">
+                  You (Patient)
+                </div>
                 {isListening && (
                   <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[9px] font-bold flex items-center gap-1.5 animate-pulse">
                     <Mic className="h-3 w-3" /> Listening
@@ -257,35 +290,58 @@ export default function PatientCallPage() {
                 )}
               </div>
               <div className="relative rounded-2xl overflow-hidden bg-black/60 border border-white/10 shadow-2xl">
-                <video ref={remoteVideoCallbackRef} autoPlay playsInline className={`w-full h-full object-cover ${!remoteStream ? "hidden" : ""}`} />
+                <video
+                  ref={remoteVideoCallbackRef}
+                  autoPlay
+                  playsInline
+                  className={`w-full h-full object-cover ${
+                    !remoteStream ? "hidden" : ""
+                  }`}
+                />
                 {!remoteStream && (
                   <div className="w-full h-full flex items-center justify-center absolute inset-0">
-                    <div className="text-center"><Loader2 className="h-12 w-12 text-white/10 animate-spin mx-auto mb-4" /><p className="text-xs text-white/30 font-bold">Connecting...</p></div>
+                    <div className="text-center">
+                      <Loader2 className="h-12 w-12 text-white/10 animate-spin mx-auto mb-4" />
+                      <p className="text-xs text-white/30 font-bold">
+                        Connecting...
+                      </p>
+                    </div>
                   </div>
                 )}
-                <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-lg bg-black/60 backdrop-blur text-[10px] font-bold uppercase tracking-wider">Doctor</div>
+                <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-lg bg-black/60 backdrop-blur text-[10px] font-bold uppercase tracking-wider">
+                  Doctor
+                </div>
               </div>
             </div>
 
-            {currentSpeechText && (
+            {/* {currentSpeechText && (
               <div className="w-full max-w-2xl rounded-xl border border-white/10 p-4 bg-black/40">
                 <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-1">Your speech (Sinhala)</p>
                 <p className="text-sm text-white/70 leading-relaxed">{currentSpeechText}</p>
               </div>
-            )}
+            )} */}
 
             <div className="flex items-center gap-3">
               <button
-                onClick={() => isListening ? stopRecognition() : startRecognition()}
+                onClick={() =>
+                  isListening ? stopRecognition() : startRecognition()
+                }
                 className={`h-14 w-14 rounded-full flex items-center justify-center transition-all ${
                   isListening
                     ? "bg-emerald-500/20 border-2 border-emerald-500/40 text-emerald-400"
                     : "bg-white/10 border-2 border-white/10 text-white/50 hover:bg-white/20"
                 }`}
               >
-                {isListening ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+                {isListening ? (
+                  <Mic className="h-5 w-5" />
+                ) : (
+                  <MicOff className="h-5 w-5" />
+                )}
               </button>
-              <button onClick={leaveCall} className="h-14 px-8 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold text-sm flex items-center gap-2 transition-all shadow-lg shadow-red-600/20">
+              <button
+                onClick={leaveCall}
+                className="h-14 px-8 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold text-sm flex items-center gap-2 transition-all shadow-lg shadow-red-600/20"
+              >
                 <PhoneOff className="h-4 w-4" /> Leave Call
               </button>
             </div>
