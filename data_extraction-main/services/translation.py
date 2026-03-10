@@ -13,7 +13,7 @@ class TranslationService:
             api_key = os.getenv("GEMINI_API_KEY")
             if api_key:
                 genai.configure(api_key=api_key)
-                self.model = genai.GenerativeModel('gemini-1.5-flash')
+                self.model = genai.GenerativeModel('gemini-2.5-flash')
             else:
                 print("!! Critical: No GEMINI_API_KEY found for fallback.")
 
