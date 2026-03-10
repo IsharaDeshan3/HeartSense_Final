@@ -51,6 +51,30 @@ function HuggingFaceAnalysisContent() {
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [healthOk, setHealthOk] = useState<boolean | null>(null);
+  const [aborting, setAborting] = useState(false);
+  // Abort analysis handler
+  const abortAnalysis = useCallback(async () => {
+    if (!sessionId) return;
+    setAborting(true);
+    try {
+      const resp = await fetch("/api/huggingface/abort", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.detail || body.error || `HTTP ${resp.status}`);
+      }
+      // Optionally, show a message or update UI
+      setError("Analysis aborted by user.");
+      setLoading(false);
+    } catch (e: any) {
+      setError(e.message || "Abort request failed");
+    } finally {
+      setAborting(false);
+    }
+  }, [sessionId]);
 
   /* ── Health check ──────────────────────────────────────────────────── */
   useEffect(() => {
@@ -188,6 +212,13 @@ function HuggingFaceAnalysisContent() {
               Sending to Hugging Face Space…
             </p>
             <p className="text-xs text-gray-500 tabular-nums">{elapsed}s elapsed</p>
+            <button
+              onClick={abortAnalysis}
+              className="mt-4 px-6 py-2 rounded-xl bg-rose-500/20 text-rose-300 text-sm font-bold hover:bg-rose-500/30 transition disabled:opacity-60"
+              disabled={aborting}
+            >
+              {aborting ? "Aborting..." : "⏹ Stop Analysis"}
+            </button>
           </div>
         )}
 
