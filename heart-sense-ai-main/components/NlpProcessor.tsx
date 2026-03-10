@@ -1,24 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import SpeechRecognition, {
-  useSpeechRecognition,
-} from "react-speech-recognition";
-import {
-  Mic,
-  MicOff,
-  Activity,
-  AlertCircle,
-  History,
-  Check,
-  Shield,
-  Edit3,
-  Heart,
-} from "lucide-react";
+import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
+import { Mic, MicOff, Activity, AlertCircle, History, Check, Shield, Edit3, Heart, Video } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import ApprovalEditor, { CurrentState, SymptomData } from "./ApprovalEditor";
+import VideoCallModal from "./VideoCallModal";
 
 interface NlpProcessorProps {
   readonly onUpdateSummary: (extractedData: any) => void;
@@ -48,6 +37,7 @@ export default function NlpProcessor({
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastTranslated, setLastTranslated] = useState("");
   const [showEditor, setShowEditor] = useState(false);
+  const [showVideoCall, setShowVideoCall] = useState(false);
 
   const {
     transcript,
@@ -118,8 +108,9 @@ export default function NlpProcessor({
     }, 5000);
   };
 
-  // Handle when listening starts
+  // Handle when listening starts — skip during video call (VideoCallModal manages its own)
   useEffect(() => {
+    if (showVideoCall) return;
     if (listening) {
       resetTranscript();
       const timer = setTimeout(() => {
@@ -129,10 +120,11 @@ export default function NlpProcessor({
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [listening]);
+  }, [listening, showVideoCall]);
 
-  // Handle when listening stops
+  // Handle when listening stops — skip during video call
   const handleStopListening = () => {
+    if (showVideoCall) return;
     SpeechRecognition.stopListening();
     if (transcript) {
       scheduleApiCall(transcript);
@@ -147,6 +139,15 @@ export default function NlpProcessor({
       }
     };
   }, []);
+
+  // When entering video call mode, stop react-speech-recognition completely
+  // so it doesn't hold the browser's single SpeechRecognition slot
+  useEffect(() => {
+    if (showVideoCall) {
+      SpeechRecognition.abortListening();
+      resetTranscript();
+    }
+  }, [showVideoCall]);
 
   const toggleListening = () => {
     if (listening) {
@@ -196,6 +197,18 @@ export default function NlpProcessor({
     setShowEditor(false);
   };
 
+  // Handle video call end — send merged transcript to NLP backend
+  const handleVideoCallEnd = async (mergedTranscript: string) => {
+    setShowVideoCall(false);
+    if (!mergedTranscript.trim()) {
+      toast.warning("No transcription captured during the call");
+      return;
+    }
+    toast.info("Processing call transcription...");
+    await sendTranscript(mergedTranscript);
+    setShowEditor(true);
+  };
+
   if (!browserSupportsSpeechRecognition) {
     return (
       <div className="p-10 glass rounded-[2rem] text-center border-destructive/20 text-destructive underline">
@@ -206,6 +219,12 @@ export default function NlpProcessor({
 
   return (
     <>
+      {showVideoCall && (
+        <VideoCallModal
+          onCallEnd={handleVideoCallEnd}
+          onClose={() => setShowVideoCall(false)}
+        />
+      )}
       {showEditor ? (
         // Full-screen Editor View (replaces main content)
         <div className="animate-in fade-in duration-300">
@@ -283,37 +302,34 @@ export default function NlpProcessor({
               )}
             </div>
 
-            {/* Translation Preview - Hidden from users */}
+            <h3 className="text-sm font-black tracking-tight mb-0.5">
+              {listening ? "Capturing Voice..." : "AI Voice Recognition is Active"}
+            </h3>
+            <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-bold opacity-60 mb-3 max-w-[220px]">
+              {listening ? "Listening to patient conversation in Sinhala" : "Tap the button below to start capturing"}
+            </p>
 
-            {/* Missing Critical Information */}
-            {backendResponse &&
-              (backendResponse.missing_critical.symptoms?.length > 0 ||
-                backendResponse.missing_critical.risk_factors?.length > 0) && (
-                <div className="rounded-2xl overflow-hidden border-2 border-red-500/40 bg-gradient-to-br from-red-950/60 to-red-900/30 shadow-lg shadow-red-900/20 animate-in slide-in-from-bottom-3 duration-500">
-                  {/* Header bar */}
-                  <div className="flex items-center gap-3 px-4 py-3 bg-red-500/20 border-b border-red-500/30">
-                    <div className="h-8 w-8 rounded-lg bg-red-500/30 flex items-center justify-center shrink-0">
-                      <AlertCircle className="h-5 w-5 text-red-400" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-black text-red-300 uppercase tracking-widest leading-none">
-                        Missing Critical Information
-                      </p>
-                      <p className="text-[10px] text-red-400/70 mt-0.5">
-                        Doctor should ask the patient about these items
-                      </p>
-                    </div>
-                    <div className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-500/20 border border-red-500/30">
-                      <span className="h-2 w-2 rounded-full bg-red-400 animate-pulse" />
-                      <span className="text-[10px] font-black text-red-300 uppercase tracking-wider">
-                        {(backendResponse.missing_critical.symptoms?.length ??
-                          0) +
-                          (backendResponse.missing_critical.risk_factors
-                            ?.length ?? 0)}{" "}
-                        items
-                      </span>
-                    </div>
-                  </div>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={toggleListening}
+                disabled={isProcessing}
+                className={`h-10 px-6 rounded-lg font-black uppercase tracking-[0.12em] transition-all text-xs ${listening
+                  ? 'bg-destructive/10 text-destructive border-2 border-destructive/20 hover:bg-destructive/20'
+                  : 'bg-primary text-primary-foreground shadow-lg glow-primary border-none hover:scale-105'
+                  }`}
+              >
+                {listening ? "Stop Capture" : "Start Voice Capture"}
+              </Button>
+
+              <Button
+                onClick={() => setShowVideoCall(true)}
+                disabled={isProcessing || listening}
+                className="h-10 w-10 p-0 rounded-lg bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-600/20 transition-all hover:scale-105"
+                title="Start Video Call"
+              >
+                <Video className="h-4 w-4" />
+              </Button>
+            </div>
 
                   <div className="p-4 space-y-4">
                     {backendResponse.missing_critical.symptoms?.length > 0 && (
