@@ -118,7 +118,7 @@ export default function NlpProcessor({
     }
     delayTimerRef.current = setTimeout(() => {
       sendTranscript(transcriptText);
-    }, 5000);
+    }, 2500);
   };
 
   // Handle when listening starts — skip during video call (VideoCallModal manages its own)
@@ -130,7 +130,7 @@ export default function NlpProcessor({
         if (transcript) {
           scheduleApiCall(transcript);
         }
-      }, 3000);
+      }, 1500);
       return () => clearTimeout(timer);
     }
   }, [listening, showVideoCall]);
@@ -206,7 +206,7 @@ export default function NlpProcessor({
     try {
       localStorage.setItem("nlp.currentState", JSON.stringify(finalState));
       localStorage.setItem("nlp.summary", JSON.stringify(summary));
-    } catch {}
+    } catch { }
     setShowEditor(false);
   };
 
@@ -248,7 +248,7 @@ export default function NlpProcessor({
               onCurrentStateChange(next);
               try {
                 localStorage.setItem("nlp.currentState", JSON.stringify(next));
-              } catch {}
+              } catch { }
             }}
             onSave={handleSaveAndClose}
             onClose={() => setShowEditor(false)}
@@ -260,17 +260,15 @@ export default function NlpProcessor({
           {/* 🎙️ NEURAL GATEWAY / RECORDER */}
           <div className="flex flex-col gap-3">
             <div
-              className={`relative glass rounded-xl p-4 flex flex-col items-center justify-center text-center transition-all duration-1000 border-2 ${
-                listening
+              className={`relative glass rounded-xl p-4 flex flex-col items-center justify-center text-center transition-all duration-1000 border-2 ${listening
                   ? "border-primary/40 shadow-[0_0_50px_rgba(var(--primary-rgb),0.1)]"
                   : "border-white/5"
-              }`}
+                }`}
             >
               {/* Pulsing Core */}
               <div
-                className={`h-14 w-14 rounded-full flex-center mb-3 relative ${
-                  listening ? "bg-primary/20 animate-pulse" : "bg-white/5"
-                }`}
+                className={`h-14 w-14 rounded-full flex-center mb-3 relative ${listening ? "bg-primary/20 animate-pulse" : "bg-white/5"
+                  }`}
               >
                 {listening && (
                   <>
@@ -300,11 +298,10 @@ export default function NlpProcessor({
                 <Button
                   onClick={toggleListening}
                   disabled={isProcessing}
-                  className={`h-10 px-6 rounded-lg font-black uppercase tracking-[0.12em] transition-all text-xs ${
-                    listening
+                  className={`h-10 px-6 rounded-lg font-black uppercase tracking-[0.12em] transition-all text-xs ${listening
                       ? "bg-destructive/10 text-destructive border-2 border-destructive/20 hover:bg-destructive/20"
                       : "bg-primary text-primary-foreground shadow-lg glow-primary border-none hover:scale-105"
-                  }`}
+                    }`}
                 >
                   {listening ? "Stop Capture" : "Start Voice Capture"}
                 </Button>
@@ -403,11 +400,10 @@ export default function NlpProcessor({
                       <button
                         key={key}
                         type="button"
-                        className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${
-                          data.status === "approved"
+                        className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${data.status === "approved"
                             ? "bg-orange-500/5 text-orange-400 border-orange-500/10"
                             : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20 cursor-pointer hover:bg-yellow-500/20"
-                        }`}
+                          }`}
                         onClick={() =>
                           data.status !== "approved" &&
                           approveItem("symptoms", key)
@@ -457,11 +453,10 @@ export default function NlpProcessor({
                         <button
                           key={key}
                           type="button"
-                          className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${
-                            data.status === "approved"
+                          className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${data.status === "approved"
                               ? "bg-blue-500/5 text-blue-400 border-blue-500/10"
                               : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20 cursor-pointer hover:bg-yellow-500/20"
-                          }`}
+                            }`}
                           onClick={() =>
                             data.status !== "approved" &&
                             approveItem("medical_history", key)
@@ -507,11 +502,10 @@ export default function NlpProcessor({
                         <button
                           key={key}
                           type="button"
-                          className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${
-                            data.status === "approved"
+                          className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${data.status === "approved"
                               ? "bg-red-500/5 text-red-400 border-red-500/10"
                               : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20 cursor-pointer hover:bg-yellow-500/20"
-                          }`}
+                            }`}
                           onClick={() =>
                             data.status !== "approved" &&
                             approveItem("allergies", key)
@@ -557,11 +551,10 @@ export default function NlpProcessor({
                         <button
                           key={key}
                           type="button"
-                          className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${
-                            data.status === "approved"
+                          className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${data.status === "approved"
                               ? "bg-primary/5 text-primary border-primary/10"
                               : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20 cursor-pointer hover:bg-yellow-500/20"
-                          }`}
+                            }`}
                           onClick={() =>
                             data.status !== "approved" &&
                             approveItem("risk_factors", key)
