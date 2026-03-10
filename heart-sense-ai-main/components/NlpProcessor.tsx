@@ -3,11 +3,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
-import { Mic, MicOff, Activity, AlertCircle, History, Check, Shield, Edit3, Heart } from "lucide-react";
+import { Mic, MicOff, Activity, AlertCircle, History, Check, Shield, Edit3, Heart, Video } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import ApprovalEditor, { CurrentState, SymptomData } from "./ApprovalEditor";
+import VideoCallModal from "./VideoCallModal";
 
 interface NlpProcessorProps {
   readonly onUpdateSummary: (extractedData: any) => void;
@@ -36,6 +37,7 @@ export default function NlpProcessor({ onUpdateSummary }: NlpProcessorProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastTranslated, setLastTranslated] = useState("");
   const [showEditor, setShowEditor] = useState(false);
+  const [showVideoCall, setShowVideoCall] = useState(false);
 
   const {
     transcript,
@@ -106,8 +108,9 @@ export default function NlpProcessor({ onUpdateSummary }: NlpProcessorProps) {
     }, 5000);
   };
 
-  // Handle when listening starts
+  // Handle when listening starts — skip during video call (VideoCallModal manages its own)
   useEffect(() => {
+    if (showVideoCall) return;
     if (listening) {
       resetTranscript();
       const timer = setTimeout(() => {
@@ -117,10 +120,11 @@ export default function NlpProcessor({ onUpdateSummary }: NlpProcessorProps) {
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [listening]);
+  }, [listening, showVideoCall]);
 
-  // Handle when listening stops
+  // Handle when listening stops — skip during video call
   const handleStopListening = () => {
+    if (showVideoCall) return;
     SpeechRecognition.stopListening();
     if (transcript) {
       scheduleApiCall(transcript);
@@ -135,6 +139,15 @@ export default function NlpProcessor({ onUpdateSummary }: NlpProcessorProps) {
       }
     };
   }, []);
+
+  // When entering video call mode, stop react-speech-recognition completely
+  // so it doesn't hold the browser's single SpeechRecognition slot
+  useEffect(() => {
+    if (showVideoCall) {
+      SpeechRecognition.abortListening();
+      resetTranscript();
+    }
+  }, [showVideoCall]);
 
   const toggleListening = () => {
     if (listening) {
@@ -175,6 +188,18 @@ export default function NlpProcessor({ onUpdateSummary }: NlpProcessorProps) {
     setShowEditor(false);
   };
 
+  // Handle video call end — send merged transcript to NLP backend
+  const handleVideoCallEnd = async (mergedTranscript: string) => {
+    setShowVideoCall(false);
+    if (!mergedTranscript.trim()) {
+      toast.warning("No transcription captured during the call");
+      return;
+    }
+    toast.info("Processing call transcription...");
+    await sendTranscript(mergedTranscript);
+    setShowEditor(true);
+  };
+
   if (!browserSupportsSpeechRecognition) {
     return (
       <div className="p-10 glass rounded-[2rem] text-center border-destructive/20 text-destructive underline">
@@ -185,6 +210,12 @@ export default function NlpProcessor({ onUpdateSummary }: NlpProcessorProps) {
 
   return (
     <>
+      {showVideoCall && (
+        <VideoCallModal
+          onCallEnd={handleVideoCallEnd}
+          onClose={() => setShowVideoCall(false)}
+        />
+      )}
       {showEditor ? (
         // Full-screen Editor View (replaces main content)
         <div className="animate-in fade-in duration-300">
@@ -227,16 +258,27 @@ export default function NlpProcessor({ onUpdateSummary }: NlpProcessorProps) {
               {listening ? "Listening to patient conversation in Sinhala" : "Tap the button below to start capturing"}
             </p>
 
-            <Button
-              onClick={toggleListening}
-              disabled={isProcessing}
-              className={`h-10 px-6 rounded-lg font-black uppercase tracking-[0.12em] transition-all text-xs ${listening
-                ? 'bg-destructive/10 text-destructive border-2 border-destructive/20 hover:bg-destructive/20'
-                : 'bg-primary text-primary-foreground shadow-lg glow-primary border-none hover:scale-105'
-                }`}
-            >
-              {listening ? "Stop Capture" : "Start Voice Capture"}
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={toggleListening}
+                disabled={isProcessing}
+                className={`h-10 px-6 rounded-lg font-black uppercase tracking-[0.12em] transition-all text-xs ${listening
+                  ? 'bg-destructive/10 text-destructive border-2 border-destructive/20 hover:bg-destructive/20'
+                  : 'bg-primary text-primary-foreground shadow-lg glow-primary border-none hover:scale-105'
+                  }`}
+              >
+                {listening ? "Stop Capture" : "Start Voice Capture"}
+              </Button>
+
+              <Button
+                onClick={() => setShowVideoCall(true)}
+                disabled={isProcessing || listening}
+                className="h-10 w-10 p-0 rounded-lg bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-600/20 transition-all hover:scale-105"
+                title="Start Video Call"
+              >
+                <Video className="h-4 w-4" />
+              </Button>
+            </div>
 
             {isProcessing && (
               <div className="absolute bottom-3 flex items-center gap-2 text-[9px] font-black text-primary animate-pulse">
