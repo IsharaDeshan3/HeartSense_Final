@@ -75,6 +75,12 @@ export default function DiagnosticWorkspace() {
   const [ecgSkipped, setEcgSkipped] = useState(false);
   const [labSkipped, setLabSkipped] = useState(false);
 
+  // Track which tabs have been visited so we can keep them mounted (preserves state)
+  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set(["nlp"]));
+  useEffect(() => {
+    setVisitedTabs((prev) => new Set([...prev, activeTab]));
+  }, [activeTab]);
+
   // Shared NLP state — single source of truth for both voice and manual entry
   const [nlpCurrentState, setNlpCurrentState] = useState<CurrentState>({
     symptoms: {},
@@ -533,12 +539,74 @@ export default function DiagnosticWorkspace() {
                 </div>
               )}
 
+              {summary.riskFactors.length > 0 && (
+                <div className="rounded-2xl border border-white/5 p-4 bg-white/[0.02]">
+                  <p className="text-[10px] font-bold mb-2 flex items-center gap-2 text-red-400">
+                    <AlertCircle className="h-3 w-3" /> RISK FACTORS
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {summary.riskFactors.map((r, i) => (
+                      <span
+                        key={i}
+                        className="text-[8px] font-bold text-red-300/80 bg-rose-500/10 px-2 py-0.5 rounded uppercase tracking-wider"
+                      >
+                        {r}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {Object.values(nlpCurrentState.medical_history).filter(
+                (v) => v.status === "approved",
+              ).length > 0 && (
+                <div className="rounded-2xl border border-white/5 p-4 bg-white/[0.02]">
+                  <p className="text-[10px] font-bold mb-2 flex items-center gap-2 text-sky-400">
+                    <ClipboardList className="h-3 w-3" /> MEDICAL HISTORY
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {Object.values(nlpCurrentState.medical_history)
+                      .filter((v) => v.status === "approved")
+                      .map((v, i) => (
+                        <span
+                          key={i}
+                          className="text-[8px] font-bold text-sky-300/80 bg-sky-500/10 px-2 py-0.5 rounded uppercase tracking-wider"
+                        >
+                          {v.value}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {Object.values(nlpCurrentState.allergies).filter(
+                (v) => v.status === "approved",
+              ).length > 0 && (
+                <div className="rounded-2xl border border-white/5 p-4 bg-white/[0.02]">
+                  <p className="text-[10px] font-bold mb-2 flex items-center gap-2 text-amber-400">
+                    <AlertCircle className="h-3 w-3" /> ALLERGIES
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {Object.values(nlpCurrentState.allergies)
+                      .filter((v) => v.status === "approved")
+                      .map((v, i) => (
+                        <span
+                          key={i}
+                          className="text-[8px] font-bold text-amber-300/80 bg-amber-500/10 px-2 py-0.5 rounded uppercase tracking-wider"
+                        >
+                          {v.value}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+              )}
+
               {summary.ecgResult && (
                 <div className="rounded-2xl border border-white/5 p-4 bg-white/[0.02]">
                   <p className="text-[10px] font-bold mb-2 flex items-center gap-2 text-blue-400">
                     <Activity className="h-3 w-3" /> ECG FINDINGS
                   </p>
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <p className="text-xs text-white font-bold">
                       {summary.ecgResult.rhythm_analysis.rhythm_type}
                     </p>
@@ -546,57 +614,92 @@ export default function DiagnosticWorkspace() {
                       {summary.ecgResult.rhythm_analysis.heart_rate} BPM —{" "}
                       {summary.ecgResult.rhythm_analysis.regularity}
                     </p>
-                    <span
-                      className={`inline-block text-[8px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                        summary.ecgResult.abnormalities.severity === "normal"
-                          ? "bg-emerald-500/10 text-emerald-400"
-                          : summary.ecgResult.abnormalities.severity === "mild"
-                          ? "bg-amber-500/10 text-amber-400"
-                          : "bg-rose-500/10 text-rose-400"
-                      }`}
-                    >
-                      {summary.ecgResult.abnormalities.severity}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {summary.labResult && (
-                <div className="rounded-2xl border border-white/5 p-4 bg-white/[0.02]">
-                  <p className="text-[10px] font-bold mb-2 flex items-center gap-2 text-purple-400">
-                    <Microscope className="h-3 w-3" /> LAB FINDINGS
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {summary.labResult.labComparison
-                      .filter((l) => l.status !== "Normal")
-                      .slice(0, 5)
-                      .map((l, i) => (
-                        <span
-                          key={i}
-                          className={`text-[8px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                            l.status === "High"
-                              ? "bg-rose-500/10 text-rose-400"
-                              : "bg-amber-500/10 text-amber-400"
-                          }`}
-                        >
-                          {l.test}: {l.status}
-                        </span>
-                      ))}
-                    {summary.labResult.labComparison.filter(
-                      (l) => l.status === "Normal",
-                    ).length > 0 && (
-                      <span className="text-[8px] font-bold text-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 rounded uppercase tracking-wider">
-                        {
-                          summary.labResult.labComparison.filter(
-                            (l) => l.status === "Normal",
-                          ).length
-                        }{" "}
-                        normal
+                    <div className="flex flex-wrap gap-1">
+                      <span
+                        className={`text-[8px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                          summary.ecgResult.abnormalities.severity === "normal"
+                            ? "bg-emerald-500/10 text-emerald-400"
+                            : summary.ecgResult.abnormalities.severity ===
+                              "mild"
+                            ? "bg-amber-500/10 text-amber-400"
+                            : "bg-rose-500/10 text-rose-400"
+                        }`}
+                      >
+                        {summary.ecgResult.abnormalities.severity}
                       </span>
+                      {summary.ecgResult.diagnosis?.urgency && (
+                        <span className="text-[8px] font-bold px-2 py-0.5 rounded uppercase tracking-wider bg-violet-500/10 text-violet-400">
+                          {summary.ecgResult.diagnosis.urgency}
+                        </span>
+                      )}
+                    </div>
+                    {summary.ecgResult.abnormalities.abnormalities?.length >
+                      0 && (
+                      <div className="flex flex-wrap gap-1 pt-0.5">
+                        {summary.ecgResult.abnormalities.abnormalities.map(
+                          (a, i) => (
+                            <span
+                              key={i}
+                              className="text-[8px] font-bold text-blue-300/70 bg-blue-500/10 px-2 py-0.5 rounded uppercase tracking-wider"
+                            >
+                              {a}
+                            </span>
+                          ),
+                        )}
+                      </div>
+                    )}
+                    {summary.ecgResult.diagnosis?.primary_diagnosis && (
+                      <p className="text-[9px] text-muted-foreground italic pt-0.5 leading-snug">
+                        {summary.ecgResult.diagnosis.primary_diagnosis}
+                      </p>
                     )}
                   </div>
                 </div>
               )}
+
+              {summary.labResult &&
+                (() => {
+                  const abnormal = summary.labResult.labComparison.filter(
+                    (l) => l.status !== "Normal",
+                  );
+                  const normalCount = summary.labResult.labComparison.filter(
+                    (l) => l.status === "Normal",
+                  ).length;
+                  return (
+                    <div className="rounded-2xl border border-white/5 p-4 bg-white/[0.02]">
+                      <p className="text-[10px] font-bold mb-2 flex items-center gap-2 text-purple-400">
+                        <Microscope className="h-3 w-3" /> LAB FINDINGS
+                        <span className="ml-auto text-muted-foreground/50">
+                          {summary.labResult.labComparison.length} tests
+                        </span>
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {abnormal.map((l, i) => (
+                          <span
+                            key={i}
+                            className={`text-[8px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                              l.status === "High"
+                                ? "bg-rose-500/10 text-rose-400"
+                                : "bg-amber-500/10 text-amber-400"
+                            }`}
+                          >
+                            {l.test}: {l.status}
+                          </span>
+                        ))}
+                        {normalCount > 0 && (
+                          <span className="text-[8px] font-bold text-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 rounded uppercase tracking-wider">
+                            {normalCount} normal
+                          </span>
+                        )}
+                        {abnormal.length === 0 && normalCount > 0 && (
+                          <span className="text-[8px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded uppercase tracking-wider">
+                            All values normal
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
             </div>
           </div>
         </div>
@@ -697,20 +800,21 @@ export default function DiagnosticWorkspace() {
         {/* STEP CONTENT */}
         <div className="p-6 flex-1 flex flex-col min-h-0 overflow-hidden">
           <div className="flex-1 min-h-0 overflow-y-auto">
-            {activeTab === "nlp" && (
-              <WorkspaceModule
-                icon={<ClipboardList className="h-10 w-10" />}
-                title="Patient Symptoms"
-                description="Use voice recognition to capture patient symptoms in Sinhala. The AI will automatically extract and translate medical information."
-              >
-                <NlpProcessor
-                  onUpdateSummary={handleNlpUpdate}
-                  currentState={nlpCurrentState}
-                  onCurrentStateChange={setNlpCurrentState}
-                />
+            {visitedTabs.has("nlp") && (
+              <div className={activeTab !== "nlp" ? "hidden" : ""}>
+                <WorkspaceModule
+                  icon={<ClipboardList className="h-10 w-10" />}
+                  title="Patient Symptoms"
+                  description="Use voice recognition to capture patient symptoms in Sinhala. The AI will automatically extract and translate medical information."
+                >
+                  <NlpProcessor
+                    onUpdateSummary={handleNlpUpdate}
+                    currentState={nlpCurrentState}
+                    onCurrentStateChange={setNlpCurrentState}
+                  />
 
-                {/* Manual Symptom Entry */}
-                {/* <div className="flex-1 glass rounded-2xl border border-white/5 p-6 flex flex-col shadow-xl">
+                  {/* Manual Symptom Entry */}
+                  {/* <div className="flex-1 glass rounded-2xl border border-white/5 p-6 flex flex-col shadow-xl">
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="text-sm font-black uppercase tracking-widest text-primary/80">
                       Manual Symptom Entry
@@ -773,68 +877,76 @@ export default function DiagnosticWorkspace() {
                     )}
                   </div>
                 </div> */}
-              </WorkspaceModule>
+                </WorkspaceModule>
+              </div>
             )}
 
-            {activeTab === "ecg" && (
-              <WorkspaceModule
-                icon={<Activity className="h-10 w-10" />}
-                title="ECG Analysis"
-                description="Upload an ECG image for AI-powered analysis of heart rhythm patterns and abnormality detection."
-              >
-                <EcgInterpreter
-                  initialContext={`Patient: ${patient?.fullName}. Clinical suspicion of cardiac involvement. Reviewing standard leads.`}
-                  onAnalysisComplete={handleEcgComplete}
-                  patientId={String(patient?._id ?? patientId)}
-                  sessionId={workflowSessionId ?? undefined}
-                  patientSymptoms={
-                    summary.symptoms.length > 0 ? summary.symptoms : undefined
-                  }
-                />
-              </WorkspaceModule>
+            {visitedTabs.has("ecg") && (
+              <div className={activeTab !== "ecg" ? "hidden" : ""}>
+                <WorkspaceModule
+                  icon={<Activity className="h-10 w-10" />}
+                  title="ECG Analysis"
+                  description="Upload an ECG image for AI-powered analysis of heart rhythm patterns and abnormality detection."
+                >
+                  <EcgInterpreter
+                    initialContext={`Patient: ${patient?.fullName}. Clinical suspicion of cardiac involvement. Reviewing standard leads.`}
+                    onAnalysisComplete={handleEcgComplete}
+                    patientId={String(patient?._id ?? patientId)}
+                    sessionId={workflowSessionId ?? undefined}
+                    patientSymptoms={
+                      summary.symptoms.length > 0 ? summary.symptoms : undefined
+                    }
+                  />
+                </WorkspaceModule>
+              </div>
             )}
 
-            {activeTab === "lab" && (
-              <WorkspaceModule
-                icon={<Microscope className="h-10 w-10" />}
-                title="Lab Reports"
-                description="Upload a lab report image to extract values, compare against normal ranges, and get recommended follow-up tests."
-              >
-                <LabSuggester
-                  patientContext={
-                    patient
-                      ? `Patient: ${patient.fullName}, Age: ${patient.age}, Gender: ${patient.gender}`
-                      : undefined
-                  }
-                  onAnalysisComplete={handleLabComplete}
-                />
-              </WorkspaceModule>
+            {visitedTabs.has("lab") && (
+              <div className={activeTab !== "lab" ? "hidden" : ""}>
+                <WorkspaceModule
+                  icon={<Microscope className="h-10 w-10" />}
+                  title="Lab Reports"
+                  description="Upload a lab report image to extract values, compare against normal ranges, and get recommended follow-up tests."
+                >
+                  <LabSuggester
+                    patientContext={
+                      patient
+                        ? `Patient: ${patient.fullName}, Age: ${patient.age}, Gender: ${patient.gender}`
+                        : undefined
+                    }
+                    patientId={String(patient?._id ?? patientId)}
+                    onAnalysisComplete={handleLabComplete}
+                  />
+                </WorkspaceModule>
+              </div>
             )}
 
-            {activeTab === "ai" && (
-              <WorkspaceModule
-                icon={<BrainCircuit className="h-10 w-10" />}
-                title="Analysis"
-                description="AI combines all collected data — symptoms, ECG, and lab results — to generate a comprehensive diagnostic assessment."
-              >
-                <AiDiagnostics
-                  patientId={String(patient?._id ?? patientId)}
-                  symptoms={summary.symptoms}
-                  riskFactors={summary.riskFactors}
-                  recentObservation={summary.recentObservation}
-                  patientAge={patient?.age}
-                  patientGender={patient?.gender}
-                  ecgResult={summary.ecgResult}
-                  labResult={summary.labResult}
-                  workflowSessionId={workflowSessionId}
-                  workflowState={workflowState}
-                  ecgSkipped={ecgSkipped}
-                  labSkipped={labSkipped}
-                  onWorkflowStateChange={(state: WorkflowState) =>
-                    setWorkflowState(state)
-                  }
-                />
-              </WorkspaceModule>
+            {visitedTabs.has("ai") && (
+              <div className={activeTab !== "ai" ? "hidden" : ""}>
+                <WorkspaceModule
+                  icon={<BrainCircuit className="h-10 w-10" />}
+                  title="Analysis"
+                  description="AI combines all collected data — symptoms, ECG, and lab results — to generate a comprehensive diagnostic assessment."
+                >
+                  <AiDiagnostics
+                    patientId={String(patient?._id ?? patientId)}
+                    symptoms={summary.symptoms}
+                    riskFactors={summary.riskFactors}
+                    recentObservation={summary.recentObservation}
+                    patientAge={patient?.age}
+                    patientGender={patient?.gender}
+                    ecgResult={summary.ecgResult}
+                    labResult={summary.labResult}
+                    workflowSessionId={workflowSessionId}
+                    workflowState={workflowState}
+                    ecgSkipped={ecgSkipped}
+                    labSkipped={labSkipped}
+                    onWorkflowStateChange={(state: WorkflowState) =>
+                      setWorkflowState(state)
+                    }
+                  />
+                </WorkspaceModule>
+              </div>
             )}
           </div>
 
