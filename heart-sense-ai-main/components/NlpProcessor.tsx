@@ -331,7 +331,9 @@ export default function NlpProcessor({
               </Button>
             </div>
 
-                  <div className="p-4 space-y-4">
+            {backendResponse && (
+              <div className="glass border-white/5 bg-white/[0.02] rounded-[2rem] shadow-xl overflow-hidden">
+                <div className="p-4 space-y-4">
                     {backendResponse.missing_critical.symptoms?.length > 0 && (
                       <div>
                         <p className="text-[10px] font-black text-red-300/80 uppercase tracking-widest mb-2 flex items-center gap-1.5">
@@ -375,8 +377,8 @@ export default function NlpProcessor({
                       </div>
                     )}
                   </div>
-                </div>
-              )}
+              </div>
+            )}
           </div>
 
           {/* 📊 EXTRACTED DATA PANEL */}

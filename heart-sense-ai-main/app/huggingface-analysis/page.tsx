@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 
 /* ── Types ─────────────────────────────────────────────────────────────────── */
@@ -42,7 +42,7 @@ const severityColor: Record<string, string> = {
 
 /* ── Component ─────────────────────────────────────────────────────────────── */
 
-export default function HuggingFaceAnalysisPage() {
+function HuggingFaceAnalysisContent() {
   const params = useSearchParams();
   const sessionId = params.get("sessionId") ?? "";
 
@@ -398,5 +398,19 @@ export default function HuggingFaceAnalysisPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function HuggingFaceAnalysisPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#0a0a0f] text-white p-6 font-sans flex items-center justify-center">
+          <p className="text-sm text-gray-400">Loading analysis...</p>
+        </div>
+      }
+    >
+      <HuggingFaceAnalysisContent />
+    </Suspense>
   );
 }
