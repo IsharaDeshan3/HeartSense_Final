@@ -22,6 +22,8 @@ export interface PatientDiagnosisRecord {
   payload_id: string;
   patient_id: string;
   session_id: string;
+  doctor_id?: string;
+  doctor_name?: string;
   symptoms_json: Record<string, unknown> | null;
   ecg_json: Record<string, unknown> | null;
   labs_json: Record<string, unknown> | null;
@@ -64,7 +66,9 @@ export const WorkflowService = {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || err.error || "Failed to initialize workflow session");
+      throw new Error(
+        err.detail || err.error || "Failed to initialize workflow session",
+      );
     }
 
     return res.json() as Promise<{ session_id: string; state: WorkflowState }>;
@@ -74,17 +78,22 @@ export const WorkflowService = {
     const res = await fetch(`/api/workflow/session/${sessionId}`);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || err.error || "Failed to fetch workflow session");
+      throw new Error(
+        err.detail || err.error || "Failed to fetch workflow session",
+      );
     }
     return res.json() as Promise<WorkflowSession>;
   },
 
-  async saveExtraction(sessionId: string, payload: {
-    symptoms: string[];
-    risk_factors: string[];
-    translated_text?: string;
-    raw?: Record<string, unknown>;
-  }) {
+  async saveExtraction(
+    sessionId: string,
+    payload: {
+      symptoms: string[];
+      risk_factors: string[];
+      translated_text?: string;
+      raw?: Record<string, unknown>;
+    },
+  ) {
     return postStep(`/api/workflow/session/${sessionId}/extraction`, payload);
   },
 
@@ -106,7 +115,9 @@ export const WorkflowService = {
     });
 
     if (!res.ok) {
-      throw new Error(await extractErrorMessage(res, "Workflow analysis failed"));
+      throw new Error(
+        await extractErrorMessage(res, "Workflow analysis failed"),
+      );
     }
 
     return res.json() as Promise<{
@@ -119,7 +130,12 @@ export const WorkflowService = {
       supabase_payload_url?: string;
       supabase_kra_url?: string;
       supabase_ora_url?: string;
-      processing_steps: Array<{ step: string; status: string; duration_ms?: number; supabase_id?: string }>;
+      processing_steps: Array<{
+        step: string;
+        status: string;
+        duration_ms?: number;
+        supabase_id?: string;
+      }>;
       kra_raw?: string;
       ora_outputs?: { newbie?: string; seasoned?: string };
       ora_disclaimers?: { newbie?: string; seasoned?: string };
@@ -140,7 +156,9 @@ export const WorkflowService = {
     });
 
     if (!res.ok) {
-      throw new Error(await extractErrorMessage(res, "Failed to stop workflow analysis"));
+      throw new Error(
+        await extractErrorMessage(res, "Failed to stop workflow analysis"),
+      );
     }
 
     return res.json() as Promise<{
@@ -169,7 +187,9 @@ export const WorkflowService = {
   openAnalysisEventStream(sessionId: string): EventSource {
     // Always route through the Next.js proxy so the browser never calls the
     // backend directly (avoids ERR_CONNECTION_REFUSED on localhost).
-    return new EventSource(`/api/workflow/session/${sessionId}/analysis/events`);
+    return new EventSource(
+      `/api/workflow/session/${sessionId}/analysis/events`,
+    );
   },
 
   /**
@@ -183,7 +203,9 @@ export const WorkflowService = {
   }> {
     const res = await fetch(`/api/workflow/patient/${patientId}/history`);
     if (!res.ok) {
-      throw new Error(await extractErrorMessage(res, "Failed to fetch patient history"));
+      throw new Error(
+        await extractErrorMessage(res, "Failed to fetch patient history"),
+      );
     }
     return res.json();
   },
@@ -191,7 +213,9 @@ export const WorkflowService = {
   async getPatientDiagnosisRecord(patientId: string, sessionId: string) {
     const history = await this.getPatientHistory(patientId);
     return (
-      history.records.find((record) => normalizeSessionId(record.session_id) === sessionId) ?? null
+      history.records.find(
+        (record) => normalizeSessionId(record.session_id) === sessionId,
+      ) ?? null
     );
   },
 };
@@ -204,7 +228,9 @@ async function postStep(url: string, body: Record<string, unknown>) {
   });
 
   if (!res.ok) {
-    throw new Error(await extractErrorMessage(res, "Workflow step save failed"));
+    throw new Error(
+      await extractErrorMessage(res, "Workflow step save failed"),
+    );
   }
 
   return res.json() as Promise<{

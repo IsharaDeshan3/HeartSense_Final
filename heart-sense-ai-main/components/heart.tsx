@@ -157,6 +157,19 @@ export default function HeartModal({ open, onClose, extractedData }: HeartModalP
     e.preventDefault()
     const errs = validate()
     if (Object.keys(errs).length > 0) { setErrors(errs); return }
+
+    // Check if only age and sex are filled, all other fields are empty or zero
+    const otherFields = ["cp", "trestbps", "chol", "fbs", "restecg", "thalach", "exang", "oldpeak", "slope", "ca", "thal"];
+    const onlyAgeSex = otherFields.every(f => {
+      const v = formData[f as keyof FormData];
+      return v === "" || v === "0" || Number(v) === 0;
+    });
+    if (onlyAgeSex) {
+      setResult(null);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true); setResult(null)
     try {
       const res = await fetch("https://cardiac-1051190728028.asia-south1.run.app", {
@@ -373,7 +386,13 @@ export default function HeartModal({ open, onClose, extractedData }: HeartModalP
             </form>
           )}
 
-          {result && (
+          {/* Result: Only show if not only age/sex */}
+          {result && !(
+            ["cp", "trestbps", "chol", "fbs", "restecg", "thalach", "exang", "oldpeak", "slope", "ca", "thal"].every(f => {
+              const v = formData[f as keyof FormData];
+              return v === "" || v === "0" || Number(v) === 0;
+            })
+          ) && (
             <div className={`rounded-[1.5rem] border p-5 space-y-3 ${result.error ? "bg-destructive/5 border-destructive/20" : riskDisplay?.isHighRisk ? "bg-rose-500/5 border-rose-500/20" : "bg-emerald-500/5 border-emerald-500/20"}`}>
               <div className="flex items-center gap-3">
                 <div className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${result.error ? "bg-destructive/10 text-destructive" : riskDisplay?.isHighRisk ? "bg-rose-500/10 text-rose-400" : "bg-emerald-500/10 text-emerald-400"}`}>

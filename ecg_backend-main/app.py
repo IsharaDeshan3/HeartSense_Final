@@ -6,10 +6,12 @@ import json
 import base64
 import traceback
 import numpy as np
+from scipy.signal import savgol_filter
 from io import BytesIO
 from PIL import Image
 from processing.filtering import apply_filters
-from processing.features import extract_features
+from processing.features import extract_features, extract_signal_data
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 CORS(app)
@@ -17,6 +19,20 @@ CORS(app)
 # env config
 from dotenv import load_dotenv
 load_dotenv()
+
+# ── MongoDB setup (Motor for async, pymongo for sync Flask) ────────────────
+try:
+    from pymongo import MongoClient
+    MONGO_URL = os.getenv("MONGODB_URL", "mongodb+srv://ridmikranasinghe:Ridmi25106@cardiaclabtest.ith9fcq.mongodb.net/")
+    MONGO_DB = os.getenv("MONGODB_DATABASE", "cardiac_db")
+    mongo_client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=5000)
+    mongo_db = mongo_client[MONGO_DB]
+    MONGO_AVAILABLE = True
+    print("✓ MongoDB connection configured")
+except Exception as e:
+    MONGO_AVAILABLE = False
+    mongo_db = None
+    print(f"✗ MongoDB not available: {e}")
 
 # Import Google Generative AI
 try:
@@ -362,6 +378,383 @@ def analyze_ecg_file():
             "error": "Analysis failed",
             "message": str(e)
         }), 500
+
+
+# ── ECG Image Digitization Helpers ──────────────────────────────────────────
+
+def ecg_trace_from_region(gray_arr):
+    """
+    Digitize an ECG trace from a greyscale numpy array.
+    Finds the darkest pixel per column (the ink trace) and converts its
+    vertical position into an amplitude value.  Savitzky-Golay smoothing
+    removes pixel quantization noise without distorting peak morphology.
+    """
+    arr = gray_arr.astype(np.float32)
+    h = arr.shape[0]
+
+    # argmin per column → row index of the ECG trace (dark ink on light paper)
+    trace_row = np.argmin(arr, axis=0).astype(np.float32)
+
+    # Invert: lower row index (top of image) = upward = positive deflection
+    signal = (h / 2.0) - trace_row
+
+    # Savitzky-Golay smoothing – preserves peak shapes better than a running mean
+    sig_len = len(signal)
+    if sig_len >= 11:
+        # window = ~1/20 of signal, forced odd, minimum 11
+        window = max(11, (sig_len // 20) | 1)
+        signal = savgol_filter(signal, window_length=window, polyorder=3)
+
+    return signal
+
+
+# Standard 12-lead ECG paper: 4 columns × 3 rows
+_LEAD_LAYOUT_12 = [
+    ["I",   "aVR", "V1", "V4"],
+    ["II",  "aVL", "V2", "V5"],
+    ["III", "aVF", "V3", "V6"],
+]
+
+
+def split_12lead_image(img):
+    """
+    Split a standard landscape 12-lead ECG image into 12 lead regions.
+    Skips the header (~12%) and rhythm strip (~bottom 20%).
+    Returns list of (lead_name: str, gray_array: np.ndarray) tuples.
+    """
+    gray = np.array(img.convert('L'))
+    h, w = gray.shape
+
+    top    = int(h * 0.12)  # skip machine/patient header
+    bottom = int(h * 0.80)  # skip rhythm strip at the bottom
+    ecg_area = gray[top:bottom, :]
+
+    row_h = ecg_area.shape[0] // 3
+    col_w = ecg_area.shape[1] // 4
+
+    regions = []
+    for r, row_leads in enumerate(_LEAD_LAYOUT_12):
+        for c, lead in enumerate(row_leads):
+            y0, y1 = r * row_h, (r + 1) * row_h
+            x0, x1 = c * col_w, (c + 1) * col_w
+            regions.append((lead, ecg_area[y0:y1, x0:x1]))
+    return regions
+
+
+@app.route('/api/signal-data', methods=['POST'])
+def get_signal_data():
+    """
+    New visualization endpoint: returns cleaned signal arrays + annotated peak indices.
+    Does NOT call Gemini. Purely deterministic signal processing.
+    Used by the frontend ECG visualization hub after the main analysis completes.
+
+    Expected JSON payload (same format as /api/analyze):
+    {
+        "images": ["base64_1", "base64_2"],
+        "leads": [["I", "II"], ["V1", "V2"]]
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+
+        base64_images = data.get('images', [])
+        leads_mapping = data.get('leads', [])
+
+        if not base64_images:
+            return jsonify({"error": "No images provided"}), 400
+
+        segments = []
+        seg_counter = 0
+        for i, b64 in enumerate(base64_images):
+            # Strip data-URL prefix if present
+            if ',' in b64:
+                b64 = b64.split(',')[1]
+
+            image_data = base64.b64decode(b64)
+            img = Image.open(BytesIO(image_data))
+            assigned_leads = leads_mapping[i] if i < len(leads_mapping) else []
+
+            w_img, h_img = img.size
+            aspect = w_img / max(h_img, 1)
+
+            # Auto-detect 12-lead ECG: landscape paper (aspect > 2) OR ≥ 3 leads assigned
+            is_12lead = aspect > 2.0 or len(assigned_leads) >= 3
+
+            if is_12lead:
+                # Split into 12 regions, one signal per lead
+                lead_regions = split_12lead_image(img)
+                for lead_name, region in lead_regions:
+                    signal = ecg_trace_from_region(region)
+                    # Estimate SR: each column = 2.5 s at 25 mm/s paper speed
+                    sr_est = max(50, int(region.shape[1] / 2.5))
+                    seg_data = extract_signal_data(signal, sampling_rate=sr_est)
+                    seg_data["segment_id"] = seg_counter
+                    seg_data["leads"] = [lead_name]
+                    segments.append(seg_data)
+                    seg_counter += 1
+            else:
+                # Single-lead strip: extract full trace
+                gray_arr = np.array(img.convert('L'))
+                signal = ecg_trace_from_region(gray_arr)
+                seg_data = extract_signal_data(signal, sampling_rate=500)
+                seg_data["segment_id"] = seg_counter
+                seg_data["leads"] = assigned_leads
+                segments.append(seg_data)
+                seg_counter += 1
+
+        return jsonify({"segments": segments}), 200
+
+    except Exception as e:
+        print(f"Signal data error: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({"error": "Signal extraction failed", "message": str(e)}), 500
+
+
+# ── Doctor ECG Chat ────────────────────────────────────────────────────────
+
+@app.route('/api/ecg/chat', methods=['POST'])
+def ecg_chat():
+    """
+    Real-time doctor conversation about ECG findings.
+    Uses Gemini with ECG analysis data as context for an informed discussion.
+    Saves conversation to MongoDB for future reference.
+
+    Expected JSON payload:
+    {
+        "message": "doctor's message",
+        "conversationHistory": [{"role": "doctor"|"ai", "content": "..."}],
+        "ecgAnalysis": { ... analysis data ... },
+        "patientId": "optional",
+        "sessionId": "optional",
+        "patientContext": "optional patient symptoms"
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data or not data.get('message'):
+            return jsonify({"error": "No message provided"}), 400
+
+        message = data['message']
+        conversation_history = data.get('conversationHistory', [])
+        ecg_analysis = data.get('ecgAnalysis', {})
+        patient_id = data.get('patientId')
+        session_id = data.get('sessionId')
+        patient_context = data.get('patientContext', '')
+
+        model = get_gemini_client()
+        if not model:
+            return jsonify({"error": "AI model not available"}), 503
+
+        # Build context-rich prompt for the conversation
+        system_prompt = """You are an expert cardiologist AI assistant engaging in a real-time clinical discussion
+with a doctor about an ECG analysis. You have access to the full ECG analysis data.
+
+Your role:
+- Engage thoughtfully with the doctor's observations and concerns
+- Provide evidence-based insights referencing the actual ECG data
+- Suggest differential diagnoses when appropriate
+- Recommend further investigations when clinically relevant
+- Be concise but thorough — this is a professional clinical discussion
+- Reference specific findings from the ECG data to support your points
+- If the doctor raises a concern, validate it against the ECG data
+
+IMPORTANT: Always ground your response in the actual ECG data provided. Do not make up findings."""
+
+        ecg_context = f"""
+ECG ANALYSIS DATA:
+- Heart Rate: {ecg_analysis.get('rhythm_analysis', {}).get('heart_rate', 'N/A')} BPM
+- Rhythm: {ecg_analysis.get('rhythm_analysis', {}).get('rhythm_type', 'N/A')}
+- Regularity: {ecg_analysis.get('rhythm_analysis', {}).get('regularity', 'N/A')}
+- Primary Diagnosis: {ecg_analysis.get('diagnosis', {}).get('primary_diagnosis', 'N/A')}
+- Severity: {ecg_analysis.get('abnormalities', {}).get('severity', 'N/A')}
+- Abnormalities: {', '.join(ecg_analysis.get('abnormalities', {}).get('abnormalities', []))}
+- Affected Leads: {', '.join(ecg_analysis.get('abnormalities', {}).get('affected_leads', []))}
+- Urgency: {ecg_analysis.get('diagnosis', {}).get('urgency', 'N/A')}
+- Recommendations: {'; '.join(ecg_analysis.get('diagnosis', {}).get('recommendations', []))}
+- Differential Diagnoses: {', '.join(ecg_analysis.get('diagnosis', {}).get('differential_diagnoses', []))}
+"""
+        if ecg_analysis.get('full_interpretation'):
+            ecg_context += f"- Full Interpretation: {ecg_analysis['full_interpretation'][:500]}\n"
+
+        if patient_context:
+            ecg_context += f"\nPATIENT CONTEXT:\n{patient_context}\n"
+
+        # Build conversation for Gemini
+        conversation_prompt = system_prompt + "\n\n" + ecg_context + "\n\nCONVERSATION:\n"
+        for msg in conversation_history:
+            role_label = "Doctor" if msg.get('role') == 'doctor' else "AI"
+            conversation_prompt += f"{role_label}: {msg.get('content', '')}\n\n"
+        conversation_prompt += f"Doctor: {message}\n\nAI:"
+
+        response = model.generate_content(conversation_prompt)
+        ai_response = response.text.strip()
+
+        # Save conversation entry to MongoDB
+        if MONGO_AVAILABLE and mongo_db is not None:
+            try:
+                conversation_doc = {
+                    "patient_id": patient_id,
+                    "session_id": session_id,
+                    "doctor_message": message,
+                    "ai_response": ai_response,
+                    "ecg_summary": {
+                        "heart_rate": ecg_analysis.get('rhythm_analysis', {}).get('heart_rate'),
+                        "rhythm_type": ecg_analysis.get('rhythm_analysis', {}).get('rhythm_type'),
+                        "primary_diagnosis": ecg_analysis.get('diagnosis', {}).get('primary_diagnosis'),
+                        "severity": ecg_analysis.get('abnormalities', {}).get('severity'),
+                    },
+                    "created_at": datetime.now(timezone.utc),
+                }
+                mongo_db.ecg_conversations.insert_one(conversation_doc)
+            except Exception as db_err:
+                print(f"Warning: Could not save conversation to DB: {db_err}")
+
+        return jsonify({"response": ai_response}), 200
+
+    except Exception as e:
+        print(f"ECG chat error: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({"error": "Chat failed", "message": str(e)}), 500
+
+
+# ── ECG Record Storage ─────────────────────────────────────────────────────
+
+@app.route('/api/ecg/records', methods=['POST'])
+def save_ecg_record():
+    """
+    Save ECG analysis data to MongoDB in a separate collection.
+    This stores the full analysis result linked to a patient and session.
+
+    Expected JSON payload:
+    {
+        "patient_id": "string",
+        "session_id": "string (optional)",
+        "analysis": { ... full ECG analysis ... },
+        "patient_context": "string (optional)",
+        "segments_count": number,
+        "doctor_notes": "string (optional)"
+    }
+    """
+    if not MONGO_AVAILABLE or mongo_db is None:
+        return jsonify({"error": "Database not available"}), 503
+
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+
+        patient_id = data.get('patient_id')
+        if not patient_id:
+            return jsonify({"error": "patient_id is required"}), 400
+
+        analysis = data.get('analysis', {})
+
+        # Build ECG finding summary for patient history
+        finding_summary = {
+            "heart_rate": analysis.get('rhythm_analysis', {}).get('heart_rate'),
+            "rhythm_type": analysis.get('rhythm_analysis', {}).get('rhythm_type'),
+            "regularity": analysis.get('rhythm_analysis', {}).get('regularity'),
+            "primary_diagnosis": analysis.get('diagnosis', {}).get('primary_diagnosis'),
+            "severity": analysis.get('abnormalities', {}).get('severity'),
+            "abnormalities": analysis.get('abnormalities', {}).get('abnormalities', []),
+            "affected_leads": analysis.get('abnormalities', {}).get('affected_leads', []),
+            "urgency": analysis.get('diagnosis', {}).get('urgency'),
+            "recommendations": analysis.get('diagnosis', {}).get('recommendations', []),
+        }
+
+        ecg_record = {
+            "patient_id": patient_id,
+            "session_id": data.get('session_id'),
+            "analysis": analysis,
+            "finding_summary": finding_summary,
+            "patient_context": data.get('patient_context', ''),
+            "segments_count": data.get('segments_count', 0),
+            "doctor_notes": data.get('doctor_notes', ''),
+            "created_at": datetime.now(timezone.utc),
+        }
+
+        result = mongo_db.ecg_records.insert_one(ecg_record)
+
+        # Also save finding summary to patient history collection
+        history_entry = {
+            "patient_id": patient_id,
+            "type": "ECG",
+            "summary": f"{finding_summary.get('rhythm_type', 'Unknown')} - "
+                       f"{finding_summary.get('heart_rate', 'N/A')} BPM - "
+                       f"{finding_summary.get('severity', 'N/A')} severity",
+            "data": finding_summary,
+            "source": "ecg_analysis",
+            "created_at": datetime.now(timezone.utc),
+        }
+        mongo_db.ecg_patient_history.insert_one(history_entry)
+
+        return jsonify({
+            "record_id": str(result.inserted_id),
+            "message": "ECG record saved successfully",
+            "finding_summary": finding_summary,
+        }), 201
+
+    except Exception as e:
+        print(f"ECG record save error: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({"error": "Failed to save ECG record", "message": str(e)}), 500
+
+
+@app.route('/api/ecg/records/<patient_id>', methods=['GET'])
+def get_ecg_records(patient_id):
+    """
+    Get all ECG records for a patient.
+    """
+    if not MONGO_AVAILABLE or mongo_db is None:
+        return jsonify({"error": "Database not available"}), 503
+
+    try:
+        records = list(
+            mongo_db.ecg_records.find(
+                {"patient_id": patient_id},
+                {"analysis.full_interpretation": 0}  # Exclude large text for listing
+            ).sort("created_at", -1).limit(50)
+        )
+
+        for r in records:
+            r["_id"] = str(r["_id"])
+            if r.get("created_at"):
+                r["created_at"] = r["created_at"].isoformat()
+
+        return jsonify({"patient_id": patient_id, "records": records}), 200
+
+    except Exception as e:
+        print(f"ECG records fetch error: {str(e)}")
+        return jsonify({"error": "Failed to fetch ECG records", "message": str(e)}), 500
+
+
+@app.route('/api/ecg/conversations/<patient_id>', methods=['GET'])
+def get_ecg_conversations(patient_id):
+    """
+    Get all ECG conversations for a patient (doctor's discussion history).
+    """
+    if not MONGO_AVAILABLE or mongo_db is None:
+        return jsonify({"error": "Database not available"}), 503
+
+    try:
+        conversations = list(
+            mongo_db.ecg_conversations.find(
+                {"patient_id": patient_id}
+            ).sort("created_at", -1).limit(100)
+        )
+
+        for c in conversations:
+            c["_id"] = str(c["_id"])
+            if c.get("created_at"):
+                c["created_at"] = c["created_at"].isoformat()
+
+        return jsonify({"patient_id": patient_id, "conversations": conversations}), 200
+
+    except Exception as e:
+        print(f"ECG conversations fetch error: {str(e)}")
+        return jsonify({"error": "Failed to fetch conversations", "message": str(e)}), 500
 
 
 # Error handlers
