@@ -3,8 +3,8 @@ download_models.py
 
 One-time setup script to download GGUF models from HuggingFace Hub.
 Downloads:
-  - DeepSeek-R1-Distill-Llama-8B Q5_K_M  → models/deepseek-r1-8b-q5_k_m.gguf
-      Primary KRA model when NVIDIA is available
+    - Meditron-7B Q5_K_M                   → models/meditron-7b-q5_k_m.gguf
+            Primary KRA model when NVIDIA is available
   - Qwen2.5-7B-Instruct Q4_K_M           → models/Qwen2.5-7B-Instruct-Q4_K_M.gguf
       KRA CPU fallback model
   - Phi-3.5-mini-instruct Q4_K_M         → models/phi-3.5-mini-q4_k_m.gguf
@@ -29,10 +29,10 @@ MODELS_DIR = Path(__file__).parent / "models"
 
 MODELS = [
     {
-        "repo_id": "bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
-        "filename": "DeepSeek-R1-Distill-Llama-8B-Q5_K_M.gguf",
-        "local_name": "deepseek-r1-8b-q5_k_m.gguf",
-        "description": "KRA primary model — DeepSeek-R1-Distill-Llama-8B (Q5_K_M, ~5.5 GB, prefers NVIDIA)",
+        "repo_id": "TheBloke/meditron-7B-GGUF",
+        "filename": "meditron-7b.Q5_K_M.gguf",
+        "local_name": "meditron-7b-q5_k_m.gguf",
+        "description": "KRA primary model — Meditron-7B (Q5_K_M, prefers NVIDIA)",
     },
     {
         "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",

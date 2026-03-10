@@ -1,6 +1,6 @@
 @echo off
 :: Batch script to kill all backend ports
-set ports=8080 8081 8082 8083 8000 8001 5000 3000
+set ports=8080 8081 8082 8083 8000 8001 5000 3000 8090
 
 for %%P in (%ports%) do (
     echo Killing processes on port %%P...

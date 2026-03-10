@@ -15,6 +15,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import type {
   AnalysisResponse,
   PipelineStep,
@@ -221,72 +222,537 @@ function PipelineTimeline({ steps }: { steps: PipelineStep[] }) {
   );
 }
 
-function MarkdownContent({ content }: { content: string }) {
-  // Simple markdown-ish renderer — handles headers, bold, lists, line breaks
-  const lines = content.split("\n");
+function formatBold(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
+  return parts.map((part, i) =>
+    part.startsWith("**") && part.endsWith("**") ? (
+      <strong key={i} className="text-white font-bold">
+        {part.slice(2, -2)}
+      </strong>
+    ) : part.startsWith("*") && part.endsWith("*") ? (
+      <em key={i} className="text-slate-200 italic">
+        {part.slice(1, -1)}
+      </em>
+    ) : (
+      <span key={i}>{part}</span>
+    ),
+  );
+}
+
+type ReportBlock =
+  | { type: "paragraph"; text: string }
+  | { type: "list"; ordered: boolean; items: string[] }
+  | { type: "table"; headers: string[]; rows: string[][] };
+
+type ReportSection = {
+  id: string;
+  title: string;
+  level: number;
+  blocks: ReportBlock[];
+};
+
+type ParsedReport = {
+  lead: ReportBlock[];
+  sections: ReportSection[];
+};
+
+type SectionTone = {
+  accent: string;
+  iconWrap: string;
+  icon: React.ReactNode;
+  badge: string;
+  card: string;
+};
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "section";
+}
+
+function normalizeHeading(value: string) {
+  return value.replace(/^[^A-Za-z0-9]+/, "").trim();
+}
+
+function isDividerLine(value: string) {
+  return /^[-*_]{3,}$/.test(value.trim());
+}
+
+function isMarkdownTableDivider(value: string) {
+  return /^\|?\s*:?[-]+:?(\s*\|\s*:?[-]+:?)+\s*\|?$/.test(value.trim());
+}
+
+function isTableLine(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed.includes("|")) return false;
+  return trimmed.split("|").filter((cell) => cell.trim().length > 0).length >= 2;
+}
+
+function splitTableRow(value: string) {
+  return value
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function parseTable(lines: string[]): ReportBlock {
+  const headerLine = lines[0] ?? "";
+  const hasDivider = lines[1] ? isMarkdownTableDivider(lines[1]) : false;
+  const headers = splitTableRow(headerLine);
+  const bodyLines = hasDivider ? lines.slice(2) : lines.slice(1);
+
+  return {
+    type: "table",
+    headers,
+    rows: bodyLines
+      .map(splitTableRow)
+      .filter((row) => row.some((cell) => cell.length > 0)),
+  };
+}
+
+function parseReport(content: string): ParsedReport {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const lead: ReportBlock[] = [];
+  const sections: ReportSection[] = [];
+  let currentSection: ReportSection | null = null;
+  let paragraphBuffer: string[] = [];
+
+  const pushBlock = (block: ReportBlock) => {
+    if (currentSection) {
+      currentSection.blocks.push(block);
+      return;
+    }
+    lead.push(block);
+  };
+
+  const flushParagraph = () => {
+    if (!paragraphBuffer.length) return;
+    pushBlock({
+      type: "paragraph",
+      text: paragraphBuffer.join(" ").replace(/\s+/g, " ").trim(),
+    });
+    paragraphBuffer = [];
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index] ?? "";
+    const line = rawLine.trim();
+
+    if (!line) {
+      flushParagraph();
+      continue;
+    }
+
+    if (isDividerLine(line)) {
+      flushParagraph();
+      continue;
+    }
+
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch) {
+      flushParagraph();
+      const title = normalizeHeading(headingMatch[2]);
+      currentSection = {
+        id: `${slugify(title)}-${sections.length + 1}`,
+        title,
+        level: headingMatch[1].length,
+        blocks: [],
+      };
+      sections.push(currentSection);
+      continue;
+    }
+
+    if (isTableLine(line) && lines[index + 1] && isMarkdownTableDivider(lines[index + 1])) {
+      flushParagraph();
+      const tableLines = [line, lines[index + 1].trim()];
+      let nextIndex = index + 2;
+      while (nextIndex < lines.length && isTableLine(lines[nextIndex] ?? "")) {
+        tableLines.push(lines[nextIndex].trim());
+        nextIndex += 1;
+      }
+      pushBlock(parseTable(tableLines));
+      index = nextIndex - 1;
+      continue;
+    }
+
+    const unorderedMatch = rawLine.match(/^\s*[*-]\s+(.+)$/);
+    const orderedMatch = rawLine.match(/^\s*(\d+)\.\s+(.+)$/);
+    if (unorderedMatch || orderedMatch) {
+      flushParagraph();
+      const ordered = Boolean(orderedMatch);
+      const items: string[] = [];
+      let nextIndex = index;
+
+      while (nextIndex < lines.length) {
+        const candidate = lines[nextIndex] ?? "";
+        const unorderedCandidate = candidate.match(/^\s*[*-]\s+(.+)$/);
+        const orderedCandidate = candidate.match(/^\s*(\d+)\.\s+(.+)$/);
+        if (ordered && orderedCandidate) {
+          items.push(orderedCandidate[2].trim());
+          nextIndex += 1;
+          continue;
+        }
+        if (!ordered && unorderedCandidate) {
+          items.push(unorderedCandidate[1].trim());
+          nextIndex += 1;
+          continue;
+        }
+        break;
+      }
+
+      pushBlock({ type: "list", ordered, items });
+      index = nextIndex - 1;
+      continue;
+    }
+
+    paragraphBuffer.push(line);
+  }
+
+  flushParagraph();
+
+  return { lead, sections };
+}
+
+function getSectionTone(title: string): SectionTone {
+  const normalized = title.toLowerCase();
+
+  if (
+    normalized.includes("urgent") ||
+    normalized.includes("red flag") ||
+    normalized.includes("concern")
+  ) {
+    return {
+      accent: "text-rose-300",
+      iconWrap: "bg-rose-500/10 text-rose-300 border border-rose-400/20",
+      icon: <ShieldAlert className="h-4 w-4" />,
+      badge: "bg-rose-500/10 text-rose-300 border-rose-400/20",
+      card: "border-rose-500/20 bg-[linear-gradient(180deg,rgba(244,63,94,0.10),rgba(15,23,42,0.38))]",
+    };
+  }
+
+  if (
+    normalized.includes("workup") ||
+    normalized.includes("investigation") ||
+    normalized.includes("test")
+  ) {
+    return {
+      accent: "text-sky-200",
+      iconWrap: "bg-sky-500/10 text-sky-200 border border-sky-400/20",
+      icon: <Timer className="h-4 w-4" />,
+      badge: "bg-sky-500/10 text-sky-200 border-sky-400/20",
+      card: "border-sky-500/20 bg-[linear-gradient(180deg,rgba(14,165,233,0.10),rgba(15,23,42,0.38))]",
+    };
+  }
+
+  if (normalized.includes("gap") || normalized.includes("limitation")) {
+    return {
+      accent: "text-amber-200",
+      iconWrap: "bg-amber-500/10 text-amber-200 border border-amber-400/20",
+      icon: <AlertTriangle className="h-4 w-4" />,
+      badge: "bg-amber-500/10 text-amber-200 border-amber-400/20",
+      card: "border-amber-500/20 bg-[linear-gradient(180deg,rgba(245,158,11,0.10),rgba(15,23,42,0.38))]",
+    };
+  }
+
+  if (
+    normalized.includes("diagnostic") ||
+    normalized.includes("summary") ||
+    normalized.includes("differential") ||
+    normalized.includes("findings")
+  ) {
+    return {
+      accent: "text-emerald-200",
+      iconWrap: "bg-emerald-500/10 text-emerald-200 border border-emerald-400/20",
+      icon: <BrainCircuit className="h-4 w-4" />,
+      badge: "bg-emerald-500/10 text-emerald-200 border-emerald-400/20",
+      card: "border-emerald-500/20 bg-[linear-gradient(180deg,rgba(16,185,129,0.10),rgba(15,23,42,0.38))]",
+    };
+  }
+
+  return {
+    accent: "text-slate-200",
+    iconWrap: "bg-white/5 text-slate-200 border border-white/10",
+    icon: <FileText className="h-4 w-4" />,
+    badge: "bg-white/5 text-slate-300 border-white/10",
+    card: "border-white/10 bg-[linear-gradient(180deg,rgba(148,163,184,0.08),rgba(15,23,42,0.36))]",
+  };
+}
+
+function KeyValueLine({ text, tone }: { text: string; tone: SectionTone }) {
+  const keyValueMatch = text.match(/^\*\*(.+?)\*\*:\s*(.+)$/);
+
+  if (!keyValueMatch) {
+    return (
+      <p className="text-sm leading-7 text-slate-300/90">{formatBold(text)}</p>
+    );
+  }
+
   return (
-    <div className="prose prose-invert prose-sm max-w-none space-y-2">
-      {lines.map((line, i) => {
-        const trimmed = line.trim();
-        if (!trimmed) return <br key={i} />;
-        if (trimmed.startsWith("### "))
-          return (
-            <h3 key={i} className="text-base font-black text-primary mt-6 mb-2">
-              {trimmed.slice(4)}
-            </h3>
-          );
-        if (trimmed.startsWith("## "))
-          return (
-            <h2 key={i} className="text-lg font-black text-white mt-6 mb-2">
-              {trimmed.slice(3)}
-            </h2>
-          );
-        if (trimmed.startsWith("# "))
-          return (
-            <h1 key={i} className="text-xl font-black text-white mt-6 mb-3">
-              {trimmed.slice(2)}
-            </h1>
-          );
-        if (trimmed.startsWith("- ") || trimmed.startsWith("* "))
-          return (
-            <div key={i} className="flex gap-2 pl-2">
-              <ChevronRight className="h-3 w-3 text-primary mt-1 shrink-0" />
-              <span className="text-sm text-muted-foreground leading-relaxed">
-                {formatBold(trimmed.slice(2))}
-              </span>
-            </div>
-          );
-        if (/^\d+\.\s/.test(trimmed))
-          return (
-            <div key={i} className="flex gap-2 pl-2">
-              <span className="text-primary text-xs font-bold mt-0.5 shrink-0">
-                {trimmed.match(/^\d+/)?.[0]}.
-              </span>
-              <span className="text-sm text-muted-foreground leading-relaxed">
-                {formatBold(trimmed.replace(/^\d+\.\s*/, ""))}
-              </span>
-            </div>
-          );
+    <div className="rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3">
+      <div className={cn("text-[10px] font-black uppercase tracking-[0.24em]", tone.accent)}>
+        {keyValueMatch[1]}
+      </div>
+      <div className="mt-2 text-sm leading-7 text-slate-300/90">
+        {formatBold(keyValueMatch[2])}
+      </div>
+    </div>
+  );
+}
+
+function ReportList({ ordered, items, tone }: { ordered: boolean; items: string[]; tone: SectionTone }) {
+  return (
+    <div className="space-y-3">
+      {items.map((item, index) => {
+        const keyValueMatch = item.match(/^\*\*(.+?)\*\*:\s*(.+)$/);
         return (
-          <p key={i} className="text-sm text-muted-foreground leading-relaxed">
-            {formatBold(trimmed)}
-          </p>
+          <div
+            key={`${item}-${index}`}
+            className="flex gap-3 rounded-2xl border border-white/10 bg-slate-950/25 px-4 py-3"
+          >
+            <div
+              className={cn(
+                "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-black",
+                tone.iconWrap,
+              )}
+            >
+              {ordered ? index + 1 : <ChevronRight className="h-4 w-4" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              {keyValueMatch ? (
+                <>
+                  <div className={cn("text-[10px] font-black uppercase tracking-[0.24em]", tone.accent)}>
+                    {keyValueMatch[1]}
+                  </div>
+                  <div className="mt-2 text-sm leading-7 text-slate-300/90">
+                    {formatBold(keyValueMatch[2])}
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm leading-7 text-slate-300/90">{formatBold(item)}</div>
+              )}
+            </div>
+          </div>
         );
       })}
     </div>
   );
 }
 
-function formatBold(text: string): React.ReactNode {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) =>
-    part.startsWith("**") && part.endsWith("**") ? (
-      <strong key={i} className="text-white font-bold">
-        {part.slice(2, -2)}
-      </strong>
-    ) : (
-      <span key={i}>{part}</span>
-    ),
+function ReportTable({ headers, rows, tone }: { headers: string[]; rows: string[][]; tone: SectionTone }) {
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/40">
+      <table className="min-w-full border-collapse text-left text-sm">
+        <thead>
+          <tr className="border-b border-white/10 bg-white/[0.04]">
+            {headers.map((header, index) => (
+              <th
+                key={`${header}-${index}`}
+                className={cn(
+                  "px-4 py-3 text-[10px] font-black uppercase tracking-[0.24em] whitespace-nowrap",
+                  tone.accent,
+                )}
+              >
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={rowIndex} className="border-b border-white/5 last:border-b-0">
+              {headers.map((_, columnIndex) => (
+                <td
+                  key={columnIndex}
+                  className="px-4 py-3 align-top text-sm leading-6 text-slate-300/90"
+                >
+                  {formatBold(row[columnIndex] ?? "-")}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ReportBlockRenderer({ block, tone }: { block: ReportBlock; tone: SectionTone }) {
+  if (block.type === "paragraph") {
+    return <KeyValueLine text={block.text} tone={tone} />;
+  }
+
+  if (block.type === "list") {
+    return <ReportList ordered={block.ordered} items={block.items} tone={tone} />;
+  }
+
+  return <ReportTable headers={block.headers} rows={block.rows} tone={tone} />;
+}
+
+function SectionFlow({ sections }: { sections: ReportSection[] }) {
+  if (!sections.length) return null;
+
+  return (
+    <div className="rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_42%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,23,0.92))] p-5">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-200/80">
+            Clinical Flow
+          </p>
+          <p className="mt-1 text-sm text-slate-300/80">
+            ORA sections mapped into a quick-reading diagnostic sequence.
+          </p>
+        </div>
+        <Badge className="border-sky-400/20 bg-sky-500/10 text-sky-200 text-[10px]">
+          {sections.length} sections
+        </Badge>
+      </div>
+
+      <div className="mt-5 overflow-x-auto pb-1">
+        <div className="flex min-w-max items-center gap-3">
+          {sections.map((section, index) => {
+            const tone = getSectionTone(section.title);
+            return (
+              <div key={section.id} className="contents">
+                <div className={cn("min-w-[200px] rounded-2xl border px-4 py-3", tone.card)}>
+                  <div className="flex items-center gap-3">
+                    <div className={cn("flex h-9 w-9 items-center justify-center rounded-xl", tone.iconWrap)}>
+                      {tone.icon}
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
+                        Step {index + 1}
+                      </p>
+                      <p className="mt-1 text-sm font-bold text-white">{section.title}</p>
+                    </div>
+                  </div>
+                </div>
+                {index < sections.length - 1 && (
+                  <div className="flex items-center justify-center text-slate-500">
+                    <ChevronRight className="h-5 w-5" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OraReportContent({
+  content,
+  experienceLevel,
+}: {
+  content: string;
+  experienceLevel?: string;
+}) {
+  const parsed = parseReport(content);
+  const normalizedSections = parsed.sections.length
+    ? parsed.sections
+    : [
+        {
+          id: "clinical-report",
+          title: "Clinical Report",
+          level: 1,
+          blocks: parsed.lead,
+        },
+      ].filter((section) => section.blocks.length > 0);
+
+  const leadTone = getSectionTone("Diagnostic Summary");
+  const tableCount = normalizedSections.reduce(
+    (count, section) => count + section.blocks.filter((block) => block.type === "table").length,
+    0,
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_36%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.16),transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.96))] p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-2xl">
+            <p className="text-[10px] font-black uppercase tracking-[0.32em] text-emerald-200/80">
+              ORA Clinical Report
+            </p>
+            <h3 className="mt-2 text-2xl font-black tracking-tight text-white">
+              Structured diagnostic review
+            </h3>
+            <p className="mt-3 text-sm leading-7 text-slate-300/80">
+              The report is rendered from ORA&apos;s markdown-style output into section cards, clinical tables,
+              and quick-scan flow blocks for easier bedside review.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Badge className="border-emerald-400/20 bg-emerald-500/10 text-emerald-200 text-[10px] uppercase tracking-[0.22em]">
+              {String(experienceLevel || "seasoned").toUpperCase()}
+            </Badge>
+            <Badge className="border-white/10 bg-white/5 text-slate-200 text-[10px] uppercase tracking-[0.22em]">
+              {normalizedSections.length} sections
+            </Badge>
+            <Badge className="border-white/10 bg-white/5 text-slate-200 text-[10px] uppercase tracking-[0.22em]">
+              {tableCount} tables
+            </Badge>
+          </div>
+        </div>
+
+        {parsed.lead.length > 0 && (
+          <div className="mt-6 grid gap-3 md:grid-cols-2">
+            {parsed.lead.map((block, index) => (
+              <div key={index} className="rounded-2xl border border-white/10 bg-slate-950/35 p-4">
+                <ReportBlockRenderer block={block} tone={leadTone} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <SectionFlow sections={normalizedSections} />
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {normalizedSections.map((section) => {
+          const tone = getSectionTone(section.title);
+          return (
+            <section key={section.id} className={cn("rounded-3xl border p-5", tone.card)}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl", tone.iconWrap)}>
+                    {tone.icon}
+                  </div>
+                  <div>
+                    <p className={cn("text-[10px] font-black uppercase tracking-[0.3em]", tone.accent)}>
+                      Section
+                    </p>
+                    <h4 className="mt-1 text-lg font-black text-white">{section.title}</h4>
+                  </div>
+                </div>
+                <Badge className={cn("text-[10px] uppercase tracking-[0.22em]", tone.badge)}>
+                  {section.blocks.length} blocks
+                </Badge>
+              </div>
+
+              <div className="mt-5 space-y-4">
+                {section.blocks.map((block, index) => (
+                  <ReportBlockRenderer key={index} block={block} tone={tone} />
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RawTextContent({ content }: { content: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-5">
+      <pre className="whitespace-pre-wrap break-words text-xs leading-6 text-slate-300/85">
+        {content}
+      </pre>
+    </div>
   );
 }
 
@@ -341,7 +807,10 @@ export default function DiagnosticResult({ response }: DiagnosticResultProps) {
           <Card className="border-white/5 bg-white/[0.02] rounded-2xl">
             <CardContent className="p-8 space-y-6">
               {response.refined_output ? (
-                <MarkdownContent content={response.refined_output} />
+                <OraReportContent
+                  content={response.refined_output}
+                  experienceLevel={response.experience_level}
+                />
               ) : (
                 <p className="text-sm text-muted-foreground italic">
                   No clinical report was generated.
@@ -365,7 +834,7 @@ export default function DiagnosticResult({ response }: DiagnosticResultProps) {
           <Card className="border-white/5 bg-white/[0.02] rounded-2xl">
             <CardContent className="p-8">
               {response.kra_raw ? (
-                <MarkdownContent content={response.kra_raw} />
+                <RawTextContent content={response.kra_raw} />
               ) : (
                 <p className="text-sm text-muted-foreground italic">
                   No KRA raw output available.

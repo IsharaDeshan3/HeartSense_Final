@@ -42,7 +42,7 @@ def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
 
 
 class KRAClient:
-    """Local KRA inference using DeepSeek-R1 on GPU via LLMEngine."""
+    """Local KRA inference using Meditron-7B on GPU via LLMEngine."""
 
     def __init__(self, engine=None):
         if engine is None:

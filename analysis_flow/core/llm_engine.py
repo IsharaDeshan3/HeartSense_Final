@@ -5,7 +5,7 @@ Central LLM manager — loads GGUF models once at startup and provides
 thread-safe inference methods.
 
 KRA selects a runtime automatically:
-    - DeepSeek-R1-Distill-Llama-8B on NVIDIA systems
+    - Meditron-7B on NVIDIA systems
     - a CPU-safe fallback model when no NVIDIA GPU is detected
 
 ORA always runs on CPU.
@@ -39,7 +39,7 @@ _EXPECTED_PYTHON = (3, 10, 11)
 
 _DEFAULTS: Dict[str, Any] = {
     # KRA primary path (preferred when NVIDIA is available)
-    "KRA_MODEL_PATH": str(_ROOT / "models" / "deepseek-r1-8b-q5_k_m.gguf"),
+    "KRA_MODEL_PATH": str(_ROOT / "models" / "meditron-7b-q5_k_m.gguf"),
     "KRA_N_GPU_LAYERS": "-1",
     "KRA_N_CTX": "8192",
     "KRA_TEMPERATURE": "0.6",

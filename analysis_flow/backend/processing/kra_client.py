@@ -4,7 +4,7 @@ backend/processing/kra_client.py
 Local KRA inference client using direct local LLM calls.
 
 Uses the runtime selected by LLMEngine:
-DeepSeek on NVIDIA systems, otherwise a CPU-safe fallback.
+Meditron on NVIDIA systems, otherwise a CPU-safe fallback.
 """
 
 from __future__ import annotations

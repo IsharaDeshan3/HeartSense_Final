@@ -5,7 +5,7 @@ Main orchestrator for the 5-step local KRA-ORA processing pipeline.
 
 Step 1 — Save inputs to local SQLite session store
 Step 2 — FAISS vector search (medical books + rare cases)
-Step 3 — KRA local inference (DeepSeek-R1, GPU)
+Step 3 — KRA local inference (Meditron-7B, GPU)
 Step 4 — ORA local refinement (Phi-3.5-mini, CPU)
 Step 5 — Save all results to Supabase (payload + KRA + ORA in one batch)
 """

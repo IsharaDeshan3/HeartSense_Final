@@ -671,6 +671,23 @@ export default function AiDiagnostics({
               )}
             </Button>
           )}
+
+          {/* ── HuggingFace analysis popup button ──────────────────── */}
+          {!!workflowSessionId && !isRunning && (
+            <Button
+              onClick={() => {
+                window.open(
+                  `/huggingface-analysis?sessionId=${workflowSessionId}`,
+                  "_blank",
+                  "width=700,height=900,scrollbars=yes,resizable=yes",
+                );
+              }}
+              variant="outline"
+              className="h-12 px-6 rounded-2xl border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
+            >
+              <span className="mr-2">🤗</span> Analyze with Hugging Face
+            </Button>
+          )}
         </div>
       </div>
 

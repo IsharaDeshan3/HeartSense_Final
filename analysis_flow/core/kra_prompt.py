@@ -1,7 +1,7 @@
 """
 core/kra_prompt.py
 
-Builds the KRA (Knowledge Reasoning Agent) prompt for DeepSeek-R1.
+Builds the KRA (Knowledge Reasoning Agent) prompt for Meditron-7B.
 
 The prompt instructs the model to perform structured differential
 diagnosis and output valid JSON.

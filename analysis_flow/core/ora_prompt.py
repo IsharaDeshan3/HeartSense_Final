@@ -23,6 +23,9 @@ RULES:
    limitation in your report rather than ignoring it.
 9. Never contradict the KRA findings — your role is to present them clearly,
    not to re-diagnose.
+10. Keep the section headings exactly as written in the template.
+11. When a template includes a table, output a valid pipe-separated Markdown
+    table with a header row, separator row, and at least one body row.
 """
 
 _DISCLAIMER = (

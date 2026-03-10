@@ -102,6 +102,14 @@ set SVC_REQ=%SVC_DIR%\requirements.txt
 call :setup_venv
 
 echo.
+
+:: ---- 1e. HuggingFace KRA Backend ----
+set SVC_NAME=HuggingFace KRA Backend
+set SVC_DIR=%ROOT%hugg_backend
+set SVC_REQ=%SVC_DIR%\requirements.txt
+call :setup_venv
+
+echo.
 echo [Phase 1] All virtual environments ready.
 echo.
 
@@ -187,7 +195,7 @@ echo.
 :: ============================================================
 echo [Phase 3] Checking GGUF models ...
 
-set KRA_GPU_MODEL=%ROOT%analysis_flow\models\deepseek-r1-8b-q5_k_m.gguf
+set KRA_GPU_MODEL=%ROOT%analysis_flow\models\meditron-7b-q5_k_m.gguf
 set KRA_CPU_MODEL=%ROOT%analysis_flow\models\phi-3.5-mini-kra-q4_k_m.gguf
 set ORA_MODEL=%ROOT%analysis_flow\models\phi-3.5-mini-q4_k_m.gguf
 
@@ -198,7 +206,7 @@ if not exist "%ORA_MODEL%" set MODELS_NEEDED=1
 
 if %MODELS_NEEDED% EQU 1 (
     echo   Models missing — launching background downloader window.
-    echo   KRA GPU: ~5.5 GB  KRA CPU: ~2.3 GB  ORA: ~2.3 GB
+    echo   KRA GPU: Meditron-7B Q5_K_M  KRA CPU: ~2.3 GB  ORA: ~2.3 GB
     echo   Download runs in a separate window.
     echo   Services will start now; LLM inference activates once models finish.
     start "GGUF Model Downloader" /D "%ROOT%analysis_flow" cmd /k "echo Downloading GGUF models... && .venv\Scripts\python.exe download_models.py && echo Models ready! && pause"
@@ -213,7 +221,7 @@ echo.
 echo [Phase 4] Checking .env configuration ...
 
 set AF_ENV=%ROOT%analysis_flow\.env
-"%AF_PYTHON%" -c "import os,pathlib; p=pathlib.Path(r'%AF_ENV%'); c=p.read_text(encoding='utf-8') if p.exists() else ''; need='KRA_MODEL_PATH' not in c; print('Adding LLM config...' if need else 'LLM config already present.'); p.write_text(c+'\n# Local LLM Config\nKRA_MODEL_PATH=models/deepseek-r1-8b-q5_k_m.gguf\nKRA_N_GPU_LAYERS=-1\nKRA_N_CTX=8192\nKRA_CPU_FALLBACK_MODEL_PATH=models/phi-3.5-mini-kra-q4_k_m.gguf\nKRA_CPU_FALLBACK_N_GPU_LAYERS=0\nKRA_CPU_FALLBACK_N_CTX=4096\nKRA_CPU_FALLBACK_TEMPERATURE=0.2\nKRA_CPU_FALLBACK_MAX_TOKENS=1024\nORA_MODEL_PATH=models/phi-3.5-mini-q4_k_m.gguf\nORA_N_GPU_LAYERS=0\nORA_N_CTX=4096\nORA_TEMPERATURE=0.3\n', encoding='utf-8') if need else None"
+"%AF_PYTHON%" -c "import os,pathlib; p=pathlib.Path(r'%AF_ENV%'); c=p.read_text(encoding='utf-8') if p.exists() else ''; need='KRA_MODEL_PATH' not in c; print('Adding LLM config...' if need else 'LLM config already present.'); p.write_text(c+'\n# Local LLM Config\nKRA_MODEL_PATH=models/meditron-7b-q5_k_m.gguf\nKRA_N_GPU_LAYERS=-1\nKRA_N_CTX=8192\nKRA_CPU_FALLBACK_MODEL_PATH=models/phi-3.5-mini-kra-q4_k_m.gguf\nKRA_CPU_FALLBACK_N_GPU_LAYERS=0\nKRA_CPU_FALLBACK_N_CTX=4096\nKRA_CPU_FALLBACK_TEMPERATURE=0.2\nKRA_CPU_FALLBACK_MAX_TOKENS=1024\nORA_MODEL_PATH=models/phi-3.5-mini-q4_k_m.gguf\nORA_N_GPU_LAYERS=0\nORA_N_CTX=4096\nORA_TEMPERATURE=0.3\n', encoding='utf-8') if need else None"
 echo.
 
 :: ============================================================
@@ -258,19 +266,25 @@ start "Data Extraction - :8001" /D "%ROOT%data_extraction-main" cmd /k ".venv\Sc
 echo   Starting ECG Backend on :5000 ...
 start "ECG Backend - :5000" /D "%ROOT%ecg_backend-main" cmd /k ".venv\Scripts\python.exe app.py"
 
+
 :: ---- 6d. Analysis Flow (port 8080) — starts and eagerly preloads LLM ----
 echo   Starting Analysis Flow on :8080 ...
 start "Analysis Flow KRA-ORA - :8080" /D "%ROOT%analysis_flow" cmd /k ".venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8080"
 
+:: ---- 6e. HuggingFace KRA Backend (port 8090) ----
+echo   Starting HuggingFace KRA Backend on :8090 ...
+start "Hugg Backend - :8090" /D "%ROOT%hugg_backend" cmd /k ".venv\Scripts\python.exe main.py"
+
 echo.
 echo ====================================================================
-echo   All 4 backends launched!
+echo   All 5 backends launched!
 echo ====================================================================
 echo.
 echo   Lab Backend         : http://localhost:8000
 echo   Data Extraction     : http://localhost:8001
 echo   ECG Backend         : http://localhost:5000
 echo   Analysis (KRA-ORA)  : http://localhost:8080
+echo   HF KRA Backend      : http://localhost:8090
 echo.
 echo   LLM models will be loaded into GPU/CPU memory automatically
 echo   at startup (KRA on GPU, ORA on CPU). First load takes 30-90s.
