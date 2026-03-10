@@ -89,7 +89,8 @@ export default function DiabeticModal({ open, onClose, extractedData, onAutoResu
       TG: 0.0113,   // Triglycerides
       HDL: 0.0259,  // HDL Cholesterol
       LDL: 0.0259,  // LDL Cholesterol
-      // Add more if needed
+      Cr: 88.4,     // Creatinine (mg/dL to µmol/L)
+      BUN: 0.357,   // BUN (mg/dL to mmol/L)
     };
 
     // Convert mg/dL to mmol/L for relevant fields
@@ -193,6 +194,18 @@ export default function DiabeticModal({ open, onClose, extractedData, onAutoResu
     const validationErrors = validate()
     if (Object.keys(validationErrors).length > 0) { setErrors(validationErrors); return }
 
+    // Check if only Age and Gender are filled, all other fields are empty or zero
+    const otherFields = ["BMI", "Chol", "TG", "HDL", "LDL", "Cr", "BUN"];
+    const onlyAgeGender = otherFields.every(f => {
+      const v = formData[f as keyof FormData];
+      return v === "" || v === "0" || Number(v) === 0;
+    });
+    if (onlyAgeGender) {
+      setResult(null);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true)
     setResult(null)
 
@@ -208,11 +221,11 @@ export default function DiabeticModal({ open, onClose, extractedData, onAutoResu
           Gender: converted.Gender,
           BMI:    Number(converted.BMI),
           Chol:   Number(converted.Chol),
-          TG:     Number(converted.TG),
-          HDL:    Number(converted.HDL),
-          LDL:    Number(converted.LDL),
-          Cr:     Number(converted.Cr),
-          BUN:    Number(converted.BUN),
+          TG:    Number(converted.TG),
+          HDL:   Number(converted.HDL),
+          LDL:   Number(converted.LDL),
+          Cr:    Number(converted.Cr),
+          BUN:   Number(converted.BUN),
         }),
       })
       if (!res.ok) throw new Error("API request failed")
@@ -359,8 +372,13 @@ export default function DiabeticModal({ open, onClose, extractedData, onAutoResu
             </form>
           )}
 
-          {/* Result */}
-          {result && (
+          {/* Result: Only show if not only Age/Gender */}
+          {result && !(
+            ["BMI", "Chol", "TG", "HDL", "LDL", "Cr", "BUN"].every(f => {
+              const v = formData[f as keyof FormData];
+              return v === "" || v === "0" || Number(v) === 0;
+            })
+          ) && (
             <div className={`rounded-[1.5rem] border p-5 space-y-3 ${
               result.error
                 ? "bg-destructive/5 border-destructive/20"

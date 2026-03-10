@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "uplot/dist/uPlot.min.css";
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
@@ -8,7 +9,9 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-nunito);
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -34,29 +37,29 @@
 
 :root {
   --radius: 1.25rem;
-  
+
   /* Light Mode - Clinical Futuristic */
   --background: oklch(0.99 0.01 240);
   --foreground: oklch(0.2 0.05 240);
-  
+
   --card: oklch(1 0 0 / 0.7);
   --card-foreground: oklch(0.2 0.05 240);
-  
+
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.2 0.05 240);
-  
+
   --primary: oklch(0.55 0.18 250); /* Reliable Clinical Blue */
   --primary-foreground: oklch(0.99 0.01 240);
-  
+
   --secondary: oklch(0.95 0.02 240);
   --secondary-foreground: oklch(0.3 0.05 240);
-  
+
   --muted: oklch(0.92 0.02 240);
   --muted-foreground: oklch(0.45 0.05 240);
-  
+
   --accent: oklch(0.7 0.15 170); /* Life Mint */
   --accent-foreground: oklch(0.2 0.05 240);
-  
+
   --destructive: oklch(0.55 0.22 25);
   --border: oklch(0.85 0.03 240 / 0.5);
   --input: oklch(0.85 0.03 240 / 0.5);
@@ -67,25 +70,25 @@
   /* Dark Mode - Cosmic Deep */
   --background: oklch(0.12 0.03 240);
   --foreground: oklch(0.95 0.02 240);
-  
+
   --card: oklch(0.16 0.05 240 / 0.6);
   --card-foreground: oklch(0.95 0.02 240);
-  
+
   --popover: oklch(0.14 0.04 240);
   --popover-foreground: oklch(0.95 0.02 240);
-  
+
   --primary: oklch(0.72 0.14 210); /* Radiant Cyan */
   --primary-foreground: oklch(0.1 0.03 240);
-  
+
   --secondary: oklch(0.2 0.06 240);
   --secondary-foreground: oklch(0.9 0.02 240);
-  
+
   --muted: oklch(0.22 0.06 240);
   --muted-foreground: oklch(0.7 0.04 240);
-  
+
   --accent: oklch(0.85 0.2 170); /* Neon Vitality */
   --accent-foreground: oklch(0.1 0.03 240);
-  
+
   --destructive: oklch(0.65 0.25 25);
   --border: oklch(0.25 0.08 240 / 0.4);
   --input: oklch(0.25 0.08 240 / 0.4);
@@ -95,16 +98,22 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), 
-                color 0.3s ease, 
-                border-color 0.4s ease,
-                box-shadow 0.4s ease;
+    transition:
+      background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+      color 0.3s ease,
+      border-color 0.4s ease,
+      box-shadow 0.4s ease;
   }
   body {
     @apply bg-background text-foreground antialiased selection:bg-primary/30;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply tracking-tight font-extrabold;
   }
 }
@@ -134,15 +143,32 @@
 }
 
 @keyframes pulse-elevate {
-  0%, 100% { transform: translateY(0) scale(1); opacity: 0.9; }
-  50% { transform: translateY(-5px) scale(1.02); opacity: 1; }
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: translateY(-5px) scale(1.02);
+    opacity: 1;
+  }
 }
 
 @keyframes flow {
-  0%   { left: -4px; opacity: 0; }
-  20%  { opacity: 1; }
-  80%  { opacity: 1; }
-  100% { left: calc(100% + 4px); opacity: 0; }
+  0% {
+    left: -4px;
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    left: calc(100% + 4px);
+    opacity: 0;
+  }
 }
 
 .flex-center {

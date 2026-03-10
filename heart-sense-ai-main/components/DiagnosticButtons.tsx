@@ -30,11 +30,33 @@ const DiagnosticButtons: React.FC<DiagnosticButtonsProps> = ({
   const [heartResult, setHeartResult] = useState<any>(null)
   const [diabeticLoading, setDiabeticLoading] = useState(false)
   const [heartLoading, setHeartLoading] = useState(false)
+  // Conversion factors for mg/dL to mmol/L
+  const conversionFactors: Record<string, number> = {
+    Chol: 0.0259, // Cholesterol
+    TG: 0.0113,   // Triglycerides
+    HDL: 0.0259,  // HDL Cholesterol
+    LDL: 0.0259,  // LDL Cholesterol
+    Cr: 88.4,     // Creatinine (mg/dL to µmol/L)
+    BUN: 0.357,   // BUN (mg/dL to mmol/L)
+  };
+
+  // Convert mg/dL to mmol/L for relevant fields
+  function convertFormDataToMmolL(data: Record<string, any>): Record<string, any> {
+    const converted: Record<string, any> = { ...data };
+    for (const key of Object.keys(conversionFactors)) {
+      const val = Number(data[key]);
+      if (!isNaN(val) && val !== 0) {
+        converted[key] = (val * conversionFactors[key]).toFixed(2);
+      }
+    }
+    return converted;
+  }
+
   // Auto-run assessment for pre-filled Diabetes
   useEffect(() => {
     if (hasData(extractedGroup1)) {
       setDiabeticLoading(true);
-      const cleanData = sanitizeData(extractedGroup1);
+      const cleanData = sanitizeData(convertFormDataToMmolL(extractedGroup1 || {}));
       fetch("https://diabetesnew-1051190728028.asia-south1.run.app", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -53,7 +75,7 @@ const DiagnosticButtons: React.FC<DiagnosticButtonsProps> = ({
   useEffect(() => {
     if (hasData(extractedGroup2)) {
       setHeartLoading(true);
-      const cleanData = sanitizeData(extractedGroup2);
+      const cleanData = sanitizeData(convertFormDataToMmolL(extractedGroup2 || {}));
       fetch("https://cardiac-1051190728028.asia-south1.run.app", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -135,9 +157,20 @@ const DiagnosticButtons: React.FC<DiagnosticButtonsProps> = ({
                 <span className={`mt-2 text-xs font-bold ${heartResult.error ? "text-rose-500" : heartResult.prediction === 1 || heartResult.result === 1 || heartResult.risk === 1 || heartResult.probability > 0.5 ? "text-rose-600" : "text-emerald-600"}`}>
                   {heartResult.error ? "Error" : heartResult.prediction === 1 || heartResult.result === 1 || heartResult.risk === 1 || heartResult.probability > 0.5 ? "High Risk" : "Low Risk"}
                 </span>
+                {/* Show actual value for heart risk: probability, confidence, or risk percentage */}
                 {typeof heartResult.probability === "number" && (
                   <span className="block text-[11px] font-medium text-pink-700 mt-1">
-                    Risk: {(heartResult.probability * 100).toFixed(1)}%
+                    Risk: {(heartResult.probability * 100).toFixed(2)}%
+                  </span>
+                )}
+                {typeof heartResult.confidence === "number" && typeof heartResult.probability !== "number" && (
+                  <span className="block text-[11px] font-medium text-pink-700 mt-1">
+                    Risk: {heartResult.confidence.toFixed(2)}%
+                  </span>
+                )}
+                {typeof heartResult.heart_risk_percentage === "number" && typeof heartResult.probability !== "number" && typeof heartResult.confidence !== "number" && (
+                  <span className="block text-[11px] font-medium text-pink-700 mt-1">
+                    Risk: {heartResult.heart_risk_percentage.toFixed(2)}%
                   </span>
                 )}
               </>
@@ -174,7 +207,7 @@ const DiagnosticButtons: React.FC<DiagnosticButtonsProps> = ({
                 {/* Show diabetes risk percentage from response */}
                 {typeof diabeticResult.diabetes_risk_percentage === "number" && (
                   <span className="block text-[11px] font-medium text-yellow-700 mt-1">
-                    Risk: {diabeticResult.diabetes_risk_percentage.toFixed(1)}%
+                    Risk: {diabeticResult.diabetes_risk_percentage.toFixed(2)}%
                   </span>
                 )}
                 {/* Fallback to confidence if available */}
