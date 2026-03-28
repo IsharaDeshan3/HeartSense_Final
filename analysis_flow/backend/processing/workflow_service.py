@@ -79,6 +79,8 @@ _ANALYSIS_READY_STATES = {
 
 
 class WorkflowService:
+    # This service is the bridge between the session store, retrieval layer,
+    # Supabase persistence helpers, and the local KRA/ORA model clients.
     def __init__(self) -> None:
         self._store = WorkflowStore()
         self._search = SearchService()
@@ -318,6 +320,8 @@ class WorkflowService:
         history_json: dict[str, Any],
         patient_id: Optional[str],
     ) -> dict[str, Any]:
+        # Step 3 persists the merged patient payload so later steps can link
+        # KRA/ORA output back to the same workflow session and Supabase row.
         try:
             payload_id, payload_url = save_analysis_payload(
                 session_id=session_id,
@@ -359,6 +363,8 @@ class WorkflowService:
         kra_result: dict[str, Any],
         patient_id: Optional[str],
     ) -> dict[str, Any]:
+        # Step 4 stores the raw KRA result in Supabase and mirrors the ID in
+        # the local workflow store for later ORA and cleanup steps.
         try:
             kra_id, kra_url = save_kra_output(
                 session_id=session_id,
@@ -391,6 +397,8 @@ class WorkflowService:
         ora_result: dict[str, Any],
         patient_id: Optional[str],
     ) -> dict[str, Any]:
+        # Step 5 stores the ORA-refined result as the final analyst-facing
+        # record for this session.
         try:
             ora_output_id, ora_url = save_ora_output(
                 session_id=session_id,
@@ -430,6 +438,8 @@ class WorkflowService:
         self._raise_if_cancelled(session_id)
 
         # ── Step 0: Normalise inputs ──────────────────────────────────────────
+        # The normalized payload is the common shape used by search_service.py,
+        # kra_client.py, and the Supabase persistence helpers.
         symptoms_json, symptoms_text = self._normalize_symptoms_payload(extraction_payload)
         ecg_json = self._normalize_ecg_payload(ecg_payload)
         labs_json = self._normalize_lab_payload(lab_payload)
@@ -586,6 +596,8 @@ class WorkflowService:
         history_summary_text = str(history_summary.get("summary_text") or "").strip()
 
         # ── Step 3: Persist payload and run KRA in parallel ─────────────────
+        # Saving the payload does not need to wait for model inference, so the
+        # pipeline overlaps the database write with the KRA request.
         cancel_event = self._get_or_create_cancel_event(session_id)
         self._emit(session_id, "supabase_save_payload", "started")
         self._emit(session_id, "kra_analysis", "started")
@@ -697,6 +709,8 @@ class WorkflowService:
         self._raise_if_cancelled(session_id)
 
         # ── Step 4: Persist KRA and run ORA directly from KRA in parallel ───
+        # ORA only needs the KRA result, so persistence and refinement run
+        # together to keep the session responsive.
         requested_level = str(experience_level or "seasoned").strip().upper()
         if requested_level not in {"NEWBIE", "SEASONED"}:
             requested_level = "SEASONED"

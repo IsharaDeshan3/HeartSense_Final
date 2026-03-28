@@ -31,73 +31,90 @@ interface PatientResult {
   gender: string;
 }
 
+
+import { useEffect } from "react";
+
 export default function DoctorPatientSearch() {
-  const [query, setQuery] = useState("");
-  const [isSearching, setIsSearching] = useState(false);
-  const [result, setResult] = useState<{ type: "assigned" | "unassigned"; patient: PatientResult } | null>(null);
-  const [requestReason, setRequestReason] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+   const [query, setQuery] = useState("");
+   const [isSearching, setIsSearching] = useState(false);
+   const [result, setResult] = useState<{ type: "assigned" | "unassigned"; patient: PatientResult } | null>(null);
+   const [requestReason, setRequestReason] = useState("");
+   const [isSubmitting, setIsSubmitting] = useState(false);
+   const [currentUser, setCurrentUser] = useState<any>(null);
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query) return;
+   useEffect(() => {
+      const fetchUser = async () => {
+         try {
+            const res = await fetch("/api/auth/me");
+            if (res.ok) {
+               setCurrentUser(await res.json());
+            }
+         } catch {}
+      };
+      fetchUser();
+   }, []);
 
-    setIsSearching(true);
-    setResult(null);
-    try {
-      const response = await fetch(`/api/doctor/patients/search?id=${query}`);
-      const data = await response.json();
+   const handleSearch = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!query) return;
 
-      if (!response.ok) throw new Error(data.message);
-      setResult(data);
-    } catch (error: any) {
-      toast.error("Database Lookup Failed", { description: error.message });
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const handleRequestAccess = async () => {
-    if (!result || !requestReason) return;
-
-    setIsSubmitting(true);
-    try {
-      const response = await fetch("/api/doctor/patients/request-access", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patientDbId: result.patient._id,
-          reason: requestReason
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message);
-
-      toast.success("Request Transmitted", {
-        description: "Administrative council will review your access request shortly."
-      });
+      setIsSearching(true);
       setResult(null);
-      setQuery("");
-      setRequestReason("");
-    } catch (error: any) {
-      toast.error("Transmission Failed", { description: error.message });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+      try {
+         const response = await fetch(`/api/doctor/patients/search?id=${query}`);
+         const data = await response.json();
+
+         if (!response.ok) throw new Error(data.message);
+         setResult(data);
+      } catch (error: any) {
+         toast.error("Database Lookup Failed", { description: error.message });
+      } finally {
+         setIsSearching(false);
+      }
+   };
+
+   const handleRequestAccess = async () => {
+      if (!result || !requestReason) return;
+
+      setIsSubmitting(true);
+      try {
+         const response = await fetch("/api/doctor/patients/request-access", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+               patientDbId: result.patient._id,
+               reason: requestReason
+            }),
+         });
+
+         const data = await response.json();
+         if (!response.ok) throw new Error(data.message);
+
+         toast.success("Request Transmitted", {
+            description: "Administrative council will review your access request shortly."
+         });
+         setResult(null);
+         setQuery("");
+         setRequestReason("");
+      } catch (error: any) {
+         toast.error("Transmission Failed", { description: error.message });
+      } finally {
+         setIsSubmitting(false);
+      }
+   };
 
   return (
     <div className="min-h-screen bg-background flex flex-col relative overflow-hidden">
-      <DashboardHeader 
-        title="Patient Identification"
-        icon={<Search className="h-8 w-8" />}
-      >
-        <Link href="/dashboard/doctor" className="inline-flex items-center gap-2 text-muted-foreground hover:text-white transition-colors group text-xs font-bold uppercase tracking-widest leading-none">
-           <ArrowLeft className="w-3 h-3 group-hover:-translate-x-1 transition-transform" />
-           Clinical Workspace
-        </Link>
-      </DashboardHeader>
+         <DashboardHeader 
+            title="Patient Identification"
+            icon={<Search className="h-8 w-8" />}
+            doctorName={currentUser?.fullName ?? ""}
+         >
+            <Link href="/dashboard/doctor" className="inline-flex items-center gap-2 text-muted-foreground hover:text-white transition-colors group text-xs font-bold uppercase tracking-widest leading-none">
+                <ArrowLeft className="w-3 h-3 group-hover:-translate-x-1 transition-transform" />
+                Clinical Workspace
+            </Link>
+         </DashboardHeader>
 
       <div className="p-8 flex flex-col items-center flex-1 overflow-y-auto w-full">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,oklch(0.7_0.15_180/0.05)_0%,transparent_70%)] -z-10"></div>

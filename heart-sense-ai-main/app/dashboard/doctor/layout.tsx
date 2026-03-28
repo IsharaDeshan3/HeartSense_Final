@@ -1,19 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
-  Users,
   Activity,
-  LogOut,
-  Search,
-  Plus,
   FlaskConical,
   Menu,
   Syringe,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
 import { useState } from "react";
 
 const navItems = [
@@ -23,8 +17,6 @@ const navItems = [
     icon: Syringe,
     exact: true,
   },
-  { href: "/dashboard/doctor/new-case", label: "New Case", icon: Plus },
-  { href: "/dashboard/doctor/patients", label: "My Patients", icon: Users },
   {
     href: "/dashboard/doctor/diagnostics",
     label: "ECG Analysis",
@@ -35,7 +27,6 @@ const navItems = [
     label: "Lab Analysis",
     icon: FlaskConical,
   },
-  { href: "/dashboard/doctor/search", label: "Find Patient", icon: Search },
 ];
 
 export default function DoctorLayout({
@@ -45,17 +36,6 @@ export default function DoctorLayout({
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const pathname = usePathname();
-  const router = useRouter();
-
-  const handleLogout = async () => {
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-      router.push("/");
-      toast.success("Logged out successfully");
-    } catch {
-      toast.error("Logout failed");
-    }
-  };
 
   const isActive = (href: string, exact?: boolean) =>
     exact ? pathname === href : pathname.startsWith(href);
@@ -106,16 +86,6 @@ export default function DoctorLayout({
           })}
         </nav>
 
-        <div className="p-6 border-t border-border/20">
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-4 text-muted-foreground hover:text-destructive rounded-2xl h-12 font-bold"
-            onClick={handleLogout}
-          >
-            <LogOut className="h-5 w-5" />
-            {!isCollapsed && "Sign Out"}
-          </Button>
-        </div>
       </aside>
 
       {/* Main Content */}

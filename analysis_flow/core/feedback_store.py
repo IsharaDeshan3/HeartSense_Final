@@ -1,11 +1,9 @@
 from __future__ import annotations
-
 import json
 import os
 import time
 import uuid
 from typing import Any, Dict, List, Optional
-
 
 class LocalFeedbackStore:
     """Minimal JSONL feedback store for single-user prototype."""

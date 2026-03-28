@@ -1,17 +1,12 @@
 from __future__ import annotations
-
 import os
 from typing import Any, Dict, List, Optional
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-
 from core.models import ECGPayload, LabsPayload, PatientCase
 from core.pipeline import DiagnosisPipeline
 
-
 router = APIRouter()
-
 
 class LocalAnalysisRequest(BaseModel):
     symptoms: str = Field(..., description="Free text symptoms/history")
@@ -19,20 +14,21 @@ class LocalAnalysisRequest(BaseModel):
     labs: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Any Labs JSON payload")
     lab_component_recommendations: List[str] = Field(default_factory=list)
 
-
 _pipeline: Optional[DiagnosisPipeline] = None
 
-
 def get_pipeline() -> DiagnosisPipeline:
+    # Local mode uses a single in-process pipeline instead of the workflow
+    # session/state machine used by backend/routes/workflow.py.
     global _pipeline
     if _pipeline is None:
         max_chars = int(os.getenv("KRA_MAX_CHARS", "24000"))
         _pipeline = DiagnosisPipeline(max_chars=max_chars)
     return _pipeline
 
-
 @router.post("/analyze")
 async def analyze(request: LocalAnalysisRequest):
+    # This is the one-shot local entrypoint that bypasses session storage and
+    # calls the offline diagnosis pipeline directly.
     if not request.symptoms.strip():
         raise HTTPException(status_code=400, detail="Missing symptoms")
 

@@ -19,6 +19,9 @@ from pydantic import BaseModel, Field
 #  Sub-models                                                            #
 # --------------------------------------------------------------------- #
 
+# These models define the payload shape that routes/workflow.py accepts and
+# that workflow_service.py converts into the normalized pipeline inputs.
+
 class SymptomsPayload(BaseModel):
     """Free-text patient presentation plus structured demographic fields."""
 
@@ -119,6 +122,9 @@ class AnalyzeRequest(BaseModel):
     Passed directly into PipelineService.run() and
     WorkflowService._run_analysis_pipeline().
     """
+
+    # The request mirrors the frontend session form, with optional ECG/labs so
+    # the pipeline can skip those steps without changing the contract.
 
     symptoms: SymptomsPayload
     ecg: Optional[ECGPayload] = None

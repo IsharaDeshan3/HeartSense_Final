@@ -45,10 +45,9 @@ _DEFAULTS: Dict[str, Any] = {
     "KRA_TEMPERATURE": "0.6",
     "KRA_MAX_TOKENS": "4096",
     # KRA CPU fallback (used automatically when NVIDIA is not available)
-    # CPU fallback uses Qwen2.5-7B-Instruct (Q4_K_M) — a stronger 7B model
-    # that avoids shared-model lock contention with ORA.
+    # Use a locally available DeepSeek GGUF by default.
     "KRA_FORCE_CPU": "0",
-    "KRA_CPU_FALLBACK_MODEL_PATH": str(_ROOT / "models" / "Qwen2.5-7B-Instruct-Q4_K_M.gguf"),
+    "KRA_CPU_FALLBACK_MODEL_PATH": str(_ROOT / "models" / "DeepSeek-R1-Distill-Llama-8B-Q5_K_M.gguf"),
     "KRA_CPU_FALLBACK_N_GPU_LAYERS": "0",
     "KRA_CPU_FALLBACK_N_CTX": "3072",
     "KRA_CPU_FALLBACK_TEMPERATURE": "0.2",

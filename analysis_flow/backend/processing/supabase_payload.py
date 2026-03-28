@@ -24,6 +24,9 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 logger = logging.getLogger(__name__)
 
+# WorkflowService uses this module for the persisted handoff points between
+# retrieval, KRA, ORA, and patient-history cleanup.
+
 
 # --------------------------------------------------------------------- #
 #  PostgREST helper                                                      #
@@ -142,6 +145,8 @@ def save_analysis_payload(
     Returns:
         (row_id, public_url)
     """
+    # Step 3 of the workflow stores the raw inputs and retrieval context so
+    # KRA and later history views can link back to the exact source payload.
     row = {
         "session_id": session_id,
         "symptoms_json": symptoms,
@@ -186,6 +191,8 @@ def save_kra_output(
     Returns:
         (row_id, public_url) pointing to the new kra_outputs row.
     """
+    # Step 4 stores the KRA output before ORA refines it, which makes the
+    # raw reasoning available for audits and downstream history queries.
     if isinstance(kra_result, str):
         kra_output_dict: Dict[str, Any] = {}
         raw_text: Optional[str] = kra_result
@@ -236,6 +243,7 @@ def save_ora_output(
     Returns:
         (row_id, public_url) of the inserted row.
     """
+    # Step 5 is the final persistence point for the clinician-facing output.
     row = {
         "session_id": session_id,
         "kra_output_id": kra_output_id,
@@ -312,6 +320,8 @@ def get_patient_diagnosis_history(patient_id: str) -> list:
     Returns a list of dicts with payload, KRA, and ORA data, newest first.
     Each record is enriched with `doctor_name` looked up from the profiles table.
     """
+    # This feeds the history bundle that WorkflowService injects back into the
+    # KRA prompt when a patient has prior diagnosis records.
     try:
         _init()
         records = _get(
@@ -382,6 +392,8 @@ def build_patient_history_summary(patient_id: str) -> Dict[str, Any]:
     Supabase the canonical reasoning source for prior AI diagnoses and lab
     findings.
     """
+    # WorkflowService passes this compressed summary to KRA so the model sees
+    # a concise longitudinal view without loading every prior row.
     records = get_patient_diagnosis_history(patient_id)
     if not records:
         return {
@@ -452,6 +464,7 @@ def get_patient_history_bundle(patient_id: str) -> Dict[str, Any]:
 
 def delete_history_record(payload_id: str) -> Dict[str, Any]:
     """Delete one history entry and its dependent KRA/ORA rows."""
+    # Cleanup mirrors the workflow session delete path in backend/routes/workflow.py.
     _init()
 
     deleted: Dict[str, int] = {
