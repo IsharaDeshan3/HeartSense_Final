@@ -1,10 +1,7 @@
 from __future__ import annotations
-
 import json
 from typing import Any, Dict, List, Tuple
-
 from .models import RetrievedChunk
-
 
 def _safe_json_compact(data: Dict[str, Any], max_chars: int) -> str:
     """Compact JSON rendering with a hard character cap."""
@@ -16,7 +13,6 @@ def _safe_json_compact(data: Dict[str, Any], max_chars: int) -> str:
     if len(s) <= max_chars:
         return s
     return s[: max_chars - 3] + "..."
-
 
 def pack_kra_payload(
     *,

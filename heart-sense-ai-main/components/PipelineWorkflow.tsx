@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import {
   BookOpen,
   BrainCircuit,
@@ -10,21 +10,17 @@ import {
   Loader2,
   Server,
   Sparkles,
-  Wifi,
-  WifiOff,
   XCircle,
 } from "lucide-react";
 
-import { DiagnosticService, type HealthResponse } from "@/services/DiagnosticService";
-
-type NodeStatus = "idle" | "checking" | "online" | "offline" | "active" | "done";
+type NodeStatus = "idle" | "online" | "offline" | "active" | "done";
 
 interface PipelineNode {
   id: string;
   label: string;
   sublabel: string;
   detail: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   status: NodeStatus;
 }
 
@@ -57,20 +53,11 @@ const STEP_LABELS: Record<string, string> = {
   supabase_save_ora: "Saving final ORA report...",
 };
 
-const STATUS_CONFIG: Record<
-  NodeStatus,
-  { color: string; ring: string; bg: string; icon?: React.ReactNode }
-> = {
+const STATUS_CONFIG: Record<NodeStatus, { color: string; ring: string; bg: string; icon?: ReactNode }> = {
   idle: {
     color: "text-muted-foreground/40",
     ring: "border-white/10",
     bg: "bg-white/[0.02]",
-  },
-  checking: {
-    color: "text-amber-400",
-    ring: "border-amber-500/30",
-    bg: "bg-amber-500/5",
-    icon: <Loader2 className="h-3 w-3 animate-spin" />,
   },
   online: {
     color: "text-emerald-400",
@@ -104,28 +91,7 @@ export default function PipelineWorkflow({
   completedSteps = [],
   failedStep,
 }: PipelineWorkflowProps) {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [isChecking, setIsChecking] = useState(true);
-
-  const refreshHealth = async () => {
-    setIsChecking(true);
-    try {
-      const next = await DiagnosticService.checkHealth();
-      setHealth(next);
-    } catch {
-      setHealth(null);
-    } finally {
-      setIsChecking(false);
-    }
-  };
-
-  useEffect(() => {
-    refreshHealth();
-  }, []);
-
   const getNodeStatus = (nodeId: string): NodeStatus => {
-    if (isChecking) return "checking";
-
     if (isRunning) {
       const nodeSteps = Object.entries(STEP_TO_NODE)
         .filter(([, mapped]) => mapped === nodeId)
@@ -143,27 +109,22 @@ export default function PipelineWorkflow({
       return "offline";
     }
 
-    if (!health) return "offline";
+    const nodeSteps = Object.entries(STEP_TO_NODE)
+      .filter(([, mapped]) => mapped === nodeId)
+      .map(([step]) => step);
 
-    switch (nodeId) {
-      case "backend":
-        return health.status === "ok" || health.status === "degraded" ? "online" : "offline";
-      case "knowledge":
-        return health.faiss_ready ? "online" : "offline";
-      case "supabase":
-        return health.supabase_ready ? "online" : "offline";
-      case "kra":
-        return health.kra_model_loaded ? "online" : "offline";
-      case "ora":
-        return health.ora_model_loaded ? "online" : "offline";
-      default:
-        return "idle";
+    if (nodeSteps.length > 0 && nodeSteps.every((step) => completedSteps.includes(step))) {
+      return "done";
     }
+
+    if (nodeSteps.some((step) => completedSteps.includes(step))) {
+      return "active";
+    }
+
+    return "idle";
   };
 
   const getNodeDetail = (nodeId: string): string => {
-    if (isChecking) return "Checking...";
-
     if (isRunning) {
       const nodeSteps = Object.entries(STEP_TO_NODE)
         .filter(([, mapped]) => mapped === nodeId)
@@ -182,31 +143,19 @@ export default function PipelineWorkflow({
       return STEP_LABELS[failedStep] ?? "Analysis failed";
     }
 
-    if (!health) return "Unreachable";
+    const nodeSteps = Object.entries(STEP_TO_NODE)
+      .filter(([, mapped]) => mapped === nodeId)
+      .map(([step]) => step);
 
-    switch (nodeId) {
-      case "backend":
-        return health.status === "ok"
-          ? "Workflow backend ready"
-          : "Backend reachable with degraded services";
-      case "knowledge":
-        if (!health.faiss_ready) return "Knowledge indexes not ready";
-        return health.rare_cases_ready
-          ? "Textbook + rare-case indexes loaded"
-          : "Textbook ready · rare-case warming up";
-      case "supabase":
-        return health.supabase_ready ? "Connected and writable" : "Supabase offline";
-      case "kra":
-        return health.kra_model_loaded
-          ? `KRA model loaded (${health.kra_runtime ?? "local"})`
-          : "KRA model not loaded yet";
-      case "ora":
-        return health.ora_model_loaded
-          ? `ORA model loaded (CPU)`
-          : "ORA model not loaded yet";
-      default:
-        return "";
+    if (nodeSteps.length > 0 && nodeSteps.every((step) => completedSteps.includes(step))) {
+      return "Complete";
     }
+
+    if (nodeSteps.some((step) => completedSteps.includes(step))) {
+      return "Partially complete";
+    }
+
+    return "Ready to run";
   };
 
   const nodes: PipelineNode[] = [
@@ -252,9 +201,8 @@ export default function PipelineWorkflow({
     },
   ];
 
-  const allOnline = nodes.every((node) => node.status === "online" || node.status === "done");
+  const allDone = nodes.every((node) => node.status === "done");
   const anyOffline = nodes.some((node) => node.status === "offline");
-  const modelsMissing = !!health && (!health.kra_model_loaded || !health.ora_model_loaded);
 
   return (
     <div className="rounded-2xl border border-white/5 bg-white/[0.01] p-5 space-y-4">
@@ -264,15 +212,15 @@ export default function PipelineWorkflow({
             className={`h-2 w-2 rounded-full ${
               isRunning
                 ? "bg-primary animate-pulse"
-                : allOnline
+                : allDone
                   ? "bg-emerald-400"
                   : anyOffline
                     ? "bg-rose-400 animate-pulse"
-                    : "bg-amber-400 animate-pulse"
+                    : "bg-sky-400 animate-pulse"
             }`}
           />
           <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-            Local Pipeline Infrastructure
+            Diagnostic Pipeline Workflow
           </h4>
           <span className="flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest text-primary/70">
             <Cpu className="h-2.5 w-2.5" />
@@ -285,62 +233,24 @@ export default function PipelineWorkflow({
             <span className="text-[9px] font-bold uppercase tracking-widest text-primary animate-pulse">
               Processing...
             </span>
-          ) : allOnline ? (
+          ) : allDone ? (
             <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-emerald-400">
-              <Wifi className="h-3 w-3" />
-              All Systems Online
+              <CheckCircle2 className="h-3 w-3" />
+              Workflow Complete
             </span>
           ) : anyOffline ? (
             <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-rose-400">
-              <WifiOff className="h-3 w-3" />
+              <XCircle className="h-3 w-3" />
               Attention Needed
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-amber-400">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Checking...
+            <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-sky-400">
+              <Server className="h-3 w-3" />
+              Ready
             </span>
-          )}
-
-          {!isRunning && !isChecking && (
-            <button
-              onClick={refreshHealth}
-              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-white/5 hover:text-white"
-              title="Refresh health check"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                <path d="M3 3v5h5" />
-                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-                <path d="M16 16h5v5" />
-              </svg>
-            </button>
           )}
         </div>
       </div>
-
-      {!isRunning && modelsMissing && (
-        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2.5">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
-            Model warm-up in progress
-          </p>
-          <p className="mt-1 text-[9px] text-amber-300/70">
-            {!health?.kra_model_loaded && "KRA DeepSeek-R1 GPU model pending. "}
-            {!health?.ora_model_loaded && "ORA Phi-3.5-mini CPU model pending. "}
-            The new local pipeline becomes fully ready as soon as both models finish loading.
-          </p>
-        </div>
-      )}
 
       <div className="flex items-stretch gap-0">
         {nodes.map((node, index) => {

@@ -1,10 +1,9 @@
 from __future__ import annotations
-
 import json
 from typing import Any, Dict
 
-
 def normalize_any_json(value: Any) -> Dict[str, Any]:
+    
     """Best-effort normalization for arbitrary JSON-ish inputs.
 
     Upstream components emit JSON, but exact shape may vary.

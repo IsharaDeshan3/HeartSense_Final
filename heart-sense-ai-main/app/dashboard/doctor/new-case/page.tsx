@@ -18,6 +18,9 @@ import { validatePatientId } from "@/lib/validation";
 import { DashboardHeader } from "@/components/ui/DashboardHeader";
 import { Stethoscope } from "lucide-react";
 
+
+import { useEffect } from "react";
+
 export default function NewCasePage() {
     const router = useRouter();
     const [formData, setFormData] = useState({
@@ -29,6 +32,19 @@ export default function NewCasePage() {
     const [patientId, setPatientId] = useState("");
     const [idType, setIdType] = useState<"NIC" | "Passport" | "Invalid">("Invalid");
     const [isLoading, setIsLoading] = useState(false);
+    const [currentUser, setCurrentUser] = useState<any>(null);
+
+    useEffect(() => {
+        const fetchUser = async () => {
+            try {
+                const res = await fetch("/api/auth/me");
+                if (res.ok) {
+                    setCurrentUser(await res.json());
+                }
+            } catch {}
+        };
+        fetchUser();
+    }, []);
 
     const handleIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
@@ -84,6 +100,7 @@ export default function NewCasePage() {
                 title="New Case"
                 badge="Patient Registration"
                 icon={<Stethoscope className="h-8 w-8" />}
+                doctorName={currentUser?.fullName ?? ""}
             />
 
             <div className="flex-1 overflow-y-auto flex items-center justify-center p-8">

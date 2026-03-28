@@ -7,14 +7,12 @@ Provides direct llama-cpp-python inference via the `LLMEngine` singleton.
 """
 
 from __future__ import annotations
-
 import json
 import logging
 import re
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
-
 
 def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
     """Best-effort JSON object extraction from imperfect model output."""
@@ -39,7 +37,6 @@ def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
         return parsed if isinstance(parsed, dict) else None
     except Exception:
         return None
-
 
 class KRAClient:
     """Local KRA inference using DeepSeek-R1 on GPU via LLMEngine."""
@@ -95,7 +92,6 @@ class KRAClient:
             "red_flags": [],
             "raw_text": raw,
         }
-
 
 class ORAClient:
     """Local ORA inference using Phi-3.5-mini on CPU via LLMEngine."""

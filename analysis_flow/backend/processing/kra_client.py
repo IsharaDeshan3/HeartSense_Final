@@ -1,14 +1,11 @@
 """
 backend/processing/kra_client.py
-
 Local KRA inference client using direct local LLM calls.
-
 Uses the runtime selected by LLMEngine:
 DeepSeek on NVIDIA systems, otherwise a CPU-safe fallback.
 """
 
 from __future__ import annotations
-
 import json
 import logging
 import re
@@ -17,7 +14,6 @@ import time
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
-
 
 def _try_parse_json(text: str) -> Optional[Dict[str, Any]]:
     """Best-effort JSON extraction from mixed model output."""
@@ -36,7 +32,6 @@ def _try_parse_json(text: str) -> Optional[Dict[str, Any]]:
             pass
     return None
 
-
 class KRAClient:
     """
     Local KRA inference client.
@@ -44,11 +39,16 @@ class KRAClient:
     Uses direct calls to `LLMEngine.generate_kra()`.
     """
 
+    # WorkflowService uses this client right after retrieval to turn the FAISS
+    # context into a structured diagnosis payload.
+
     def __init__(self) -> None:
         # Engine will be initialised lazily on first call
         self._engine = None
 
     def _get_engine(self):
+        # Both KRA and ORA share the same singleton engine so model loading is
+        # centralized in core.llm_engine.
         if self._engine is None:
             from core.llm_engine import LLMEngine
             self._engine = LLMEngine.instance()
@@ -85,6 +85,8 @@ class KRAClient:
         """
         from core.kra_prompt import build_kra_prompt
 
+        # The prompt is assembled from retrieval context, ECG, labs, and
+        # history before the shared LLM engine is invoked.
         # Handle legacy inline_payload mode
         if inline_payload and not symptoms_text:
             s = inline_payload.get("symptoms") or {}
@@ -107,6 +109,8 @@ class KRAClient:
         if cancel_event and cancel_event.is_set():
             raise RuntimeError("ANALYSIS_CANCELLED")
 
+        # The raw model output is stored verbatim because downstream Supabase
+        # persistence and ORA refinement both need the original text.
         raw_text = engine.generate_kra(
             prompt,
             temperature=temperature,
@@ -118,6 +122,8 @@ class KRAClient:
 
         result: Dict[str, Any] = {"raw_text": raw_text}
 
+        # KRA output is best-effort parsed so the pipeline can continue even
+        # when the model includes markdown or partial JSON.
         parsed = _try_parse_json(raw_text)
         if parsed:
             result.update(parsed)

@@ -18,10 +18,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
-  DiagnosticService,
   type AnalysisResponse,
 } from "@/services/DiagnosticService";
 import { WorkflowService } from "@/services/WorkflowService";
@@ -146,7 +144,6 @@ export default function AiDiagnostics({
   const [result, setResult] = useState<AnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [isHealthy, setIsHealthy] = useState<boolean | null>(null);
   const [isStopping, setIsStopping] = useState(false);
   const [oraMode, setOraMode] = useState<"newbie" | "seasoned">("newbie");
   const [currentPipelineStep, setCurrentPipelineStep] = useState<string | undefined>();
@@ -204,13 +201,6 @@ export default function AiDiagnostics({
   const isWorkflowAnalysisRunning = workflowState === "ANALYSIS_RUNNING";
   const canRun = hasNlp && !isWorkflowAnalysisRunning; // NLP/symptoms is the minimum requirement
   const dataSourceCount = [hasNlp, hasEcg, hasLab].filter(Boolean).length;
-
-  // Health check on mount
-  useEffect(() => {
-    DiagnosticService.checkHealth().then((h) => {
-      setIsHealthy(h.status === "ok" || h.status === "degraded");
-    });
-  }, []);
 
   // Elapsed timer
   useEffect(() => {
@@ -620,12 +610,6 @@ export default function AiDiagnostics({
 
         {/* Run / Status */}
         <div className="flex items-center gap-4">
-          {isHealthy === false && (
-            <Badge className="bg-rose-500/10 text-rose-400 border-rose-500/20 text-[9px]">
-              Service Offline
-            </Badge>
-          )}
-
           {isRunning && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Timer className="h-3.5 w-3.5 animate-pulse text-primary" />

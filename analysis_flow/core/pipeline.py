@@ -1,9 +1,7 @@
 from __future__ import annotations
-
 import json
 import time
 from typing import Any, Dict
-
 from .context_packer import pack_kra_payload
 from .hf_clients import KRAClient, ORAClient
 from .json_utils import normalize_any_json
@@ -11,13 +9,11 @@ from .models import ExperienceLevel, KRAResult, ORAResult, PatientCase
 from .retrieval import DualFAISSRetriever
 from .safety import SafetyValidator
 
-
 def _default_disclaimer() -> str:
     return (
         "[!] DISCLAIMER: Research prototype. Not a medical diagnosis. "
         "Verify with clinical judgment and appropriate tests/guidelines."
     )
-
 
 def _format_fallback_summary(*, kra: KRAResult, missing_tests: list[str], banner: str) -> str:
     lines = []

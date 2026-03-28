@@ -31,6 +31,9 @@ load_dotenv(find_dotenv())
 
 logger = logging.getLogger(__name__)
 
+# The cloud-mode routes and Supabase-backed helpers use this wrapper for CRUD,
+# vector search, and feedback/admin operations.
+
 
 
 
@@ -40,6 +43,9 @@ logger = logging.getLogger(__name__)
 
 class _PostgREST:
     """Minimal wrapper around Supabase PostgREST endpoints using requests."""
+
+    # backend/main.py and the analysis routes only need a small subset of the
+    # API, so this wrapper keeps the connection logic centralized.
 
     def __init__(self, url: str, key: str):
         self.base = url.rstrip("/")
@@ -112,6 +118,10 @@ class SupabaseClient :
     Handles vector embeddings, user profiles, and feedback queue.
 
     """
+
+    # The analysis and admin routes import this class when LOCAL_MODE is off,
+    # so Supabase remains the source of truth for profiles, knowledge, and
+    # feedback review.
 
 
 

@@ -38,6 +38,8 @@ interface LabHistoryEntry {
   }>;
 }
 
+
+
 export default function PatientHistoryPage() {
   const params = useParams();
   const router = useRouter();
@@ -49,6 +51,19 @@ export default function PatientHistoryPage() {
   const [labHistory, setLabHistory] = useState<LabHistoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          setCurrentUser(await res.json());
+        }
+      } catch {}
+    };
+    fetchUser();
+  }, []);
 
   useEffect(() => {
     if (!patientId) return;
@@ -112,6 +127,7 @@ export default function PatientHistoryPage() {
       <DashboardHeader
         title="Patient History"
         icon={<History className="h-8 w-8" />}
+        doctorName={currentUser?.fullName ?? ""}
       />
 
       <div className="p-12 flex-1 overflow-y-auto space-y-6">

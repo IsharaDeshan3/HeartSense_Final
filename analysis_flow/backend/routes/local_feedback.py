@@ -1,16 +1,11 @@
 from __future__ import annotations
-
 import os
 from typing import Any, Dict, Optional
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-
 from core.feedback_store import LocalFeedbackStore
 
-
 router = APIRouter()
-
 
 class LocalFeedbackSubmission(BaseModel):
     session_id: str
@@ -19,19 +14,20 @@ class LocalFeedbackSubmission(BaseModel):
     rationale: str = Field(default="")
     case_context: Dict[str, Any] = Field(default_factory=dict)
 
-
 _store: Optional[LocalFeedbackStore] = None
 
-
 def get_store() -> LocalFeedbackStore:
+    # Local feedback is written to disk so the offline analysis flow can still
+    # capture review data without Supabase.
     global _store
     if _store is None:
         _store = LocalFeedbackStore(root_dir=os.getenv("FEEDBACK_STORE_DIR", "feedback_store"))
     return _store
 
-
 @router.post("/submit")
 async def submit_feedback(payload: LocalFeedbackSubmission):
+    # The frontend calls this after a local analysis run to queue feedback for
+    # later review or manual correction.
     if not payload.session_id:
         raise HTTPException(status_code=400, detail="Missing session_id")
 

@@ -27,10 +27,15 @@ class ORAClient:
     Uses direct calls to `LLMEngine.generate_ora()`.
     """
 
+    # WorkflowService calls ORA after KRA so the final answer is tailored to
+    # the requested experience level before being saved to Supabase.
+
     def __init__(self) -> None:
         self._engine = None
 
     def _get_engine(self):
+        # Shares the same singleton engine as KRA; the module decides which
+        # local model to load for refinement.
         if self._engine is None:
             from core.llm_engine import LLMEngine
             self._engine = LLMEngine.instance()
@@ -62,6 +67,8 @@ class ORAClient:
         """
         from core.ora_prompt import build_ora_prompt
 
+        # ORA normalizes the requested level first so workflow_service.py can
+        # safely pass frontend values without worrying about casing.
         level = experience_level.upper()
         if level not in _VALID_LEVELS:
             logger.warning("Invalid experience_level '%s', defaulting to 'SEASONED'", experience_level)
@@ -85,6 +92,8 @@ class ORAClient:
         if cancel_event and cancel_event.is_set():
             raise RuntimeError("ANALYSIS_CANCELLED")
 
+        # The refined response is the user-facing answer that the workflow
+        # layer persists as the final diagnosis record.
         raw_text = engine.generate_ora(
             prompt,
             cancel_event=cancel_event,
