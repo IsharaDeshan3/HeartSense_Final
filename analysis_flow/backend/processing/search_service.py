@@ -47,7 +47,6 @@ def _get_textbook_retriever() -> FAISSRetriever:
         )
     return _textbook_retriever
 
-
 def _get_rare_retriever() -> RareCaseRetriever:
     global _rare_retriever
     if _rare_retriever is None:
@@ -61,7 +60,6 @@ def _get_rare_retriever() -> RareCaseRetriever:
             logger.error("Failed to load rare-case FAISS index: %s", exc)
             raise
     return _rare_retriever
-
 
 # -------------------------------------------------------------------------- #
 #  Search service                                                             #
@@ -207,9 +205,12 @@ class SearchService:
         lab_values: Optional[Dict[str, float]] = None,
         common_condition: str = "",
     ) -> Tuple[str, Dict[str, Any], RareCaseAlert]:
+        
         # When the uncertainty gate opens, this adds rare-case evidence and a
         # structured alert that WorkflowService persists with the session.
+        
         """Run rare-case retrieval and alert generation only."""
+        
         rare_retriever = _get_rare_retriever()
         rare_results = rare_retriever.search(
             patient_vector.rare_query,

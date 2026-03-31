@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useDeferredValue } from "react";
+import dynamic from "next/dynamic";
 import {
   Dna,
   Users,
@@ -18,10 +19,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { DashboardHeader } from "@/components/ui/DashboardHeader";
-import { VerificationPortal } from "@/components/ui/VerificationPortal";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+
+const VerificationPortal = dynamic(
+  () => import("@/components/ui/VerificationPortal").then((mod) => mod.VerificationPortal),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="rounded-[2.5rem] border border-border/30 bg-card/70 p-10 animate-pulse">
+        <div className="h-8 w-80 rounded-full bg-muted/20 mb-4" />
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="h-48 rounded-[2rem] bg-muted/10" />
+          <div className="h-48 rounded-[2rem] bg-muted/10" />
+        </div>
+      </div>
+    ),
+  },
+);
 
 export default function DoctorDashboard() {
   const router = useRouter();
@@ -29,18 +45,19 @@ export default function DoctorDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [registryQuery, setRegistryQuery] = useState("");
+  const deferredRegistryQuery = useDeferredValue(registryQuery);
 
-  const filteredPatients = patients.filter((patient) => {
-    const query = registryQuery.toLowerCase().trim();
-    if (!query) {
-      return true;
-    }
+  const filteredPatients = useMemo(() => {
+    const query = deferredRegistryQuery.toLowerCase().trim();
+    if (!query) return patients;
 
-    return (
-      patient.fullName?.toLowerCase().includes(query) ||
-      patient.patientId?.toLowerCase().includes(query)
-    );
-  });
+    return patients.filter((patient) => {
+      return (
+        patient.fullName?.toLowerCase().includes(query) ||
+        patient.patientId?.toLowerCase().includes(query)
+      );
+    });
+  }, [patients, deferredRegistryQuery]);
 
   const fetchData = async () => {
     setIsLoading(true);

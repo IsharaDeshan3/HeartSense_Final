@@ -1,12 +1,11 @@
 from __future__ import annotations
-
 from typing import List
-
 from .models import KRAResult, ORAResult, SafetyReport
 
 
 class SafetyValidator:
-    def __init__(self, *, confidence_threshold: float = 0.6):
+    
+    def __init__(self, *, confidence_threshold: float = 0.65):
         self.confidence_threshold = confidence_threshold
 
     def validate(self, *, kra: KRAResult, ora_newbie: ORAResult, ora_seasoned: ORAResult) -> SafetyReport:

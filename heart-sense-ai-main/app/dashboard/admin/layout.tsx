@@ -83,7 +83,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <main className="flex-1 overflow-y-auto relative bg-background">
         {/* Background Ambience */}
         <div className="absolute top-[-10%] right-[-10%] w-[800px] h-[800px] bg-primary/10 rounded-full blur-[180px] -z-10 animate-pulse" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-accent/5 rounded-full blur-[150px] -z-10" />
+        {/* Removed blurred accent element */}
         {children}
       </main>
     </div>

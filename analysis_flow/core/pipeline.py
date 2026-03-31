@@ -5,7 +5,7 @@ from typing import Any, Dict
 from .context_packer import pack_kra_payload
 from .hf_clients import KRAClient, ORAClient
 from .json_utils import normalize_any_json
-from .models import ExperienceLevel, KRAResult, ORAResult, PatientCase
+from .models import ExperienceLevel, KRAResult, KRADiagnosis, ORAResult, PatientCase
 from .retrieval import DualFAISSRetriever
 from .safety import SafetyValidator
 
@@ -44,6 +44,59 @@ def _format_fallback_summary(*, kra: KRAResult, missing_tests: list[str], banner
     return "\n".join(lines).strip()
 
 
+def _coerce_str_list(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+
+    coerced: list[str] = []
+    for value in values:
+        text = str(value).strip()
+        if text:
+            coerced.append(text)
+    return coerced
+
+
+def _coerce_kra_diagnoses(values: Any) -> list[KRADiagnosis]:
+    if not isinstance(values, list):
+        return []
+
+    diagnoses: list[KRADiagnosis] = []
+    for value in values:
+        if not isinstance(value, dict):
+            continue
+
+        condition = str(value.get("condition", "")).strip()
+        if not condition:
+            continue
+
+        try:
+            confidence = float(value.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            confidence = 0.0
+
+        severity = str(value.get("severity", "MODERATE")).strip().upper() or "MODERATE"
+        if severity not in {"CRITICAL", "HIGH", "MODERATE", "LOW"}:
+            severity = "MODERATE"
+
+        evidence = _coerce_str_list(value.get("evidence", []))
+        clinical_features = _coerce_str_list(value.get("clinical_features", []))
+
+        diagnoses.append(
+            KRADiagnosis(
+                condition=condition,
+                confidence=confidence,
+                severity=severity,
+                evidence=evidence,
+                clinical_features=clinical_features,
+                rationale=str(value.get("rationale")).strip() if value.get("rationale") else None,
+            )
+        )
+        if len(diagnoses) == 2:
+            break
+
+    return diagnoses
+
+
 class DiagnosisPipeline:
     def __init__(self, *, max_chars: int = 24000):
         self.max_chars = max_chars
@@ -74,10 +127,10 @@ class DiagnosisPipeline:
         try:
             kra_raw = self.kra.analyze(symptoms_block, context_block, quality.status)
             kra = KRAResult(
-                diagnoses=kra_raw.get("diagnoses", []),
-                uncertainties=kra_raw.get("uncertainties", []),
-                recommended_tests=kra_raw.get("recommended_tests", []),
-                red_flags=kra_raw.get("red_flags", []),
+                diagnoses=_coerce_kra_diagnoses(kra_raw.get("diagnoses", [])),
+                uncertainties=_coerce_str_list(kra_raw.get("uncertainties", [])),
+                recommended_tests=_coerce_str_list(kra_raw.get("recommended_tests", [])),
+                red_flags=_coerce_str_list(kra_raw.get("red_flags", [])),
                 raw_output=json.dumps(kra_raw, ensure_ascii=False),
                 success=True,
                 retrieval_quality=quality.model_dump(),

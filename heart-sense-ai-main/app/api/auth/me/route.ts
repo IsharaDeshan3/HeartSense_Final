@@ -25,9 +25,9 @@ export async function GET() {
       role: user.role,
       isApproved: user.isApproved
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return NextResponse.json(
-      { message: "Error fetching user status", error: error.message },
+      { message: "Error fetching user status", error: (error as Error).message },
       { status: 500 }
     );
   }

@@ -67,10 +67,10 @@ export async function POST(req: Request) {
     });
 
     return response;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Login Error:", error);
     return NextResponse.json(
-      { message: "Server error during login", error: error.message },
+      { message: "Server error during login", error: (error as Error).message },
       { status: 500 }
     );
   }

@@ -1,5 +1,4 @@
 """
-backend/processing/kra_client.py
 Local KRA inference client using direct local LLM calls.
 Uses the runtime selected by LLMEngine:
 DeepSeek on NVIDIA systems, otherwise a CPU-safe fallback.
@@ -35,7 +34,6 @@ def _try_parse_json(text: str) -> Optional[Dict[str, Any]]:
 class KRAClient:
     """
     Local KRA inference client.
-
     Uses direct calls to `LLMEngine.generate_kra()`.
     """
 
@@ -70,9 +68,9 @@ class KRAClient:
         supabase_available: bool = True,
         inline_payload: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        
         """
         Run KRA analysis using the configured local KRA runtime.
-
         Args:
             symptoms_text: Packed patient presentation text.
             context_text: FAISS-retrieved medical context.

@@ -27,7 +27,7 @@ from tqdm import tqdm
 
 from dotenv import load_dotenv, find_dotenv
 
-load_dotenv(find_dotenv())
+load_dotenv(find_dotenv(), override=True)
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
@@ -146,7 +146,6 @@ def _has_nvidia_gpu() -> bool:
 
 def _resolve_kra_runtime() -> Dict[str, Any]:
     primary_path = _resolve_model_path(_env("KRA_MODEL_PATH"))
-    fallback_path = _resolve_model_path(_env("KRA_CPU_FALLBACK_MODEL_PATH") or _env("ORA_MODEL_PATH"))
 
     has_nvidia_gpu = _has_nvidia_gpu()
     if has_nvidia_gpu and primary_path.exists():
@@ -161,17 +160,37 @@ def _resolve_kra_runtime() -> Dict[str, Any]:
             "reason": "nvidia_available",
         }
 
-    if fallback_path.exists():
-        return {
-            "model_path": str(fallback_path),
-            "n_gpu_layers": int(_env("KRA_CPU_FALLBACK_N_GPU_LAYERS")),
-            "n_ctx": int(_env("KRA_CPU_FALLBACK_N_CTX")),
-            "temperature": float(_env("KRA_CPU_FALLBACK_TEMPERATURE")),
-            "max_tokens": int(_env("KRA_CPU_FALLBACK_MAX_TOKENS")),
-            "runtime": "cpu_fallback",
-            "fallback_active": True,
-            "reason": "nvidia_unavailable_or_primary_missing",
-        }
+    fallback_options = [
+        (
+            _resolve_model_path(_env("KRA_CPU_FALLBACK_MODEL_PATH")),
+            "KRA_CPU_FALLBACK_N_GPU_LAYERS",
+            "KRA_CPU_FALLBACK_N_CTX",
+            "KRA_CPU_FALLBACK_TEMPERATURE",
+            "KRA_CPU_FALLBACK_MAX_TOKENS",
+            "cpu_fallback",
+        ),
+        (
+            _resolve_model_path(_env("ORA_MODEL_PATH")),
+            "ORA_N_GPU_LAYERS",
+            "ORA_N_CTX",
+            "ORA_TEMPERATURE",
+            "ORA_MAX_TOKENS",
+            "ora_cpu_fallback",
+        ),
+    ]
+
+    for fallback_path, n_gpu_key, n_ctx_key, temperature_key, max_tokens_key, runtime_name in fallback_options:
+        if fallback_path.exists():
+            return {
+                "model_path": str(fallback_path),
+                "n_gpu_layers": int(_env(n_gpu_key)),
+                "n_ctx": int(_env(n_ctx_key)),
+                "temperature": float(_env(temperature_key)),
+                "max_tokens": int(_env(max_tokens_key)),
+                "runtime": runtime_name,
+                "fallback_active": True,
+                "reason": "nvidia_unavailable_or_primary_missing",
+            }
 
     return {
         "model_path": str(primary_path),

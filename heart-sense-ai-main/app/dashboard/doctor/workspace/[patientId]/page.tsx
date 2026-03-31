@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import {
   ArrowLeft,
   Activity,
@@ -12,16 +13,10 @@ import {
   ClipboardList,
   AlertCircle,
   SkipForward,
-  Plus,
-  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import EcgInterpreter from "@/components/EcgInterpreter";
-import NlpProcessor from "@/components/NlpProcessor";
-import type { CurrentState, SymptomData } from "@/components/ApprovalEditor";
-import LabSuggester from "@/components/LabSuggester";
-import AiDiagnostics from "@/components/AiDiagnostics";
+import type { CurrentState } from "@/components/ApprovalEditor";
 import type { LabAnalysisResult } from "@/components/LabSuggester";
 import type { EcgResult } from "@/lib/diagnosticMapper";
 import {
@@ -29,14 +24,23 @@ import {
   type WorkflowState,
 } from "@/services/WorkflowService";
 
-type WorkspaceWorkflowCache = {
-  sessionId: string;
-  state: WorkflowState | null;
-  activeTab: "nlp" | "ecg" | "lab" | "ai";
+type WorkspacePatient = {
+  _id: string;
+  fullName: string;
+  patientId: string;
+  age?: number;
+  gender?: string;
 };
 
-function getWorkflowCacheKey(patientId: string) {
-  return `workspace:workflow:${patientId}`;
+type NlpUpdatePayload = {
+  translated_text?: string;
+};
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
 }
 
 function createInitialSummary() {
@@ -51,10 +55,58 @@ function createInitialSummary() {
   };
 }
 
+const moduleFallback = (title: string, description: string) => (
+  <div className="flex min-h-[24rem] items-center justify-center rounded-3xl border border-white/5 bg-white/[0.02] p-8 text-center">
+    <div className="max-w-md space-y-3">
+      <div className="mx-auto h-10 w-10 animate-pulse rounded-2xl bg-primary/10" />
+      <p className="text-sm font-bold uppercase tracking-[0.25em] text-primary/70">
+        {title}
+      </p>
+      <p className="text-sm text-muted-foreground">{description}</p>
+    </div>
+  </div>
+);
+
+const NlpProcessor = dynamic(() => import("@/components/NlpProcessor"), {
+  ssr: false,
+  loading: () =>
+    moduleFallback(
+      "Loading symptoms",
+      "Preparing speech and transcript tools.",
+    ),
+});
+
+const EcgInterpreter = dynamic(() => import("@/components/EcgInterpreter"), {
+  ssr: false,
+  loading: () =>
+    moduleFallback(
+      "Loading ECG tools",
+      "Preparing waveform analysis and reporting.",
+    ),
+});
+
+const LabSuggester = dynamic(() => import("@/components/LabSuggester"), {
+  ssr: false,
+  loading: () =>
+    moduleFallback(
+      "Loading lab tools",
+      "Preparing lab interpretation and recommendations.",
+    ),
+});
+
+const AiDiagnostics = dynamic(() => import("@/components/AiDiagnostics"), {
+  ssr: false,
+  loading: () =>
+    moduleFallback(
+      "Loading analysis engine",
+      "Preparing the diagnostic workflow and result view.",
+    ),
+});
+
 export default function DiagnosticWorkspace() {
   const { patientId } = useParams();
   const router = useRouter();
-  const [patient, setPatient] = useState<any>(null);
+  const [patient, setPatient] = useState<WorkspacePatient | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"nlp" | "ecg" | "lab" | "ai">(
     "nlp",
@@ -70,8 +122,6 @@ export default function DiagnosticWorkspace() {
   // Workspace State System (Persistent between modules)
   const [summary, setSummary] = useState(createInitialSummary);
 
-  // Manual symptom entry state
-  const [manualSymptom, setManualSymptom] = useState("");
   const [ecgSkipped, setEcgSkipped] = useState(false);
   const [labSkipped, setLabSkipped] = useState(false);
 
@@ -110,7 +160,7 @@ export default function DiagnosticWorkspace() {
     }));
   }, [nlpCurrentState]);
 
-  const handleNlpUpdate = (data: any) => {
+  const handleNlpUpdate = (data: NlpUpdatePayload) => {
     // Only sync translated text from voice — symptoms come through nlpCurrentState
     const { translated_text } = data;
     if (translated_text) {
@@ -120,28 +170,6 @@ export default function DiagnosticWorkspace() {
       }));
     }
     toast.success("Clinical Summary Synchronized");
-  };
-
-  const handleAddManualSymptom = () => {
-    const symptom = manualSymptom.trim();
-    if (!symptom) return;
-    const key = `manual_${Date.now()}`;
-    setNlpCurrentState((prev) => ({
-      ...prev,
-      symptoms: {
-        ...prev.symptoms,
-        [key]: { value: symptom, status: "approved" as const },
-      },
-    }));
-    setManualSymptom("");
-    toast.success(`Added: ${symptom}`);
-  };
-
-  const handleRemoveSymptom = (key: string) => {
-    setNlpCurrentState((prev) => {
-      const { [key]: _, ...rest } = prev.symptoms;
-      return { ...prev, symptoms: rest as Record<string, SymptomData> };
-    });
   };
 
   const handleSkipStep = async () => {
@@ -171,17 +199,19 @@ export default function DiagnosticWorkspace() {
         setActiveTab("ai");
         toast.info("Lab Reports skipped and recorded");
       }
-    } catch (error: any) {
-      toast.error("Failed to skip step", { description: error.message });
+    } catch (error: unknown) {
+      toast.error("Failed to skip step", {
+        description: getErrorMessage(error, "Failed to skip the current step"),
+      });
     } finally {
       setIsAdvancing(false);
     }
   };
 
-  const handleEcgComplete = (data: any) => {
+  const handleEcgComplete = (data: EcgResult) => {
     setSummary((prev) => ({
       ...prev,
-      ecgResult: data as EcgResult,
+      ecgResult: data,
     }));
     toast.success("ECG findings synced to workspace");
   };
@@ -197,16 +227,18 @@ export default function DiagnosticWorkspace() {
   useEffect(() => {
     const fetchPatientData = async () => {
       try {
-        const response = await fetch(`/api/patients`); // Using existing generic fetch for now
-        const allPatients = await response.json();
-        const found = allPatients.find((p: any) => p._id === patientId);
-        if (found) {
-          setPatient(found);
+        const resolvedPatientId = String(patientId ?? "");
+        const response = await fetch(
+          `/api/doctor/patients/${encodeURIComponent(resolvedPatientId)}`,
+        );
+
+        if (response.ok) {
+          setPatient(await response.json());
         } else {
           toast.error("Subject ID not found in registry");
           router.push("/dashboard/doctor");
         }
-      } catch (error) {
+      } catch {
         toast.error("Connectivity issue with central registry");
       } finally {
         setIsLoading(false);
@@ -227,15 +259,15 @@ export default function DiagnosticWorkspace() {
         );
         setWorkflowSessionId(session.session_id);
         setWorkflowState(session.state);
-      } catch (error: any) {
+      } catch (error: unknown) {
         toast.error("Failed to initialize workflow session", {
-          description: error.message,
+          description: getErrorMessage(error, "Unable to initialize workflow session"),
         });
       }
     };
 
     initWorkflow();
-  }, [patient, patientId]);
+  }, [patient, patientId, workflowSessionId]);
 
   const canAccessTab = (tab: "nlp" | "ecg" | "lab" | "ai") => {
     if (tab === "nlp") return true;
@@ -275,7 +307,7 @@ export default function DiagnosticWorkspace() {
   const saveDiagnosticEntry = async (
     type: string,
     entrySummary: string,
-    entryData: any,
+    entryData: unknown,
   ) => {
     try {
       const resolvedPatientId = String(patient?._id ?? patientId);
@@ -355,8 +387,10 @@ export default function DiagnosticWorkspace() {
 
       setActiveTab("ecg");
       toast.success("Symptoms saved. Proceeding to ECG");
-    } catch (error: any) {
-      toast.error("Could not proceed to ECG", { description: error.message });
+    } catch (error: unknown) {
+      toast.error("Could not proceed to ECG", {
+        description: getErrorMessage(error, "Unable to save extraction step"),
+      });
     } finally {
       setIsAdvancing(false);
     }
@@ -401,8 +435,10 @@ export default function DiagnosticWorkspace() {
 
       setActiveTab("lab");
       toast.success("ECG saved. Proceeding to Lab");
-    } catch (error: any) {
-      toast.error("Could not proceed to Lab", { description: error.message });
+    } catch (error: unknown) {
+      toast.error("Could not proceed to Lab", {
+        description: getErrorMessage(error, "Unable to save ECG step"),
+      });
     } finally {
       setIsAdvancing(false);
     }
@@ -453,9 +489,9 @@ export default function DiagnosticWorkspace() {
 
       setActiveTab("ai");
       toast.success("Lab saved. Proceeding to Analysis");
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error("Could not proceed to Analysis", {
-        description: error.message,
+        description: getErrorMessage(error, "Unable to save lab step"),
       });
     } finally {
       setIsAdvancing(false);
@@ -996,36 +1032,12 @@ export default function DiagnosticWorkspace() {
   );
 }
 
-// UI HELPERS
-function Badge({
-  icon,
-  text,
-  active,
-}: {
-  icon: any;
-  text: string;
-  active?: boolean;
-}) {
-  return (
-    <div
-      className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest ${
-        active
-          ? "bg-primary/10 border-primary/20 text-primary glow-primary-sm"
-          : "bg-white/5 border-white/10 text-muted-foreground"
-      }`}
-    >
-      {icon}
-      {text}
-    </div>
-  );
-}
-
 function LinkButton({
   icon,
   text,
   onClick,
 }: {
-  icon: any;
+  icon: ReactNode;
   text: string;
   onClick: () => void;
 }) {
@@ -1048,10 +1060,10 @@ function WorkspaceModule({
   description,
   children,
 }: {
-  icon: any;
+  icon: ReactNode;
   title: string;
   description: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col gap-4">

@@ -24,7 +24,8 @@ export interface ExtractionResponse {
   translated_text: string;
 }
 
-const BACKEND_URL = "http://localhost:8001";
+const TRANSCRIPT_PROXY_URL = "/api/proxy/process-transcript";
+const ITEM_STATUS_PROXY_URL = "/api/proxy/update-item-status";
 
 /** Convert frontend string[] state → backend Dict[str, TrackedItem] state */
 function toBackendState(state: MedicalState): BackendPatientState {
@@ -70,7 +71,7 @@ export const ExtractionService = {
     }
 
     try {
-      const response = await fetch(`${BACKEND_URL}/process-transcript`, {
+      const response = await fetch(TRANSCRIPT_PROXY_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -106,7 +107,7 @@ export const ExtractionService = {
     status: "accepted" | "rejected",
   ) {
     try {
-      const response = await fetch(`${BACKEND_URL}/update-item-status`, {
+      const response = await fetch(ITEM_STATUS_PROXY_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ item, category, status }),

@@ -29,7 +29,7 @@ import type {
   PatientHistorySummary,
 } from "@/services/WorkflowService";
 
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Types Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Types
 
 interface PatientInfo {
   _id: string;
@@ -64,7 +64,7 @@ interface PatientHistoryProps {
 
 type TabKey = "timeline" | "labs" | "summary" | "overview";
 
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Helpers
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "Unknown date";
@@ -82,7 +82,7 @@ function formatDate(dateStr: string | null | undefined): string {
 }
 
 function formatDateShort(dateStr: string | null | undefined): string {
-  if (!dateStr) return "Ã¢â‚¬â€";
+  if (!dateStr) return "-";
   try {
     return new Date(dateStr).toLocaleDateString("en-US", {
       month: "short",
@@ -94,7 +94,7 @@ function formatDateShort(dateStr: string | null | undefined): string {
   }
 }
 
-// Sinhala unicode range: 0D80â€“0DFF
+// Sinhala unicode range: 0D80-0DFF
 function hasSinhala(s: string): boolean {
   return /[\u0D80-\u0DFF]/.test(s);
 }
@@ -167,7 +167,7 @@ function extractSymptomsSummary(
   if (!symptomsJson) return "No symptoms recorded";
   const s = extractStructuredSymptoms(symptomsJson);
   const parts = [s.chiefComplaint, ...s.symptoms.slice(0, 3)].filter(Boolean);
-  if (parts.length) return parts.join(" Â· ");
+  if (parts.length) return parts.join(" | ");
   // fallback: cleaned text field
   const raw = symptomsJson.text;
   if (typeof raw === "string" && !hasSinhala(raw)) return raw.slice(0, 120);
@@ -329,7 +329,7 @@ function renderInline(text: string): React.ReactNode[] {
   );
 }
 
-// â”€â”€â”€ Overview map (interactive SVG radial node chart) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Overview map (interactive SVG radial node chart)
 
 type SelectedNode =
   | { type: "hub"; groupLabel: string }
@@ -365,7 +365,7 @@ function DiagnosisOverviewChart({
   const MAX_ITEMS = 6;
   const ARC_SPAN = 110;
 
-  // Dynamic fill helper â€” brightens rgba fill for hover/selected states
+  // Dynamic fill helper - brightens rgba fill for hover/selected states
   const dynFill = (base: string, state: "normal" | "hover" | "selected") => {
     const op = { normal: 0.18, hover: 0.32, selected: 0.5 }[state];
     return base.replace(/[\d.]+\)$/, op + ")");
@@ -1001,7 +1001,7 @@ function DiagnosisOverviewChart({
   );
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Component Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Component
 
 export default function PatientHistory({
   patient,
@@ -1054,7 +1054,7 @@ export default function PatientHistory({
 
   return (
     <div className="space-y-6">
-      {/* Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Patient Hero Card Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
+      {/* Patient Hero Card */}
       <Card className="glass border-border/30 rounded-4xl overflow-hidden">
         <CardContent className="p-0">
           {/* Top accent stripe */}
@@ -1110,7 +1110,7 @@ export default function PatientHistory({
                 <div className="w-px bg-border/20 self-stretch" />
                 <div className="text-center">
                   <p className="text-2xl font-black">
-                    {totalConditions || "Ã¢â‚¬â€"}
+                    {totalConditions || "-"}
                   </p>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
                     Conditions
@@ -1119,7 +1119,7 @@ export default function PatientHistory({
                 <div className="w-px bg-border/20 self-stretch" />
                 <div className="text-center">
                   <p className="text-sm font-black text-foreground/80">
-                    {lastVisit ? formatDateShort(lastVisit) : "Ã¢â‚¬â€"}
+                    {lastVisit ? formatDateShort(lastVisit) : "-"}
                   </p>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
                     Last Visit
@@ -1131,7 +1131,7 @@ export default function PatientHistory({
         </CardContent>
       </Card>
 
-      {/* Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Tabs Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
+      {/* Tabs */}
       <div className="flex gap-1.5 p-1 bg-muted/10 border border-border/20 rounded-2xl w-fit">
         {tabs.map((tab) => (
           <button
@@ -1158,7 +1158,7 @@ export default function PatientHistory({
         ))}
       </div>
 
-      {/* Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Tab: Visit Timeline Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
+      {/* Tab section */}
       {activeTab === "timeline" &&
         (isLoading ? (
           <div className="flex items-center justify-center h-40">
@@ -1519,7 +1519,7 @@ export default function PatientHistory({
                                             </span>
                                           </div>
 
-                                          {/* Markdown table â†’ HTML table */}
+                                          {/* Markdown table -> HTML table */}
                                           {section.isTable ? (
                                             (() => {
                                               const { headers, rows } =
@@ -1728,7 +1728,7 @@ export default function PatientHistory({
           </div>
         ))}
 
-      {/* Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Tab: Lab History Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
+      {/* Tab section */}
       {activeTab === "labs" &&
         (labHistory.length === 0 ? (
           <Card className="glass border-border/20 border-dashed rounded-4xl">
@@ -1879,7 +1879,7 @@ export default function PatientHistory({
           </div>
         ))}
 
-      {/*  Tab: AI Summary  */}
+      {/* Tab section */}
       {activeTab === "summary" &&
         (() => {
           const summarySections = parseDiagnosisOutput(
@@ -2173,7 +2173,7 @@ export default function PatientHistory({
           );
         })()}
 
-      {/* â”€â”€â”€ Tab: Overview Map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* Tab section */}
       {activeTab === "overview" && (
         <Card className="glass border-border/20 rounded-3xl overflow-hidden">
           <CardContent className="p-6 space-y-4">
