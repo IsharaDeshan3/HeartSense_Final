@@ -1,13 +1,9 @@
 """
-
 FastAPI Backend for KRA-ORA Medical Analysis System
-
 Main API entry point with CORS support for React frontend
-
 """
 
-
-
+import asyncio
 import os 
 import sys 
 import logging 
@@ -21,21 +17,25 @@ from fastapi .middleware .cors import CORSMiddleware
 from pydantic import BaseModel ,Field 
 from dotenv import load_dotenv ,find_dotenv 
 
+if os.name == "nt":
+    # Avoid Windows Proactor socket-accept issues under uvicorn.
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 sys .path .insert (0 ,str (Path (__file__ ).parent ))
 sys .path .insert (0 ,str (Path (__file__ ).parent .parent ))
 
-load_dotenv (find_dotenv ())
+load_dotenv (find_dotenv (), override=True)
 
 LOCAL_MODE =os .getenv ("LOCAL_MODE","" ).strip ().lower ()in {"1","true","yes"}
 
 # Choose the route set and startup dependencies that match the active backend mode.
 if LOCAL_MODE :
-    from routes import local_analysis ,local_feedback ,local_admin 
+    from routes import local_analysis 
 else :
     from database import get_supabase_client ,SupabaseClient 
     from services .retriever import SupabaseRetriever 
     from services .embedding import EmbeddingService 
-    from routes import analysis ,feedback ,admin ,auth 
+    from routes import analysis ,admin ,auth 
 from routes import workflow
 
 logging .basicConfig (
@@ -82,7 +82,7 @@ async def lifespan (app :FastAPI ):
         # offline FAISS + local-model pipeline exposed from routes/local_*.py.
         logger .info ("LOCAL_MODE enabled - using local FAISS + local KRA/ORA workflow")
 
-    # Validate Supabase schema columns on startup
+    # Validate Supabase schema columns on startup.
     try:
         from processing.supabase_payload import verify_schema
         schema_result = verify_schema()
@@ -118,6 +118,20 @@ async def lifespan (app :FastAPI ):
         logger.error("LLM diagnostics: %s", LLMEngine.diagnostics())
         logger.exception("LLM preload exception")
 
+    # ── Eagerly preload FAISS indexes so first search is fast ──
+    try:
+        from backend.processing.search_service import SearchService
+        search_svc = SearchService()
+        readiness = search_svc.readiness_status()
+        logger.info(
+            "FAISS indexes preloaded (textbook=%s, rare_cases=%s)",
+            readiness.get("faiss_ready"),
+            readiness.get("rare_cases_ready"),
+        )
+    except Exception:
+        logger.warning("FAISS index preload failed — first search will be slower")
+        logger.exception("FAISS preload exception")
+
     logger .info ("System ready!")
     yield 
 
@@ -151,16 +165,13 @@ allow_headers =["*"],
 if LOCAL_MODE :
     # Local-mode routes expose the simplified one-shot diagnosis flow.
     app .include_router (local_analysis .router ,prefix ="/api/analysis",tags =["Analysis"])
-    app .include_router (local_feedback .router ,prefix ="/api/feedback",tags =["Feedback"])
-    app .include_router (local_admin .router ,prefix ="/api/admin",tags =["Admin"])
 
 else :
 
-    # Cloud-mode routes keep auth, feedback, admin, and the session-based
+    # Cloud-mode routes keep auth, admin, and the session-based
     # analysis workflow connected to the same FastAPI application.
     app .include_router (auth .router ,prefix ="/api/auth",tags =["Authentication"])
     app .include_router (analysis .router ,prefix ="/api/analysis",tags =["Analysis"])
-    app .include_router (feedback .router ,prefix ="/api/feedback",tags =["Feedback"])
     app .include_router (admin .router ,prefix ="/api/admin",tags =["Admin"])
 
 # Strict workflow state machine endpoints (Phase A)

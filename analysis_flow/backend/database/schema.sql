@@ -1,24 +1,4 @@
-﻿-- =============================================================================
---  HeartSense AI -- Supabase Schema (full fresh install)
---  Run this entire file in the Supabase SQL Editor on a clean project.
---
---  Tables:
---    1. profiles               -- doctor / user accounts (linked to auth.users)
---    2. analysis_payloads      -- raw patient inputs for every analysis session
---    3. kra_outputs            -- KRA agent output per session
---    4. ora_outputs            -- ORA refined output per session
---
---  Views:
---    diagnosis_history         -- joined read-only view used by history queries
---
---  RLS is enabled on all tables with service-role bypass.
--- =============================================================================
-
--- ---------------------------------------------------------------------------
---  0.  Extensions
--- ---------------------------------------------------------------------------
-
-create extension if not exists "uuid-ossp";
+﻿create extension if not exists "uuid-ossp";
 create extension if not exists pgcrypto;
 
 
@@ -30,6 +10,8 @@ create table if not exists profiles (
     id          uuid        primary key references auth.users on delete cascade,
     role        text        not null default 'newbie'
                                 check (role in ('admin', 'seasoned', 'newbie')),
+    experience_level text   not null default 'seasoned'
+                                check (experience_level in ('admin', 'newbie', 'seasoned', 'expert')),
     full_name   text,
     email       text,
     created_at  timestamptz not null default now(),
@@ -189,7 +171,10 @@ create table if not exists ora_outputs (
     patient_id          text,
 
     experience_level    text        not null default 'seasoned'
-                                        check (experience_level in ('NEWBIE', 'SEASONED', 'newbie', 'seasoned')),
+                                        check (experience_level in (
+                                            'NEWBIE', 'SEASONED', 'EXPERT',
+                                            'newbie', 'seasoned', 'expert'
+                                        )),
 
     refined_output      text        not null default '',
     disclaimer          text,

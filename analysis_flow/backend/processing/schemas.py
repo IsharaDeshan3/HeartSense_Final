@@ -1,8 +1,5 @@
 """
-backend/processing/schemas.py
-
 Pydantic request models for the analysis pipeline.
-
 These schemas are used by:
   - PipelineService.run()
   - WorkflowService (via internal AnalyzeRequest construction)
@@ -36,7 +33,6 @@ class SymptomsPayload(BaseModel):
 class ECGPayload(BaseModel):
     """
     Structured ECG findings.
-
     Set status='skipped' when no ECG was performed — all other fields
     are optional in that case.
     """
@@ -62,7 +58,6 @@ class ECGPayload(BaseModel):
 class LabsPayload(BaseModel):
     """
     Structured laboratory results.
-
     Set status='skipped' when no labs were drawn.
     """
 

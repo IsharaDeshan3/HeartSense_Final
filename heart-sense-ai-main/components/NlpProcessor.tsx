@@ -37,7 +37,7 @@ interface BackendResponse {
   translated_text: string;
 }
 
-const BACKEND_URL = "http://localhost:8001";
+const TRANSCRIPT_PROXY_URL = "/api/proxy/process-transcript";
 
 export default function NlpProcessor({
   onUpdateSummary,
@@ -81,7 +81,7 @@ export default function NlpProcessor({
 
     setIsProcessing(true);
     try {
-      const response = await fetch(`${BACKEND_URL}/process-transcript`, {
+      const response = await fetch(TRANSCRIPT_PROXY_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

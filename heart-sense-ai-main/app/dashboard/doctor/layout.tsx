@@ -6,9 +6,10 @@ import {
   Activity,
   FlaskConical,
   Menu,
+  X,
   Syringe,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const navItems = [
   {
@@ -34,8 +35,13 @@ export default function DoctorLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const pathname = usePathname();
+  const isWorkspaceRoute = pathname.startsWith("/dashboard/doctor/workspace");
+  const [isCollapsed, setIsCollapsed] = useState(isWorkspaceRoute);
+
+  useEffect(() => {
+    setIsCollapsed(isWorkspaceRoute);
+  }, [isWorkspaceRoute]);
 
   const isActive = (href: string, exact?: boolean) =>
     exact ? pathname === href : pathname.startsWith(href);
@@ -46,24 +52,35 @@ export default function DoctorLayout({
 
   return (
     <div className="h-screen bg-background text-foreground flex overflow-hidden font-sans">
+      {isCollapsed && (
+        <button
+          onClick={toggleNavbar}
+          className="hidden lg:flex fixed top-4 left-4 z-50 h-10 w-10 items-center justify-center rounded-full border border-border/40 bg-background/80 text-primary shadow-lg backdrop-blur-xl hover:bg-background"
+          aria-label="Show navigation"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+      )}
+
       {/* Sidebar */}
       <aside
-        className={`border-r border-border/40 glass hidden lg:flex flex-col relative z-20 shrink-0 ${
-          isCollapsed ? "w-20" : "w-72"
+        className={`border-r border-border/40 glass hidden lg:flex flex-col relative z-20 shrink-0 overflow-hidden transition-all duration-300 ${
+          isCollapsed
+            ? "w-0 opacity-0 pointer-events-none border-r-0"
+            : "w-72 opacity-100"
         }`}
       >
-        <div className="p-6 flex items-center gap-4">
+        <div className="p-6 flex items-center justify-between gap-4">
+          <span className="font-black tracking-tighter text-xl text-gradient">
+            HEARTSENSE AI
+          </span>
           <button
             onClick={toggleNavbar}
             className="h-8 w-8 rounded-full bg-primary/10 flex-center text-primary"
+            aria-label="Hide navigation"
           >
-            <Menu className="h-5 w-5" />
+            <X className="h-5 w-5" />
           </button>
-          {!isCollapsed && (
-            <span className="font-black tracking-tighter text-xl text-gradient">
-              HEARTSENSE AI
-            </span>
-          )}
         </div>
 
         <nav className="flex-1 px-6 space-y-2 mt-2">
@@ -80,7 +97,7 @@ export default function DoctorLayout({
                 }`}
               >
                 <item.icon className="h-5 w-5" />
-                {!isCollapsed && item.label}
+                  {item.label}
               </Link>
             );
           })}
@@ -92,7 +109,7 @@ export default function DoctorLayout({
       <main className="flex-1 flex flex-col relative overflow-y-auto bg-background">
         {/* Background Gradients */}
         <div className="absolute top-[-10%] right-[-10%] w-[800px] h-[800px] bg-primary/10 rounded-full blur-[180px] -z-10 animate-pulse" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-accent/5 rounded-full blur-[150px] -z-10" />
+        {/* Removed blurred accent element */}
         {children}
       </main>
     </div>

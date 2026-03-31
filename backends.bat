@@ -8,6 +8,7 @@ setlocal enabledelayedexpansion
 :: ============================================================
 
 set ROOT=%~dp0
+set LOCAL_MODE=true
 
 :: ---- Detect Python ----
 set PY_VER=
@@ -111,55 +112,42 @@ echo.
 :: ============================================================
 set AF_PYTHON=%ROOT%analysis_flow\.venv\Scripts\python.exe
 
-set CUDA_TOOLKIT_DIR=
-set CUDA_TOOLKIT_VERSION=
-set CUDA_BIN_DIR=
-set CUDA_BIN_X64_DIR=
-
-for /f "usebackq delims=" %%D in (`powershell -NoProfile -Command "$root='C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA'; if (Test-Path $root) { Get-ChildItem $root -Directory | Sort-Object {[version]($_.Name.TrimStart('v'))} -Descending | Select-Object -First 1 -ExpandProperty FullName }"`) do set CUDA_TOOLKIT_DIR=%%D
-if defined CUDA_TOOLKIT_DIR (
-    for %%V in ("%CUDA_TOOLKIT_DIR%") do set CUDA_TOOLKIT_VERSION=%%~nxV
-    if exist "%CUDA_TOOLKIT_DIR%\bin\x64" set CUDA_BIN_X64_DIR=%CUDA_TOOLKIT_DIR%\bin\x64
-    if exist "%CUDA_TOOLKIT_DIR%\bin" set CUDA_BIN_DIR=%CUDA_TOOLKIT_DIR%\bin
-    if defined CUDA_BIN_X64_DIR set PATH=%CUDA_BIN_X64_DIR%;%PATH%
-    if defined CUDA_BIN_DIR set PATH=%CUDA_BIN_DIR%;%PATH%
-    echo   Detected CUDA toolkit: %CUDA_TOOLKIT_DIR%
-) else (
-    echo   No local CUDA toolkit detected under Program Files.
-)
-echo.
-
 echo [Phase 2] Checking llama-cpp-python (CUDA) ...
 
-:: Test if llama_cpp is importable
+:: Test if llama_cpp is importable AND supports GPU offload
 "%AF_PYTHON%" -c "import llama_cpp" >nul 2>&1
 if errorlevel 1 (
-    if /I "%CUDA_TOOLKIT_VERSION%" == "v11.8" (
-        echo   llama-cpp-python not importable. Trying pre-built CUDA 11.8 wheel ...
-        "%AF_PYTHON%" -m pip install llama-cpp-python --only-binary=llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu118 -q
-        if errorlevel 1 goto :install_llama_cpp_cpu
-        echo   llama-cpp-python installed with CUDA 11.8 support.
-    ) else if /I "%CUDA_TOOLKIT_VERSION%" == "v12.1" (
-        echo   llama-cpp-python not importable. Trying pre-built CUDA 12.1 wheel ...
-        "%AF_PYTHON%" -m pip install llama-cpp-python --only-binary=llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121 -q
-        if errorlevel 1 goto :install_llama_cpp_cpu
-        echo   llama-cpp-python installed with CUDA 12.1 support.
-    ) else if defined CUDA_TOOLKIT_DIR (
-        echo   Building llama-cpp-python against local CUDA toolkit %CUDA_TOOLKIT_VERSION% ...
-        set "CMAKE_GENERATOR=Visual Studio 17 2022"
-        set "CMAKE_ARGS=-DGGML_CUDA=ON -DCUDAToolkit_ROOT=%CUDA_TOOLKIT_DIR%"
-        set "CUDACXX=%CUDA_TOOLKIT_DIR%\bin\nvcc.exe"
-        set "FORCE_CMAKE=1"
-        set "PATH=C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%PATH%"
-        "%AF_PYTHON%" -m pip install --force-reinstall --no-cache-dir --no-binary llama-cpp-python llama-cpp-python -q
-        if errorlevel 1 goto :install_llama_cpp_cpu
-        echo   llama-cpp-python built for local CUDA toolkit %CUDA_TOOLKIT_VERSION%.
-    ) else (
-        goto :install_llama_cpp_cpu
-    )
+    echo   llama-cpp-python not importable. Installing CUDA wheel ...
+    goto :install_llama_cuda
 ) else (
-    echo   llama-cpp-python already installed.
+    :: Check if current install supports GPU offload
+    "%AF_PYTHON%" -c "import llama_cpp.llama_cpp as lib; exit(0 if hasattr(lib,'llama_supports_gpu_offload') and lib.llama_supports_gpu_offload() else 1)" >nul 2>&1
+    if errorlevel 1 (
+        echo   llama-cpp-python installed but NO GPU support. Reinstalling with CUDA ...
+        "%AF_PYTHON%" -m pip uninstall llama-cpp-python -y -q >nul 2>&1
+        goto :install_llama_cuda
+    ) else (
+        echo   llama-cpp-python already installed with GPU support.
+    )
 )
+echo.
+goto :after_llama_cpp
+
+:install_llama_cuda
+echo   Attempting CUDA 12.x wheel from abetlen index ...
+"%AF_PYTHON%" -m pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124 --prefer-binary --upgrade -q
+if errorlevel 1 (
+    echo   CUDA 12.4 wheel failed. Trying CUDA 12.6 ...
+    "%AF_PYTHON%" -m pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu126 --prefer-binary --upgrade -q
+    if errorlevel 1 goto :install_llama_cpp_cpu
+)
+:: Verify GPU support after install
+"%AF_PYTHON%" -c "import llama_cpp.llama_cpp as lib; exit(0 if hasattr(lib,'llama_supports_gpu_offload') and lib.llama_supports_gpu_offload() else 1)" >nul 2>&1
+if errorlevel 1 (
+    echo   WARNING: Installed wheel does not report GPU offload. Falling back to CPU wheel ...
+    goto :install_llama_cpp_cpu
+)
+echo   Installed llama-cpp-python with CUDA/GPU support!
 echo.
 goto :after_llama_cpp
 
@@ -188,7 +176,7 @@ echo.
 echo [Phase 3] Checking GGUF models ...
 
 set KRA_GPU_MODEL=%ROOT%analysis_flow\models\deepseek-r1-8b-q5_k_m.gguf
-set KRA_CPU_MODEL=%ROOT%analysis_flow\models\phi-3.5-mini-kra-q4_k_m.gguf
+set KRA_CPU_MODEL=%ROOT%analysis_flow\models\DeepSeek-R1-Distill-Llama-8B-Q5_K_M.gguf
 set ORA_MODEL=%ROOT%analysis_flow\models\phi-3.5-mini-q4_k_m.gguf
 
 set MODELS_NEEDED=0
@@ -198,7 +186,7 @@ if not exist "%ORA_MODEL%" set MODELS_NEEDED=1
 
 if %MODELS_NEEDED% EQU 1 (
     echo   Models missing — launching background downloader window.
-    echo   KRA GPU: ~5.5 GB  KRA CPU: ~2.3 GB  ORA: ~2.3 GB
+    echo   KRA GPU: ~5.5 GB  KRA CPU: ~4.4 GB  ORA: ~2.3 GB
     echo   Download runs in a separate window.
     echo   Services will start now; LLM inference activates once models finish.
     start "GGUF Model Downloader" /D "%ROOT%analysis_flow" cmd /k "echo Downloading GGUF models... && .venv\Scripts\python.exe download_models.py && echo Models ready! && pause"
@@ -213,7 +201,7 @@ echo.
 echo [Phase 4] Checking .env configuration ...
 
 set AF_ENV=%ROOT%analysis_flow\.env
-"%AF_PYTHON%" -c "import os,pathlib; p=pathlib.Path(r'%AF_ENV%'); c=p.read_text(encoding='utf-8') if p.exists() else ''; need='KRA_MODEL_PATH' not in c; print('Adding LLM config...' if need else 'LLM config already present.'); p.write_text(c+'\n# Local LLM Config\nKRA_MODEL_PATH=models/deepseek-r1-8b-q5_k_m.gguf\nKRA_N_GPU_LAYERS=-1\nKRA_N_CTX=8192\nKRA_CPU_FALLBACK_MODEL_PATH=models/phi-3.5-mini-kra-q4_k_m.gguf\nKRA_CPU_FALLBACK_N_GPU_LAYERS=0\nKRA_CPU_FALLBACK_N_CTX=4096\nKRA_CPU_FALLBACK_TEMPERATURE=0.2\nKRA_CPU_FALLBACK_MAX_TOKENS=1024\nORA_MODEL_PATH=models/phi-3.5-mini-q4_k_m.gguf\nORA_N_GPU_LAYERS=0\nORA_N_CTX=4096\nORA_TEMPERATURE=0.3\n', encoding='utf-8') if need else None"
+"%AF_PYTHON%" -c "import pathlib; p=pathlib.Path(r'%AF_ENV%'); c=p.read_text(encoding='utf-8') if p.exists() else ''; need=not p.exists() or ('LOCAL_MODE' not in c); print('Adding LLM config...' if need else 'LLM config already present. Skipping append.'); p.write_text('LOCAL_MODE=true\n# Local LLM Config\nKRA_MODEL_PATH=models/deepseek-r1-8b-q5_k_m.gguf\nKRA_N_GPU_LAYERS=28\nKRA_N_CTX=8192\nKRA_CPU_FALLBACK_MODEL_PATH=models/DeepSeek-R1-Distill-Llama-8B-Q5_K_M.gguf\nKRA_CPU_FALLBACK_N_GPU_LAYERS=0\nKRA_CPU_FALLBACK_N_CTX=4096\nKRA_CPU_FALLBACK_TEMPERATURE=0.2\nKRA_CPU_FALLBACK_MAX_TOKENS=1024\nORA_MODEL_PATH=models/phi-3.5-mini-q4_k_m.gguf\nORA_N_GPU_LAYERS=0\nORA_N_CTX=4096\nORA_TEMPERATURE=0.3\n', encoding='utf-8') if need else None"
 echo.
 
 :: ============================================================
@@ -260,7 +248,7 @@ start "ECG Backend - :5000" /D "%ROOT%ecg_backend-main" cmd /k ".venv\Scripts\py
 
 :: ---- 6d. Analysis Flow (port 8080) — starts and eagerly preloads LLM ----
 echo   Starting Analysis Flow on :8080 ...
-start "Analysis Flow KRA-ORA - :8080" /D "%ROOT%analysis_flow" cmd /k ".venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8080"
+start "Analysis Flow KRA-ORA - :8080" /D "%ROOT%analysis_flow" cmd /k ".venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8080 --timeout-keep-alive 300"
 
 echo.
 echo ====================================================================

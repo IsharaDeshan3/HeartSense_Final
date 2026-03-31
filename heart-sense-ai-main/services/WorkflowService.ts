@@ -47,6 +47,8 @@ export interface PatientHistorySummary {
   summary_text: string;
 }
 
+export type PatientHistoryStatus = "ok" | "unreachable";
+
 function normalizeSessionId(value: unknown) {
   return typeof value === "string" ? value : "";
 }
@@ -200,6 +202,7 @@ export const WorkflowService = {
     patient_id: string;
     summary: PatientHistorySummary;
     records: PatientDiagnosisRecord[];
+    supabase_status?: PatientHistoryStatus;
   }> {
     const res = await fetch(`/api/workflow/patient/${patientId}/history`);
     if (!res.ok) {

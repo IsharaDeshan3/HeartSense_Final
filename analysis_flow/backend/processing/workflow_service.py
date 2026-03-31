@@ -582,28 +582,27 @@ class WorkflowService:
 
         context_text = "\n\n".join(section.strip() for section in context_sections if str(section).strip())
 
-        # ── Step 2: Load longitudinal history summary for KRA only ──────────
-        history_bundle = {"patient_id": patient_id, "summary": {}, "records": []}
-        history_summary = {}
-        history_summary_text = ""
-        if patient_id:
-            try:
-                history_bundle = get_patient_history_bundle(patient_id)
-            except Exception as exc:
-                logger.warning("Patient history summary fetch failed for %s: %s", patient_id, exc)
-        if isinstance(history_bundle, dict):
-            history_summary = history_bundle.get("summary") or {}
-        history_summary_text = str(history_summary.get("summary_text") or "").strip()
-
-        # ── Step 3: Persist payload and run KRA in parallel ─────────────────
-        # Saving the payload does not need to wait for model inference, so the
-        # pipeline overlaps the database write with the KRA request.
+        # ── Step 2 + 3: History fetch, payload save, and KRA run in parallel ──
+        # Saving the payload and fetching history don't need to wait for model
+        # inference, so the pipeline overlaps all three to reduce wall-clock time.
         cancel_event = self._get_or_create_cancel_event(session_id)
         self._emit(session_id, "supabase_save_payload", "started")
         self._emit(session_id, "kra_analysis", "started")
 
-        def run_payload_save() -> dict[str, Any]:
+        def run_history_fetch() -> dict[str, Any]:
+            """Step 2: Load longitudinal history summary for KRA (non-blocking)."""
+            bundle: dict[str, Any] = {"patient_id": patient_id, "summary": {}, "records": []}
+            if patient_id:
+                try:
+                    bundle = get_patient_history_bundle(patient_id)
+                except Exception as exc:
+                    logger.warning("Patient history summary fetch failed for %s: %s", patient_id, exc)
+            return bundle
+
+        def run_payload_save(history_bundle_ref: list) -> dict[str, Any]:
             started_at = time.time()
+            # Wait for history to be available from the shared ref
+            hb = history_bundle_ref[0] if history_bundle_ref else {"patient_id": patient_id, "summary": {}, "records": []}
             result = self._save_payload_snapshot(
                 session_id=session_id,
                 symptoms_json=symptoms_json,
@@ -611,30 +610,52 @@ class WorkflowService:
                 labs_json=labs_json,
                 context_text=context_text,
                 quality=quality,
-                history_json=history_bundle,
+                history_json=hb,
                 patient_id=patient_id,
             )
             result["duration_ms"] = int((time.time() - started_at) * 1000)
             return result
 
-        def run_kra_analysis() -> dict[str, Any]:
+        def run_kra_analysis(history_bundle_ref: list) -> dict[str, Any]:
             started_at = time.time()
+            # Extract history summary text from the fetched bundle
+            hb = history_bundle_ref[0] if history_bundle_ref else {}
+            hs = hb.get("summary") or {} if isinstance(hb, dict) else {}
+            h_text = str(hs.get("summary_text") or "").strip()
+
             result = self._kra.analyze(
                 symptoms_text=symptoms_text,
                 context_text=context_text,
                 ecg_dict=ecg_json,
                 labs_dict=labs_json,
-                history_summary_text=history_summary_text,
+                history_summary_text=h_text,
                 cancel_event=cancel_event,
             )
             return {
                 "kra_result": result,
                 "duration_ms": int((time.time() - started_at) * 1000),
+                "history_injected": bool(h_text),
             }
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            payload_future = executor.submit(run_payload_save)
-            kra_future = executor.submit(run_kra_analysis)
+        # Phase 1: Fetch history first (fast network call), then fire payload+KRA in parallel
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            history_future = executor.submit(run_history_fetch)
+
+            # Wait for history before starting payload save and KRA (they both need it)
+            try:
+                history_bundle = history_future.result(timeout=15)
+            except Exception as exc:
+                logger.warning("History fetch timed out or failed: %s", exc)
+                history_bundle = {"patient_id": patient_id, "summary": {}, "records": []}
+
+            history_summary = history_bundle.get("summary") or {} if isinstance(history_bundle, dict) else {}
+            history_summary_text = str(history_summary.get("summary_text") or "").strip()
+
+            # Shared ref so both workers see the same history
+            history_ref = [history_bundle]
+
+            payload_future = executor.submit(run_payload_save, history_ref)
+            kra_future = executor.submit(run_kra_analysis, history_ref)
             done, pending = wait(
                 {payload_future, kra_future},
                 timeout=self._kra_timeout_seconds(),

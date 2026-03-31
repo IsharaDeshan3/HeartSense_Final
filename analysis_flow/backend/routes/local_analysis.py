@@ -27,7 +27,7 @@ def get_pipeline() -> DiagnosisPipeline:
 
 @router.post("/analyze")
 async def analyze(request: LocalAnalysisRequest):
-    # This is the one-shot local entrypoint that bypasses session storage and
+    # This is the all in one local entrypoint that bypasses session storage and
     # calls the offline diagnosis pipeline directly.
     if not request.symptoms.strip():
         raise HTTPException(status_code=400, detail="Missing symptoms")

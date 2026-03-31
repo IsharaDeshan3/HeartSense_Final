@@ -1,10 +1,22 @@
 "use client";
 
 import { HeartPulse, Activity, Zap, ChevronRight } from "lucide-react";
-import EcgInterpreter from "@/components/EcgInterpreter";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
+
+const EcgInterpreter = dynamic(() => import("@/components/EcgInterpreter"), {
+  ssr: false,
+  loading: () => (
+    <div className="rounded-3xl border border-border/30 bg-card/60 p-10 animate-pulse">
+      <div className="space-y-4">
+        <div className="h-6 w-56 rounded-full bg-muted/20" />
+        <div className="h-96 rounded-[2rem] bg-muted/10" />
+      </div>
+    </div>
+  ),
+});
 
 export default function DiagnosticsPage() {
   const [isNightMode, setIsNightMode] = useState(false);

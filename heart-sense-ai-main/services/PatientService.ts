@@ -1,6 +1,8 @@
 const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
-
-const useProxy = true;
+const transcriptProxyUrl = "/api/proxy/process-transcript";
+const itemStatusProxyUrl = "/api/proxy/update-item-status";
+const patientHistoryProxyUrl = "/api/proxy/patient-history";
+const labProxyUrl = "/api/lab";
 
 export interface GeminiResponse {
   isMedical: boolean;
@@ -63,7 +65,7 @@ export const PatientService = {
       risk_factors: currentState.risk_factors || [],
     };
 
-    const res = await fetch(`${baseUrl}/process-transcript`, {
+    const res = await fetch(transcriptProxyUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -87,7 +89,7 @@ export const PatientService = {
     item: string,
     status: "accepted" | "rejected",
   ) {
-    const res = await fetch(`${baseUrl}/update-item-status`, {
+    const res = await fetch(itemStatusProxyUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: sessionId, category, item, status }),
@@ -161,7 +163,7 @@ export const PatientService = {
     console.log("[PatientService] fetchPatientHistory for:", targetId);
 
     // Use Next.js proxy to avoid cross-auth issues
-    const url = `/api/proxy/patient-history?user_id=${targetId}&skip=0&limit=100`;
+    const url = `${patientHistoryProxyUrl}?user_id=${targetId}&skip=0&limit=100`;
     console.log("[PatientService] fetchPatientHistory URL:", url);
 
     try {
@@ -261,7 +263,7 @@ export const PatientService = {
     };
 
     // Use Next.js proxy
-    const url = `/api/proxy/patient-history`;
+    const url = patientHistoryProxyUrl;
     try {
       const res = await fetch(url, {
         method: "POST",
@@ -312,13 +314,10 @@ export const PatientService = {
       Object.entries(diabeticData).filter(([_, v]) => v !== undefined),
     );
 
-    const res = await fetch(`${baseUrl}/api/diabetic/`, {
+    const res = await fetch(labProxyUrl, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${auth.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(filteredData),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ diabeticData: filteredData }),
     });
 
     if (!res.ok) {
@@ -389,13 +388,10 @@ export const PatientService = {
 
     console.log("[PatientService] sendHeartData:", filteredHeartData);
 
-    const res = await fetch(`${baseUrl}/api/heart/`, {
+    const res = await fetch(labProxyUrl, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${auth.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(filteredHeartData),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ heartData: filteredHeartData }),
     });
 
     if (!res.ok) {
