@@ -1,0 +1,10 @@
+--extra-index-url https://download.pytorch.org/whl/cu124
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+transformers==4.48.0
+accelerate==1.2.1
+safetensors==0.5.2
+torch==2.5.1
+huggingface_hub==0.26.5

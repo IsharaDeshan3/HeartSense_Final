@@ -1,10 +1,7 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status
 from database import get_database
 from models import HeartCreate, HeartResponse
-from routers.auth import get_current_user
-from bson import ObjectId
 from datetime import datetime
-from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,105 +9,60 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/heart", tags=["heart"])
 
 
+def _patient_query(patient_id: str) -> dict:
+    return {"$or": [{"patientId": patient_id}, {"userId": patient_id}]}
+
+
 @router.post("/", response_model=HeartResponse, status_code=status.HTTP_201_CREATED)
-async def create_or_update_heart_data(
-    heart_data: HeartCreate,
-    current_user: dict = Depends(get_current_user)
-):
-    """Create or update heart patient data. If record exists, it updates the fields."""
+async def create_or_update_heart_data(heart_data: HeartCreate):
+    """Create or update heart patient data keyed by patientId."""
     db = get_database()
-    
+
     try:
-        # Check if user exists (optional - depends on your requirements)
-        user = await db.users.find_one({"_id": ObjectId(heart_data.userId)}) if ObjectId.is_valid(heart_data.userId) else None
-        
-        if not user:
-            # Check if userId is a valid ObjectId, if not allow as external ID
-            if not ObjectId.is_valid(heart_data.userId):
-                # Allow external user IDs that aren't ObjectIds
-                pass
-        
-        # Prepare update data - only include non-null values from the request
         update_data = {k: v for k, v in heart_data.model_dump().items() if v is not None}
-        update_data['updatedAt'] = datetime.utcnow()
-        
-        # Find existing record
-        existing_record = await db.heart_data.find_one({"userId": heart_data.userId})
-        
+        patient_id = heart_data.patientId
+        update_data["patientId"] = patient_id
+        update_data.pop("userId", None)
+        update_data["updatedAt"] = datetime.utcnow()
+
+        existing_record = await db.heart_data.find_one(_patient_query(patient_id))
+
         if existing_record:
-            # Merge existing data with new data, keeping existing values for null/empty fields
             for key, value in existing_record.items():
                 if key in update_data and update_data[key] is not None:
-                    # Use new value if provided and not null
                     continue
-                elif key not in update_data:
-                    # Use existing value if not provided in new data
-                    if key not in ['_id', 'userId', 'createdAt', 'updatedAt']:  # Skip system fields
-                        update_data[key] = value
-            
-            # Ensure we don't update the _id field
-            if '_id' in update_data:
-                del update_data['_id']
-            
-            # Update the existing record
-            result = await db.heart_data.update_one(
-                {"userId": heart_data.userId},
-                {"$set": update_data}
+                if key not in update_data and key not in ["_id", "patientId", "userId", "createdAt", "updatedAt"]:
+                    update_data[key] = value
+
+            await db.heart_data.update_one(
+                {"_id": existing_record["_id"]},
+                {"$set": update_data, "$unset": {"userId": ""}},
             )
-            
-            # Fetch the updated document
-            updated_record = await db.heart_data.find_one({"userId": heart_data.userId})
-            
-            return HeartResponse(
-                id=str(updated_record["_id"]),
-                userId=updated_record["userId"],
-                age=updated_record.get("age"),
-                ca=updated_record.get("ca"),
-                chol=updated_record.get("chol"),
-                cp=updated_record.get("cp"),
-                exang=updated_record.get("exang"),
-                fbs=updated_record.get("fbs"),
-                oldpeak=updated_record.get("oldpeak"),
-                restecg=updated_record.get("restecg"),
-                sex=updated_record.get("sex"),
-                slope=updated_record.get("slope"),
-                thal=updated_record.get("thal"),
-                thalach=updated_record.get("thalach"),
-                trestbps=updated_record.get("trestbps"),
-                createdAt=updated_record["createdAt"],
-                updatedAt=updated_record["updatedAt"]
-            )
+            record = await db.heart_data.find_one({"_id": existing_record["_id"]})
         else:
-            # Create new record
-            insert_data = update_data.copy()
-            insert_data['createdAt'] = datetime.utcnow()
-            insert_data['updatedAt'] = datetime.utcnow()
-            
-            result = await db.heart_data.insert_one(insert_data)
-            
-            # Get the created heart data
-            created_heart = await db.heart_data.find_one({"_id": result.inserted_id})
-            
-            return HeartResponse(
-                id=str(created_heart["_id"]),
-                userId=created_heart["userId"],
-                age=created_heart.get("age"),
-                ca=created_heart.get("ca"),
-                chol=created_heart.get("chol"),
-                cp=created_heart.get("cp"),
-                exang=created_heart.get("exang"),
-                fbs=created_heart.get("fbs"),
-                oldpeak=created_heart.get("oldpeak"),
-                restecg=created_heart.get("restecg"),
-                sex=created_heart.get("sex"),
-                slope=created_heart.get("slope"),
-                thal=created_heart.get("thal"),
-                thalach=created_heart.get("thalach"),
-                trestbps=created_heart.get("trestbps"),
-                createdAt=created_heart["createdAt"],
-                updatedAt=created_heart["updatedAt"]
-            )
-        
+            update_data["createdAt"] = datetime.utcnow()
+            result = await db.heart_data.insert_one(update_data)
+            record = await db.heart_data.find_one({"_id": result.inserted_id})
+
+        return HeartResponse(
+            id=str(record["_id"]),
+            patientId=record.get("patientId") or record.get("userId"),
+            age=record.get("age"),
+            ca=record.get("ca"),
+            chol=record.get("chol"),
+            cp=record.get("cp"),
+            exang=record.get("exang"),
+            fbs=record.get("fbs"),
+            oldpeak=record.get("oldpeak"),
+            restecg=record.get("restecg"),
+            sex=record.get("sex"),
+            slope=record.get("slope"),
+            thal=record.get("thal"),
+            thalach=record.get("thalach"),
+            trestbps=record.get("trestbps"),
+            createdAt=record["createdAt"],
+            updatedAt=record["updatedAt"],
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -121,41 +73,23 @@ async def create_or_update_heart_data(
         )
 
 
-@router.get("/user/{user_id}", response_model=HeartResponse)
-async def get_heart_data_by_user_id(
-    user_id: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """Get heart data by user ID."""
+@router.get("/patient/{patient_id}", response_model=HeartResponse)
+async def get_heart_data_by_patient_id(patient_id: str):
+    """Get heart data by patientId."""
     db = get_database()
-    
+
     try:
-        # Check if current user can access this data
-        if current_user.get("role") == "patient":
-            # Patients can only access their own data
-            if user_id != str(current_user["_id"]):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You don't have permission to view this heart data"
-                )
-        elif current_user.get("role") != "doctor":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Unauthorized access"
-            )
-        
-        # Find heart data for the specified user
-        heart_data = await db.heart_data.find_one({"userId": user_id})
-        
+        heart_data = await db.heart_data.find_one(_patient_query(patient_id))
+
         if not heart_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Heart data not found for this user"
+                detail="Heart data not found for this patient"
             )
-        
+
         return HeartResponse(
             id=str(heart_data["_id"]),
-            userId=heart_data["userId"],
+            patientId=heart_data.get("patientId") or heart_data.get("userId"),
             age=heart_data.get("age"),
             ca=heart_data.get("ca"),
             chol=heart_data.get("chol"),
@@ -170,49 +104,36 @@ async def get_heart_data_by_user_id(
             thalach=heart_data.get("thalach"),
             trestbps=heart_data.get("trestbps"),
             createdAt=heart_data["createdAt"],
-            updatedAt=heart_data["updatedAt"]
+            updatedAt=heart_data["updatedAt"],
         )
-        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching heart data by user ID: {e}")
+        logger.error(f"Error fetching heart data by patient ID: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error fetching heart data by user ID: {str(e)}"
+            detail=f"Error fetching heart data by patient ID: {str(e)}"
         )
 
 
-@router.delete("/user/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_heart_data_by_user_id(
-    user_id: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """Delete heart data by user ID. Only doctors can delete records."""
+@router.delete("/patient/{patient_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_heart_data_by_patient_id(patient_id: str):
+    """Delete heart data by patientId."""
     db = get_database()
-    
+
     try:
-        # Only doctors can delete records
-        if current_user.get("role") != "doctor":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only doctors can delete heart data"
-            )
-        
-        # Delete the heart data
-        result = await db.heart_data.delete_one({"userId": user_id})
-        
+        result = await db.heart_data.delete_one(_patient_query(patient_id))
+
         if result.deleted_count == 0:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Heart data not found for this user"
+                detail="Heart data not found for this patient"
             )
-        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting heart data by user ID: {e}")
+        logger.error(f"Error deleting heart data by patient ID: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting heart data by user ID: {str(e)}"
+            detail=f"Error deleting heart data by patient ID: {str(e)}"
         )

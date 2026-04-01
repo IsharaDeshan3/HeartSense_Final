@@ -18,14 +18,12 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
-  DiagnosticService,
   type AnalysisResponse,
 } from "@/services/DiagnosticService";
 import { WorkflowService } from "@/services/WorkflowService";
-import type { WorkflowState } from "@/services/WorkflowService";
+import type { PatientDiagnosisRecord, WorkflowState } from "@/services/WorkflowService";
 import {
   buildSymptomsPayload,
   buildECGPayload,
@@ -38,9 +36,8 @@ import PipelineWorkflow from "@/components/PipelineWorkflow";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type ExperienceLevel = "newbie" | "seasoned" | "expert";
-
 interface AiDiagnosticsProps {
+  patientId: string;
   symptoms: string[];
   riskFactors: string[];
   recentObservation: string;
@@ -66,18 +63,7 @@ function getAnalysisProgressKey(sessionId: string) {
   return `workspace:analysis-progress:${sessionId}`;
 }
 
-const EXPERIENCE_OPTIONS: {
-  value: ExperienceLevel;
-  label: string;
-  desc: string;
-}[] = [
-    { value: "newbie", label: "Newbie", desc: "Detailed explanations" },
-    { value: "seasoned", label: "Seasoned", desc: "Standard clinical" },
-    { value: "expert", label: "Expert", desc: "Concise & technical" },
-  ];
-
 const PIPELINE_STEP_LABELS: Record<string, string> = {
-  session_init: "Session Init",
   faiss_search: "Knowledge Retrieval",
   rare_case_search: "Rare Case Check",
   supabase_save_payload: "Saving Payload",
@@ -87,9 +73,97 @@ const PIPELINE_STEP_LABELS: Record<string, string> = {
   supabase_save_ora: "Finalizing",
 };
 
+function normalizeOraMode(experienceLevel?: string | null): "newbie" | "seasoned" {
+  return String(experienceLevel || "").toLowerCase() === "newbie" ? "newbie" : "seasoned";
+}
+
+function mapPersistedRecordToAnalysisResponse(record: PatientDiagnosisRecord): AnalysisResponse {
+  const preferredMode = normalizeOraMode(record.experience_level);
+  const refinedOutput = record.refined_output?.trim();
+  const disclaimer = record.disclaimer?.trim();
+  const persistedOutputs = record.ora_outputs;
+  const persistedDisclaimers = record.ora_disclaimers;
+
+  const newbieOutput = persistedOutputs?.newbie?.trim();
+  const seasonedOutput = persistedOutputs?.seasoned?.trim();
+  const newbieDisclaimer = persistedDisclaimers?.newbie?.trim();
+  const seasonedDisclaimer = persistedDisclaimers?.seasoned?.trim();
+
+  const selectedOutput =
+    (preferredMode === "newbie" ? newbieOutput : seasonedOutput) ||
+    seasonedOutput ||
+    newbieOutput ||
+    refinedOutput;
+  const selectedDisclaimer =
+    (preferredMode === "newbie" ? newbieDisclaimer : seasonedDisclaimer) ||
+    seasonedDisclaimer ||
+    newbieDisclaimer ||
+    disclaimer;
+
+  return {
+    session_id: record.session_id,
+    status: selectedOutput ? "COMPLETED" : "PARTIAL",
+    supabase_payload_id: record.payload_id,
+    supabase_kra_id: record.kra_id,
+    supabase_ora_id: record.ora_id,
+    experience_level: preferredMode,
+    processing_steps: [],
+    kra_raw: record.kra_raw_text,
+    ora_outputs: selectedOutput
+      ? {
+        newbie: newbieOutput || selectedOutput,
+        seasoned: seasonedOutput || selectedOutput,
+      }
+      : undefined,
+    ora_disclaimers: selectedDisclaimer
+      ? {
+        newbie: newbieDisclaimer || selectedDisclaimer,
+        seasoned: seasonedDisclaimer || selectedDisclaimer,
+      }
+      : undefined,
+    refined_output:
+      selectedOutput ||
+      "### Analysis Complete\n\nThe workflow completed, but no ORA report text was available in the persisted record.",
+    disclaimer: selectedDisclaimer,
+  };
+}
+
+function applyOraModeToResponse(
+  response: AnalysisResponse,
+  mode: "newbie" | "seasoned",
+): AnalysisResponse {
+  const rawNewbie = response.ora_outputs?.newbie?.trim() || "";
+  const rawSeasoned = response.ora_outputs?.seasoned?.trim() || "";
+  const modeText = mode === "newbie" ? rawNewbie : rawSeasoned;
+  const fallbackText = rawSeasoned || rawNewbie || response.refined_output || "";
+  const bothPresent = Boolean(rawNewbie && rawSeasoned);
+  const equalOutputs = bothPresent && rawNewbie === rawSeasoned;
+  const modeLabel = mode === "newbie" ? "Newbie" : "Seasoned";
+  const displayText = modeText || fallbackText;
+  const refinedText =
+    displayText && equalOutputs
+      ? `### ${modeLabel} Output\n\n${displayText}`
+      : displayText;
+
+  const rawNewbieDisclaimer = response.ora_disclaimers?.newbie?.trim() || "";
+  const rawSeasonedDisclaimer = response.ora_disclaimers?.seasoned?.trim() || "";
+  const disclaimer =
+    (mode === "newbie" ? rawNewbieDisclaimer : rawSeasonedDisclaimer) ||
+    rawSeasonedDisclaimer ||
+    rawNewbieDisclaimer ||
+    response.disclaimer;
+
+  return {
+    ...response,
+    refined_output: refinedText,
+    disclaimer,
+  };
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function AiDiagnostics({
+  patientId,
   symptoms,
   riskFactors,
   recentObservation,
@@ -103,18 +177,56 @@ export default function AiDiagnostics({
   labSkipped = false,
   onWorkflowStateChange,
 }: AiDiagnosticsProps) {
-  const [experience, setExperience] = useState<ExperienceLevel>("seasoned");
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<AnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [isHealthy, setIsHealthy] = useState<boolean | null>(null);
   const [isStopping, setIsStopping] = useState(false);
-  const [oraMode, setOraMode] = useState<"newbie" | "expert">("newbie");
+  const [oraMode, setOraMode] = useState<"newbie" | "seasoned">("newbie");
   const [currentPipelineStep, setCurrentPipelineStep] = useState<string | undefined>();
   const [completedPipelineSteps, setCompletedPipelineSteps] = useState<string[]>([]);
+  const [failedPipelineStep, setFailedPipelineStep] = useState<string | undefined>();
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAtRef = useRef<number | null>(null);
+
+  const stopAnalysisUi = (options?: {
+    clearError?: boolean;
+    errorMessage?: string | null;
+    failedStep?: string;
+    keepCompletedSteps?: boolean;
+  }) => {
+    const clearError = options?.clearError ?? false;
+    setIsRunning(false);
+    startedAtRef.current = null;
+    setElapsed(0);
+    setCurrentPipelineStep(undefined);
+    setFailedPipelineStep(options?.failedStep);
+    if (!options?.keepCompletedSteps) {
+      setCompletedPipelineSteps([]);
+    }
+    if (clearError) {
+      setError(null);
+    } else {
+      setError(options?.errorMessage ?? null);
+    }
+  };
+
+  const recoverPersistedResult = async () => {
+    if (!patientId || !workflowSessionId) return null;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const record = await WorkflowService.getPatientDiagnosisRecord(patientId, workflowSessionId);
+      if (record && (record.refined_output?.trim() || record.kra_raw_text?.trim())) {
+        return mapPersistedRecordToAnalysisResponse(record);
+      }
+
+      if (attempt < 4) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    }
+
+    return null;
+  };
 
   // Data readiness flags
   const hasNlp =
@@ -126,13 +238,6 @@ export default function AiDiagnostics({
   const isWorkflowAnalysisRunning = workflowState === "ANALYSIS_RUNNING";
   const canRun = hasNlp && !isWorkflowAnalysisRunning; // NLP/symptoms is the minimum requirement
   const dataSourceCount = [hasNlp, hasEcg, hasLab].filter(Boolean).length;
-
-  // Health check on mount
-  useEffect(() => {
-    DiagnosticService.checkHealth().then((h) => {
-      setIsHealthy(h.status === "ok" || h.status === "degraded");
-    });
-  }, []);
 
   // Elapsed timer
   useEffect(() => {
@@ -167,31 +272,46 @@ export default function AiDiagnostics({
       if (cached.startedAt) {
         startedAtRef.current = cached.startedAt;
         setElapsed(Math.max(0, Math.floor((Date.now() - cached.startedAt) / 1000)));
+      } else {
+        startedAtRef.current = null;
+        setElapsed(0);
       }
 
-      if (cached.isRunning || workflowState === "ANALYSIS_RUNNING") {
+      if (cached.isRunning) {
         setIsRunning(true);
       }
     } catch {
       // ignore invalid cache
     }
-  }, [workflowSessionId, workflowState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflowSessionId]);
 
   useEffect(() => {
     if (!workflowSessionId || typeof window === "undefined") return;
 
+    const startedAt = isRunning ? startedAtRef.current : null;
+    if (!isRunning) {
+      startedAtRef.current = null;
+    }
+
     const payload: AnalysisProgressCache = {
       isRunning,
-      startedAt: startedAtRef.current,
+      startedAt,
       currentPipelineStep,
       completedPipelineSteps,
     };
     window.localStorage.setItem(getAnalysisProgressKey(workflowSessionId), JSON.stringify(payload));
-
-    if (!isRunning) {
-      startedAtRef.current = null;
-    }
   }, [workflowSessionId, isRunning, currentPipelineStep, completedPipelineSteps]);
+
+  useEffect(() => {
+    if (workflowState === "ANALYSIS_RUNNING") return;
+    if (!isRunning && startedAtRef.current === null) return;
+
+    setIsRunning(false);
+    startedAtRef.current = null;
+    setElapsed(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflowState]);
 
   useEffect(() => {
     if (!workflowSessionId || workflowState !== "ANALYSIS_RUNNING") return;
@@ -200,8 +320,30 @@ export default function AiDiagnostics({
       try {
         const session = await WorkflowService.getSession(workflowSessionId);
         if (session.current_state !== "ANALYSIS_RUNNING") {
-          setIsRunning(false);
-          setCurrentPipelineStep(undefined);
+          if (session.current_state === "ANALYSIS_DONE" && !result) {
+            try {
+              const recovered = await recoverPersistedResult();
+              if (recovered) {
+                const recoveredMode = normalizeOraMode(recovered.experience_level);
+                setOraMode(recoveredMode);
+                setResult(applyOraModeToResponse(recovered, recoveredMode));
+                setFailedPipelineStep(undefined);
+                stopAnalysisUi({ clearError: true, keepCompletedSteps: true });
+                onWorkflowStateChange?.("ANALYSIS_DONE");
+                toast.success("Recovered completed analysis result");
+                return;
+              }
+            } catch {
+              // fall through to normal state cleanup
+            }
+          }
+
+          stopAnalysisUi({
+            clearError: session.current_state !== "FAILED",
+            errorMessage: session.current_state === "FAILED" ? "Analysis failed" : null,
+            failedStep: session.current_state === "FAILED" ? failedPipelineStep : undefined,
+            keepCompletedSteps: true,
+          });
           onWorkflowStateChange?.(session.current_state);
         }
       } catch {
@@ -210,7 +352,7 @@ export default function AiDiagnostics({
     }, 5000);
 
     return () => clearInterval(poll);
-  }, [workflowSessionId, workflowState, onWorkflowStateChange]);
+  }, [workflowSessionId, workflowState, onWorkflowStateChange, failedPipelineStep, result, patientId]);
 
   const handleRun = async () => {
     if (isWorkflowAnalysisRunning) {
@@ -222,18 +364,20 @@ export default function AiDiagnostics({
     startedAtRef.current = Date.now();
     setError(null);
     setResult(null);
-    setCurrentPipelineStep("session_init");
+    setFailedPipelineStep(undefined);
+    setCurrentPipelineStep("faiss_search");
     setCompletedPipelineSteps([]);
-    toast.info("Diagnostic pipeline initiated — this may take 30-120s…");
+    toast.info("Diagnostic pipeline initiated — CPU inference may take 3-5 minutes…");
 
     // Real-time pipeline step streaming via SSE.  Subscribe BEFORE calling
     // runAnalysis so that no early events are missed.
     let eventSource: EventSource | null = null;
+    let terminalEventSeen = false;
     if (workflowSessionId) {
       eventSource = WorkflowService.openAnalysisEventStream(workflowSessionId);
       eventSource.onmessage = (e: MessageEvent) => {
         try {
-          const event = JSON.parse(e.data) as { step: string; status: string };
+          const event = JSON.parse(e.data) as { step?: string; status?: string; message?: string };
           if (event.status === "started") {
             setCurrentPipelineStep(event.step);
           } else if (event.status === "completed") {
@@ -241,8 +385,24 @@ export default function AiDiagnostics({
               setCurrentPipelineStep(event.step);
             }
             setCompletedPipelineSteps(prev =>
-              prev.includes(event.step) ? prev : [...prev, event.step]
+              event.step && prev.includes(event.step) ? prev : event.step ? [...prev, event.step] : prev
             );
+          } else if (event.status === "error") {
+            terminalEventSeen = true;
+            eventSource?.close();
+            eventSource = null;
+            stopAnalysisUi({
+              errorMessage: event.message || "Analysis failed",
+              failedStep: event.step || currentPipelineStep || "session_init",
+              keepCompletedSteps: true,
+            });
+            onWorkflowStateChange?.("LAB_DONE" as WorkflowState);
+          } else if (event.status === "cancelled") {
+            terminalEventSeen = true;
+            eventSource?.close();
+            eventSource = null;
+            stopAnalysisUi({ clearError: true, keepCompletedSteps: true });
+            onWorkflowStateChange?.("LAB_DONE" as WorkflowState);
           }
         } catch {
           // ignore JSON parse errors
@@ -253,7 +413,7 @@ export default function AiDiagnostics({
         eventSource = null;
       };
     }
-    let cancelled = false;
+    let keepTrackingAfterRequestDrop = false;
 
     try {
       const symptomsPayload = buildSymptomsPayload(
@@ -274,14 +434,9 @@ export default function AiDiagnostics({
 
       if (useWorkflow) {
         onWorkflowStateChange?.("ANALYSIS_RUNNING" as WorkflowState);
-        const workflowRes = await WorkflowService.runAnalysis(workflowSessionId, experience);
-        const selectedOraMode: "newbie" | "expert" = experience === "newbie" ? "newbie" : "expert";
-        const selectedOutput =
-          workflowRes.ora_outputs?.[selectedOraMode] ||
-          workflowRes.refined_output;
-        const selectedDisclaimer =
-          workflowRes.ora_disclaimers?.[selectedOraMode] ||
-          workflowRes.disclaimer;
+        const workflowRes = await WorkflowService.runAnalysis(workflowSessionId);
+        const selectedOraMode: "newbie" | "seasoned" =
+          workflowRes.ora_outputs?.seasoned ? "seasoned" : "newbie";
         res = {
           session_id: workflowRes.session_id,
           status: workflowRes.status,
@@ -296,29 +451,27 @@ export default function AiDiagnostics({
           ora_disclaimers: workflowRes.ora_disclaimers,
           rare_case_alert: workflowRes.rare_case_alert as any,
           refined_output:
-            selectedOutput ||
+            workflowRes.refined_output ||
             (workflowRes.context_preview
               ? `### Phase C Partial\n\nContext prepared but ORA output missing.\n\n**Context Preview**\n${workflowRes.context_preview}`
               : "### Phase C Partial\n\nContext prepared but ORA output missing."),
-          disclaimer: selectedDisclaimer,
+          disclaimer: workflowRes.disclaimer,
         } as AnalysisResponse;
+        res = applyOraModeToResponse(res, selectedOraMode);
         setOraMode(selectedOraMode);
       } else {
-        res = await DiagnosticService.runDiagnosis({
-          symptoms: symptomsPayload,
-          ecg: ecgPayload,
-          labs: labPayload,
-          experience_level: experience,
-        });
+        throw new Error("Workflow session not ready for analysis");
       }
 
       // Mark remaining steps as completed and close SSE stream
-      cancelled = true;
       eventSource?.close();
       eventSource = null;
+      setFailedPipelineStep(undefined);
       const allStepKeys = Object.keys(PIPELINE_STEP_LABELS);
       setCompletedPipelineSteps(allStepKeys);
       setCurrentPipelineStep(undefined);
+      startedAtRef.current = null;
+      setElapsed(0);
       setResult(res);
 
       if (res.status === "COMPLETED") {
@@ -332,23 +485,70 @@ export default function AiDiagnostics({
         toast.error("Diagnostic pipeline failed");
       }
     } catch (err: any) {
-      cancelled = true;
       eventSource?.close();
       eventSource = null;
       const msg = err.message || "Failed to run diagnostic pipeline";
       setCurrentPipelineStep(undefined);
+
+      if (workflowSessionId && patientId) {
+        const isProxyDrop =
+          msg.includes("[502]") ||
+          msg.includes("Cannot reach workflow backend") ||
+          msg.includes("fetch failed") ||
+          msg.includes("upstream") ||
+          msg.includes("timeout");
+
+        if (isProxyDrop) {
+          try {
+            const session = await WorkflowService.getSession(workflowSessionId);
+
+            if (session.current_state === "ANALYSIS_RUNNING") {
+              keepTrackingAfterRequestDrop = true;
+              setError(null);
+              toast.warning("The long response dropped, but analysis is still running. Live tracking will continue.");
+              return;
+            }
+
+            if (session.current_state === "ANALYSIS_DONE") {
+              const recovered = await recoverPersistedResult();
+              if (recovered) {
+                const recoveredMode = normalizeOraMode(recovered.experience_level);
+                setOraMode(recoveredMode);
+                setResult(applyOraModeToResponse(recovered, recoveredMode));
+                setFailedPipelineStep(undefined);
+                setError(null);
+                onWorkflowStateChange?.("ANALYSIS_DONE" as WorkflowState);
+                toast.success("Analysis completed. Recovered saved result after the long request disconnected.");
+                return;
+              }
+            }
+          } catch {
+            // fall through to normal error handling
+          }
+        }
+      }
+
       if (msg.includes("ANALYSIS_CANCELLED")) {
-        setError(null);
+        stopAnalysisUi({ clearError: true, keepCompletedSteps: true });
         onWorkflowStateChange?.("LAB_DONE" as WorkflowState);
         toast.info("Analysis stopped");
       } else {
-        setError(msg);
+        if (!terminalEventSeen) {
+          stopAnalysisUi({
+            errorMessage: msg,
+            failedStep: currentPipelineStep || "session_init",
+            keepCompletedSteps: true,
+          });
+        }
         // Rollback state on error (backend also rolls back to LAB_DONE)
         onWorkflowStateChange?.("LAB_DONE" as WorkflowState);
         toast.error(msg);
       }
     } finally {
-      setIsRunning(false);
+      if (!keepTrackingAfterRequestDrop) {
+        setIsRunning(false);
+        startedAtRef.current = null;
+      }
     }
   };
 
@@ -358,9 +558,7 @@ export default function AiDiagnostics({
     setIsStopping(true);
     try {
       await WorkflowService.stopAnalysis(workflowSessionId);
-      setIsRunning(false);
-      setCurrentPipelineStep(undefined);
-      setCompletedPipelineSteps((prev) => prev);
+      stopAnalysisUi({ clearError: true, keepCompletedSteps: false });
       onWorkflowStateChange?.("LAB_DONE" as WorkflowState);
       toast.success("Stop requested. Analysis has been terminated.");
     } catch (err: any) {
@@ -420,39 +618,17 @@ export default function AiDiagnostics({
 
       {/* ─── Controls Bar ───────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-5 rounded-2xl border border-white/5 bg-white/[0.02]">
-        {/* Experience Level Selector */}
-        <div className="space-y-2">
+        <div className="space-y-1">
           <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
-            Experience Level
+            Analysis Mode
           </p>
-          <div className="flex gap-2">
-            {EXPERIENCE_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setExperience(opt.value)}
-                disabled={isRunning}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${experience === opt.value
-                  ? "bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20"
-                  : "bg-white/5 border-white/10 text-muted-foreground hover:border-primary/30 hover:text-white"
-                  } disabled:opacity-50`}
-              >
-                <span className="block">{opt.label}</span>
-                <span className="block text-[8px] font-normal opacity-70 mt-0.5">
-                  {opt.desc}
-                </span>
-              </button>
-            ))}
-          </div>
+          <p className="text-xs text-muted-foreground">
+            System auto-generates both Newbie and Seasoned outputs every run.
+          </p>
         </div>
 
         {/* Run / Status */}
         <div className="flex items-center gap-4">
-          {isHealthy === false && (
-            <Badge className="bg-rose-500/10 text-rose-400 border-rose-500/20 text-[9px]">
-              Service Offline
-            </Badge>
-          )}
-
           {isRunning && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Timer className="h-3.5 w-3.5 animate-pulse text-primary" />
@@ -506,7 +682,79 @@ export default function AiDiagnostics({
         isRunning={isRunning}
         currentStep={currentPipelineStep}
         completedSteps={completedPipelineSteps}
+        failedStep={failedPipelineStep}
       />
+
+      {/* ─── Detailed Analysis Progress Bar ──────────────────────────── */}
+      {isRunning && (
+        <div className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-primary/70 flex items-center gap-2">
+              <BrainCircuit className="h-4 w-4 animate-pulse" />
+              Analysis Progress
+            </h4>
+            <span className="text-xs text-muted-foreground tabular-nums">{elapsed}s</span>
+          </div>
+
+          {/* Step progress bar */}
+          <div className="space-y-2">
+            {Object.entries(PIPELINE_STEP_LABELS).map(([stepKey, stepLabel]) => {
+              const isCompleted = completedPipelineSteps.includes(stepKey);
+              const isCurrent = currentPipelineStep === stepKey;
+              const isFailed = failedPipelineStep === stepKey;
+
+              return (
+                <div key={stepKey} className="flex items-center gap-3">
+                  <div className="w-5 flex justify-center">
+                    {isCompleted ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                    ) : isCurrent ? (
+                      <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                    ) : isFailed ? (
+                      <XCircle className="h-4 w-4 text-rose-400" />
+                    ) : (
+                      <div className="h-2 w-2 rounded-full bg-white/10" />
+                    )}
+                  </div>
+                  <span
+                    className={`text-xs transition-colors ${
+                      isCompleted
+                        ? "text-emerald-400/80"
+                        : isCurrent
+                          ? "text-primary font-bold"
+                          : isFailed
+                            ? "text-rose-400"
+                            : "text-muted-foreground/40"
+                    }`}
+                  >
+                    {stepLabel}
+                  </span>
+                  {isCurrent && (stepKey === "kra_analysis" || stepKey === "ora_refinement") && (
+                    <span className="ml-auto text-[9px] text-primary/50 italic">
+                      {stepKey === "kra_analysis"
+                        ? "LLM reasoning — this is the longest step…"
+                        : "Formatting clinical report…"}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Overall progress bar */}
+          <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-700 ease-out"
+              style={{
+                width: `${Math.max(
+                  5,
+                  (completedPipelineSteps.length / Object.keys(PIPELINE_STEP_LABELS).length) * 100,
+                )}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Minimum-data hint */}
       {!canRun && (
@@ -569,13 +817,7 @@ export default function AiDiagnostics({
             onClick={() => {
               setOraMode("newbie");
               setResult((prev) =>
-                prev
-                  ? {
-                    ...prev,
-                    refined_output: prev.ora_outputs?.newbie ?? prev.refined_output,
-                    disclaimer: prev.ora_disclaimers?.newbie ?? prev.disclaimer,
-                  }
-                  : prev,
+                prev ? applyOraModeToResponse(prev, "newbie") : prev,
               );
             }}
           >
@@ -584,22 +826,16 @@ export default function AiDiagnostics({
           <Button
             type="button"
             size="sm"
-            variant={oraMode === "expert" ? "default" : "outline"}
+            variant={oraMode === "seasoned" ? "default" : "outline"}
             className="h-8 rounded-lg"
             onClick={() => {
-              setOraMode("expert");
+              setOraMode("seasoned");
               setResult((prev) =>
-                prev
-                  ? {
-                    ...prev,
-                    refined_output: prev.ora_outputs?.expert ?? prev.refined_output,
-                    disclaimer: prev.ora_disclaimers?.expert ?? prev.disclaimer,
-                  }
-                  : prev,
+                prev ? applyOraModeToResponse(prev, "seasoned") : prev,
               );
             }}
           >
-            Expert
+            Seasoned
           </Button>
         </div>
       )}

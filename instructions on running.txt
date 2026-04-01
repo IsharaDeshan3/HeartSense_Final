@@ -2,8 +2,12 @@
 
 ## Backend Setup
 1. Run the `backends.bat` script located in the root folder.
-   - This script will initialize separate virtual environments (venvs) for each backend folder and install the required dependencies from `requirements.txt`.
+   - This script will initialize separate virtual environments (venvs) inside each backend/service folder and install the required dependencies from `requirements.txt`.
+   - All venvs must be created strictly using Python 3.10.11. Make sure `python 3.10.11` is installed and available as `py -3.10` or `python` before running the script.
    - If the virtual environments already exist, the script will skip initialization and directly start the backends.
+   - Do not create a virtual environment in the workspace root folder. Each service keeps its own `.venv` because the folders serve different purposes.
+   - The KRA and ORA runtime for the analysis pipeline lives under `analysis_flow`, so its Python environment must stay in `analysis_flow/.venv`.
+   - If you see any errors about Python version or missing packages, delete the `.venv` in the affected backend folder and recreate it using Python 3.10.11.
 
 ## Frontend Setup
 1. Run the `frontend.bat` script located in the root folder.

@@ -3,6 +3,9 @@ from __future__ import annotations
 from enum import Enum
 from typing import List
 
+# The workflow route and workflow_service.py both rely on this ordered state
+# machine to keep session progression and idempotent saves in sync.
+
 
 class WorkflowState(str, Enum):
     SESSION_CREATED = "SESSION_CREATED"

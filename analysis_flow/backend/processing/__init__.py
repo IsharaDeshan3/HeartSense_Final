@@ -2,14 +2,12 @@
 backend/processing — KRA-ORA 7-step pipeline package.
 
 Provides:
-  session_store     — local SQLite session tracker
   supabase_payload  — Supabase CRUD for analysis data
   search_service    — FAISS retrieval wrapper
-  kra_client        — KRA HuggingFace Space client
-  ora_client        — ORA HuggingFace Space client
+  kra_client        — remote KRA (Hugging Face API) client
+  ora_client        — remote ORA (Gemini API) client
   schemas           — Pydantic request/response models
-  pipeline_service  — main orchestrator
+  workflow_service  — main orchestrator (active pipeline)
+  workflow_store    — SQLite-backed workflow session store
+  workflow_state    — workflow state machine definitions
 """
-from .pipeline_service import PipelineService, PipelineResult
-
-__all__ = ["PipelineService", "PipelineResult"]

@@ -1,6 +1,4 @@
 """
-core/unified_vector.py
-
 Builds a Unified Patient Vector from structured symptom, ECG, and lab data.
 Produces two query strings:
   - main_query   → for the textbook FAISS index (general search)
@@ -12,7 +10,6 @@ are repeated in the rare_query so that they dominate the embedding centroid.
 """
 
 from __future__ import annotations
-
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional

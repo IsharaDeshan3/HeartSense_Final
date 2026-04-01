@@ -1,262 +1,260 @@
 """
-backend/processing/kra_client.py
-
-Sends a Supabase payload_id to the KRA HuggingFace Space via
-Gradio 6.x SSE queue protocol (/gradio_api/queue/join → /queue/data).
-
-The KRA Space's function signature (fn_index=0):
-    analyze_from_supabase(payload_id, temperature, show_reasoning)
-    -> string (Markdown diagnostic report)
-
-Note: model_choice was removed from the Space; the model is always
-Phi-3-mini-4k-instruct (configured via the HF Space secret HF_MODEL).
-
-Fallback: when supabase_available=False or the Space is unreachable,
-KRAAgent(use_local=True) is called directly to keep the pipeline alive.
+Remote KRA inference client using HTTP calls to a Hugging Face Space API.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
 import re
+import threading
 import time
+from urllib.parse import urlparse
 from typing import Any, Dict, Optional
 
 import requests
-from dotenv import load_dotenv, find_dotenv
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
-from agents.kra_agent import KRAAgent
-
-load_dotenv(find_dotenv())
 logger = logging.getLogger(__name__)
 
 
-# --------------------------------------------------------------------- #
-#  Config                                                                 #
-# --------------------------------------------------------------------- #
-
-_TEMPERATURE    = float(os.getenv("KRA_TEMPERATURE", "0.6"))
-_SHOW_REASONING = os.getenv("KRA_SHOW_REASONING", "false").lower() == "true"
-_TIMEOUT        = int(os.getenv("REQUEST_TIMEOUT", "180"))
-_MAX_RETRIES    = int(os.getenv("KRA_MAX_RETRIES", "3"))   # Gradio SSE retries
-
-# Gradio 6.x uses /gradio_api/ prefix for all API routes
-_API_PREFIX = "/gradio_api"
-
-# fn_index for analyze_from_supabase (discovered from /config)
-_FN_INDEX = 0
-
-
-def _base_url() -> str:
-    raw = os.getenv("KRA_ENDPOINT", "").strip().rstrip("/")
-    if not raw:
-        raise ValueError("KRA_ENDPOINT is not set in .env")
-    return raw
-
-
-# --------------------------------------------------------------------- #
-#  JSON extraction helper                                                 #
-# --------------------------------------------------------------------- #
-
 def _try_parse_json(text: str) -> Optional[Dict[str, Any]]:
-    """Best-effort JSON extraction from mixed Markdown/JSON output."""
+    """Best-effort JSON extraction from mixed model output."""
     text = text.strip()
     try:
         parsed = json.loads(text)
         return parsed if isinstance(parsed, dict) else None
     except Exception:
         pass
-
-    m = re.search(r"\{[\s\S]*\}", text)
-    if m:
+    match = re.search(r"\{[\s\S]*\}", text)
+    if match:
         try:
-            parsed = json.loads(m.group(0))
+            parsed = json.loads(match.group(0))
             return parsed if isinstance(parsed, dict) else None
         except Exception:
             pass
     return None
 
 
-# --------------------------------------------------------------------- #
-#  Gradio 6.x SSE Queue caller                                           #
-# --------------------------------------------------------------------- #
+def _to_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    if isinstance(value, dict):
+        return [f"{key}: {value[key]}" for key in value]
+    text = str(value).strip()
+    return [text] if text else []
 
-def _call_gradio_sse(base_url, fn_index, data, headers, timeout):
-    """
-    Call a Gradio 6.x function via the HTTP SSE queue protocol with retries.
-    POST /gradio_api/queue/join -> GET /gradio_api/queue/data (SSE)
-    """
-    last_exc: Exception = RuntimeError("No attempts made")
-    for attempt in range(1, _MAX_RETRIES + 1):
-        session_hash = hashlib.md5(f"{time.time()}-{attempt}".encode()).hexdigest()[:11]
-        try:
-            # Step 1: Join the queue
-            join_url = f"{base_url}{_API_PREFIX}/queue/join"
-            join_payload = {
-                "data": data,
-                "fn_index": fn_index,
-                "session_hash": session_hash,
-            }
-            resp = requests.post(join_url, json=join_payload, headers=headers, timeout=30)
-            resp.raise_for_status()
-            event_id = resp.json().get("event_id")
-            logger.info("KRA queued (attempt %d/%d): event_id=%s", attempt, _MAX_RETRIES, event_id)
-
-            # Step 2: Stream results via SSE
-            data_url = f"{base_url}{_API_PREFIX}/queue/data?session_hash={session_hash}"
-            with requests.get(data_url, headers=headers, stream=True, timeout=timeout) as stream:
-                stream.raise_for_status()
-                for line in stream.iter_lines(decode_unicode=True):
-                    if not line or not line.startswith("data: "):
-                        continue
-                    try:
-                        msg = json.loads(line[6:])
-                    except json.JSONDecodeError:
-                        continue
-
-                    msg_type = msg.get("msg", "")
-                    if msg_type == "estimation":
-                        logger.info("KRA queue position: %s", msg.get("rank", "?"))
-                    elif msg_type == "process_starts":
-                        logger.info("KRA processing started")
-                    elif msg_type == "process_completed":
-                        success = msg.get("success", False)
-                        output = msg.get("output", {})
-                        output_data = output.get("data", [])
-                        if success and output_data:
-                            return output_data[0]
-                        elif not success:
-                            err = output.get("error") or msg.get("message", "Unknown error")
-                            raise RuntimeError(f"KRA Space processing failed: {err}")
-                        return output.get("data", [None])[0] if output.get("data") else None
-                    elif msg_type == "unexpected_error":
-                        raise RuntimeError(f"KRA Space error: {msg.get('message', '?')}")
-            raise RuntimeError("KRA SSE stream ended without results")
-
-        except (RuntimeError, requests.RequestException, OSError) as exc:
-            last_exc = exc
-            if attempt < _MAX_RETRIES:
-                sleep_time = 2 ** (attempt - 1)  # 1s, 2s, 4s ...
-                logger.warning("KRA attempt %d/%d failed: %s – retrying in %ds", attempt, _MAX_RETRIES, exc, sleep_time)
-                time.sleep(sleep_time)
-            else:
-                logger.error("KRA all %d attempts exhausted: %s", _MAX_RETRIES, exc)
-    raise last_exc
-
-
-# --------------------------------------------------------------------- #
-#  Client                                                                 #
-# --------------------------------------------------------------------- #
 
 class KRAClient:
-    """
-    Calls the KRA HuggingFace Space using Gradio 6.x SSE queue protocol.
-
-    The Space's `analyze_from_supabase` function fetches the full payload
-    from Supabase by `payload_id`, runs inference, and returns Markdown text.
-    """
+    """KRA inference client backed by a remote Hugging Face API endpoint."""
 
     def __init__(self) -> None:
-        self.hf_token = os.getenv("HF_TOKEN", "")
+        self._api_url = self._normalize_api_url(os.getenv("KRA_API_URL", "").strip())
+        self._api_token = os.getenv("KRA_API_TOKEN", "").strip() or os.getenv("HF_TOKEN", "").strip()
+
+        try:
+            timeout_raw = os.getenv("KRA_API_TIMEOUT_SEC") or os.getenv("KRA_TIMEOUT_SEC") or "180"
+            self._timeout_sec = max(5.0, float(timeout_raw))
+        except ValueError:
+            self._timeout_sec = 180.0
+
+        try:
+            self._context_max_chars = max(2000, int(os.getenv("KRA_CONTEXT_MAX_CHARS", "24000")))
+        except ValueError:
+            self._context_max_chars = 24000
+
+        self._session = requests.Session()
+        retries = Retry(
+            total=2,
+            connect=2,
+            read=2,
+            backoff_factor=0.5,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=frozenset(["GET", "POST"]),
+        )
+        adapter = HTTPAdapter(max_retries=retries)
+        self._session.mount("https://", adapter)
+        self._session.mount("http://", adapter)
 
     def _headers(self) -> Dict[str, str]:
-        base = _base_url()
-        h = {
+        headers: Dict[str, str] = {
+            "Accept": "application/json",
             "Content-Type": "application/json",
-            "Origin": base,
+            "User-Agent": "analysis-flow-kra-client/1.0",
         }
-        if self.hf_token:
-            h["Authorization"] = f"Bearer {self.hf_token}"
-        return h
+        if self._api_token:
+            headers["Authorization"] = f"Bearer {self._api_token}"
+        return headers
+
+    @staticmethod
+    def _normalize_api_url(raw_url: str) -> str:
+        """Normalize configured endpoint into a callable KRA analyze URL."""
+        url = (raw_url or "").strip()
+        if not url:
+            return ""
+
+        # If user pastes the Spaces project page URL, convert it to the app URL.
+        # Example: https://huggingface.co/spaces/org/name -> https://org-name.hf.space
+        spaces_match = re.match(r"https?://huggingface\.co/spaces/([^/]+)/([^/]+)/*$", url)
+        if spaces_match:
+            owner = spaces_match.group(1)
+            space = spaces_match.group(2)
+            url = f"https://{owner}-{space}.hf.space"
+
+        parsed = urlparse(url)
+        if not parsed.scheme:
+            url = f"https://{url}"
+            parsed = urlparse(url)
+
+        if parsed.netloc.endswith(".hf.space") and not parsed.path.strip("/"):
+            return f"{url.rstrip('/')}/v1/kra/analyze"
+
+        if parsed.path.endswith("/v1/kra/analyze"):
+            return url
+
+        # For custom API hosts, assume root base URL unless a path already exists.
+        if parsed.path.strip("/"):
+            return url
+        return f"{url.rstrip('/')}/v1/kra/analyze"
+
+    def _health_url(self) -> str:
+        if not self._api_url:
+            return ""
+        base = self._api_url.rstrip("/")
+        if base.endswith("/v1/kra/analyze"):
+            base = base[: -len("/v1/kra/analyze")]
+        return f"{base}/health"
+
+    @staticmethod
+    def _normalize_response(payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize provider response to the workflow's expected KRA shape."""
+        result = payload.get("result") if isinstance(payload.get("result"), dict) else payload
+
+        diagnoses = _to_list(result.get("diagnoses"))
+        uncertainties = _to_list(result.get("uncertainties"))
+        if not uncertainties:
+            uncertainties = _to_list(result.get("differential"))
+        recommended_tests = _to_list(result.get("recommended_tests"))
+        red_flags = _to_list(result.get("red_flags"))
+
+        raw_text = str(
+            result.get("raw_output")
+            or result.get("raw_text")
+            or payload.get("raw_text")
+            or ""
+        ).strip()
+
+        if not raw_text:
+            raw_text = json.dumps(result)
+
+        # If structured fields are missing, attempt a final JSON extraction pass
+        # from the raw model text before returning an invalid payload.
+        if not (diagnoses and uncertainties and recommended_tests and red_flags):
+            parsed = _try_parse_json(raw_text)
+            if parsed:
+                diagnoses = diagnoses or _to_list(parsed.get("diagnoses"))
+                uncertainties = uncertainties or _to_list(parsed.get("uncertainties") or parsed.get("differential"))
+                recommended_tests = recommended_tests or _to_list(parsed.get("recommended_tests"))
+                red_flags = red_flags or _to_list(parsed.get("red_flags"))
+
+        return {
+            "diagnoses": diagnoses,
+            "uncertainties": uncertainties,
+            "recommended_tests": recommended_tests,
+            "red_flags": red_flags,
+            "summary": str(result.get("summary") or "").strip(),
+            "raw_text": raw_text,
+            "provider": "huggingface_api",
+        }
 
     def analyze(
         self,
-        payload_id: str,
+        *,
+        symptoms_text: str,
+        context_text: str,
+        ecg_dict: Optional[Dict[str, Any]] = None,
+        labs_dict: Optional[Dict[str, Any]] = None,
+        history_summary_text: str = "",
+        cancel_event: Optional[threading.Event] = None,
+        # Legacy kwargs (ignored but kept for backward compat)
+        payload_id: Optional[str] = None,
         temperature: Optional[float] = None,
         show_reasoning: Optional[bool] = None,
         supabase_available: bool = True,
         inline_payload: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Trigger KRA inference on the HuggingFace Space.
+        """Run KRA analysis by posting request data to Hugging Face API."""
+        if inline_payload and not symptoms_text:
+            symptoms_value = inline_payload.get("symptoms") or {}
+            if isinstance(symptoms_value, dict):
+                symptoms_text = " ".join(str(value) for value in symptoms_value.values() if value)
+            else:
+                symptoms_text = str(symptoms_value)
+            context_text = str(inline_payload.get("context_text") or "")
+            ecg_dict = inline_payload.get("ecg") or {}
+            labs_dict = inline_payload.get("labs") or {}
 
-        Args:
-            payload_id: UUID of the `analysis_payloads` Supabase row.
-            temperature: Sampling temperature 0.1-1.0 (optional).
-            show_reasoning: Whether to include chain-of-thought (optional).
-            supabase_available: When False, skip HF Space and run KRAAgent locally.
-            inline_payload: Raw payload dict for local-fallback mode.
+        if cancel_event and cancel_event.is_set():
+            raise RuntimeError("ANALYSIS_CANCELLED")
 
-        Returns:
-            Dict with at least {"raw_text": str}.
-        """
-        # ── Offline mode: run KRAAgent directly, no HF Space call ────────────
-        if not supabase_available or not os.getenv("KRA_ENDPOINT", "").strip():
-            logger.warning("KRA offline fallback: running KRAAgent locally for payload=%s", payload_id)
-            try:
-                agent = KRAAgent(use_local=True)
-                symptoms_text = ""
-                if inline_payload:
-                    s = inline_payload.get("symptoms") or {}
-                    symptoms_text = " ".join(
-                        str(v) for v in s.values() if v
-                    ) if isinstance(s, dict) else str(s)
-                raw_text = agent.analyze(
-                    symptoms_text=symptoms_text,
-                    context_text=inline_payload.get("context_text", "") if inline_payload else "",
-                    ecg_findings=(inline_payload.get("ecg") or {}).get("findings", []) if inline_payload else [],
-                    lab_values=(inline_payload.get("labs") or {}) if inline_payload else {},
-                )
-                if isinstance(raw_text, dict):
-                    return raw_text
-                return {"raw_text": str(raw_text)}
-            except Exception as fallback_exc:
-                logger.error("KRA local fallback also failed: %s", fallback_exc)
-                return {"raw_text": f"[KRA offline fallback failed: {fallback_exc}]", "status": "fallback_error"}
+        if not self._api_url:
+            raise RuntimeError("KRA_API_URL_NOT_CONFIGURED")
 
-        base = _base_url()
-        # 3-argument call: payload_id, temperature, show_reasoning (model_choice removed)
-        data = [
-            payload_id,
-            temperature if temperature is not None else _TEMPERATURE,
-            show_reasoning if show_reasoning is not None else _SHOW_REASONING,
-        ]
+        request_payload: Dict[str, Any] = {
+            "symptoms": symptoms_text or "",
+            "ecg": ecg_dict or {},
+            "labs": labs_dict or {},
+            "history": {
+                "summary_text": history_summary_text or "",
+                "retrieval_context": (context_text or "")[: self._context_max_chars],
+            },
+        }
 
-        logger.info("KRA call -> %s  payload_id=%s", base, payload_id)
+        started = time.time()
+        try:
+            response = self._session.post(
+                self._api_url,
+                headers=self._headers(),
+                json=request_payload,
+                timeout=self._timeout_sec,
+            )
+        except requests.RequestException as exc:
+            raise RuntimeError(f"KRA_API_REQUEST_FAILED:{exc}") from exc
+
+        if cancel_event and cancel_event.is_set():
+            raise RuntimeError("ANALYSIS_CANCELLED")
+
+        if response.status_code >= 400:
+            detail = response.text[:400]
+            raise RuntimeError(f"KRA_API_HTTP_{response.status_code}:{detail}")
 
         try:
-            raw_data = _call_gradio_sse(
-                base, _FN_INDEX, data, self._headers(), _TIMEOUT
-            )
-        except requests.Timeout:
-            raise RuntimeError(
-                f"KRA Space timed out after {_TIMEOUT}s. "
-                "Increase REQUEST_TIMEOUT or check Space cold-start."
-            )
+            payload = response.json()
+        except ValueError as exc:
+            raise RuntimeError("KRA_API_INVALID_JSON") from exc
 
-        if raw_data is None:
-            raise RuntimeError("KRA Space returned empty data")
+        result = self._normalize_response(payload)
 
-        raw_text = raw_data if isinstance(raw_data, str) else json.dumps(raw_data)
-        result: Dict[str, Any] = {"raw_text": raw_text}
-
-        parsed = _try_parse_json(raw_text)
-        if parsed:
-            result.update(parsed)
-
-        logger.info("KRA response received (len=%d chars)", len(raw_text))
+        elapsed_ms = int((time.time() - started) * 1000)
+        logger.info("KRA API inference completed (%d ms)", elapsed_ms)
         return result
 
     def health_check(self) -> bool:
-        """Return True if the KRA endpoint responds to GET /config."""
+        """Return True if KRA API appears reachable."""
+        health_url = self._health_url()
+        if not health_url:
+            return False
+
         try:
-            base = _base_url()
-            r = requests.get(
-                f"{base}/config", timeout=15, headers=self._headers()
-            )
-            return r.status_code == 200
-        except Exception:
+            response = self._session.get(health_url, headers=self._headers(), timeout=10)
+            if response.status_code == 404:
+                # Some deployments expose only root path.
+                base_url = health_url[: -len("/health")]
+                response = self._session.get(base_url, headers=self._headers(), timeout=10)
+            return response.status_code < 400
+        except requests.RequestException:
             return False

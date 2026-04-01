@@ -4,21 +4,20 @@ const LAB_BACKEND_URL = "http://localhost:8000";
 
 /**
  * Proxy route for forwarding analyzed lab data to the lab backend.
- * Accepts { diabeticData?, heartData?, patientHistory? } and token.
+ * Accepts { diabeticData?, heartData?, patientHistory? } keyed by patientId.
  */
 export async function POST(req: Request) {
   try {
-    const { diabeticData, heartData, patientHistory, token } = await req.json();
+    const { diabeticData, heartData, patientHistory } = await req.json();
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
     const results: Record<string, any> = {};
 
     // 1. POST diabetic data if available
-    if (diabeticData && token) {
+    if (diabeticData) {
       try {
         const res = await fetch(`${LAB_BACKEND_URL}/api/diabetic/`, {
           method: "POST",
@@ -32,7 +31,7 @@ export async function POST(req: Request) {
     }
 
     // 2. POST heart data if available
-    if (heartData && token) {
+    if (heartData) {
       try {
         const res = await fetch(`${LAB_BACKEND_URL}/api/heart/`, {
           method: "POST",
@@ -46,7 +45,7 @@ export async function POST(req: Request) {
     }
 
     // 3. POST patient history if available
-    if (patientHistory && token) {
+    if (patientHistory) {
       try {
         const res = await fetch(`${LAB_BACKEND_URL}/api/patient-history`, {
           method: "POST",

@@ -1,193 +1,151 @@
 """
-backend/processing/schemas.py
-
-Pydantic v2 request and response models for the /api/process/* endpoints.
-These are the "connector point" models your frontends POST to.
+Pydantic request models for the analysis pipeline.
+These schemas are used by:
+  - PipelineService.run()
+  - WorkflowService (via internal AnalyzeRequest construction)
+  - SearchService.search_from_request()
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
-# =================================================================== #
-#  REQUEST MODELS — connector point inputs                             #
-# =================================================================== #
+# --------------------------------------------------------------------- #
+#  Sub-models                                                            #
+# --------------------------------------------------------------------- #
+
+# These models define the payload shape that routes/workflow.py accepts and
+# that workflow_service.py converts into the normalized pipeline inputs.
 
 class SymptomsPayload(BaseModel):
-    """
-    Patient symptoms and history.
+    """Free-text patient presentation plus structured demographic fields."""
 
-    Your symptoms/history module should POST data matching this shape.
-    All fields are optional except `text`; include whatever the module provides.
-    """
-    text: str = Field(..., description="Free-text patient symptoms and history")
-    age: Optional[int] = Field(None, description="Patient age in years")
-    sex: Optional[str] = Field(None, description="'M' | 'F' | 'Other'")
-    chief_complaint: Optional[str] = Field(None, description="Primary complaint in one line")
-    additional: Optional[Dict[str, Any]] = Field(
-        None, description="Any extra structured fields from your symptoms module"
-    )
+    text: str = Field(..., description="Full symptom description in natural language")
+    age: Optional[int] = Field(None, ge=0, le=130, description="Patient age in years")
+    sex: Optional[str] = Field(None, description="Patient sex (male / female / other)")
+    chief_complaint: Optional[str] = Field(None, description="One-line chief complaint")
+    risk_factors: Optional[List[str]] = Field(default_factory=list)
+    history: Optional[str] = Field(None, description="Relevant past medical history")
 
 
 class ECGPayload(BaseModel):
     """
-    ECG analysis results.
-
-    Pass `status='skipped'` if ECG was not available.
+    Structured ECG findings.
+    Set status='skipped' when no ECG was performed — all other fields
+    are optional in that case.
     """
-    status: Literal["present", "skipped", "error"] = Field(
-        default="present",
-        description="'present' | 'skipped' | 'error'",
+
+    status: str = Field(
+        default="available",
+        description="'available' | 'skipped'",
     )
-    skip_reason: Optional[str] = None
     rhythm: Optional[str] = None
-    heart_rate: Optional[int] = None
-    qrs_duration: Optional[float] = None
-    st_segment: Optional[str] = None
-    interpretation: Optional[str] = None
-    findings: Optional[List[str]] = None
-    raw: Optional[Dict[str, Any]] = Field(
-        None, description="Full raw ECG output from your ECG module"
-    )
+    heart_rate: Optional[int] = Field(None, ge=0, le=400, description="Beats per minute")
+    pr_interval: Optional[float] = Field(None, description="PR interval in ms")
+    qrs_duration: Optional[float] = Field(None, description="QRS duration in ms")
+    qt_interval: Optional[float] = Field(None, description="QT interval in ms")
+    qtc_interval: Optional[float] = Field(None, description="Corrected QT interval in ms")
+    st_segment: Optional[str] = Field(None, description="ST-segment description (elevation / depression / normal)")
+    t_wave: Optional[str] = None
+    axis: Optional[str] = None
+    interpretation: Optional[str] = Field(None, description="Overall ECG interpretation")
+    findings: Optional[List[str]] = Field(default_factory=list, description="List of specific ECG findings")
+    raw_text: Optional[str] = Field(None, description="Raw ECG report or notes")
 
 
-class LabPayload(BaseModel):
+class LabsPayload(BaseModel):
     """
-    Laboratory test results.
-
-    Pass `status='skipped'` if labs were not available.
+    Structured laboratory results.
+    Set status='skipped' when no labs were drawn.
     """
-    status: Literal["present", "skipped", "error"] = Field(
-        default="present",
-        description="'present' | 'skipped' | 'error'",
-    )
-    skip_reason: Optional[str] = None
-    troponin: Optional[float] = None
-    ldh: Optional[float] = None
-    bnp: Optional[float] = None
-    creatinine: Optional[float] = None
-    hemoglobin: Optional[float] = None
-    findings: Optional[List[str]] = None
-    raw: Optional[Dict[str, Any]] = Field(
-        None, description="Full raw lab output from your lab module"
-    )
 
+    status: str = Field(
+        default="available",
+        description="'available' | 'skipped'",
+    )
+    # Cardiac biomarkers
+    troponin: Optional[float] = Field(None, description="Troponin I or T (ng/mL)")
+    troponin_type: Optional[str] = Field(None, description="'troponin_i' | 'troponin_t' | 'hs_troponin'")
+    bnp: Optional[float] = Field(None, description="BNP (pg/mL)")
+    nt_pro_bnp: Optional[float] = Field(None, description="NT-proBNP (pg/mL)")
+    ck_mb: Optional[float] = Field(None, description="CK-MB (U/L)")
+    ldh: Optional[float] = Field(None, description="LDH (U/L)")
+    d_dimer: Optional[float] = Field(None, description="D-dimer (mg/L FEU)")
+
+    # CBC
+    hemoglobin: Optional[float] = Field(None, description="Hemoglobin (g/dL)")
+    wbc: Optional[float] = Field(None, description="White blood cell count (×10⁹/L)")
+    platelets: Optional[float] = Field(None, description="Platelet count (×10⁹/L)")
+
+    # Metabolic panel
+    sodium: Optional[float] = Field(None, description="Sodium (mEq/L)")
+    potassium: Optional[float] = Field(None, description="Potassium (mEq/L)")
+    creatinine: Optional[float] = Field(None, description="Creatinine (mg/dL)")
+    egfr: Optional[float] = Field(None, description="eGFR (mL/min/1.73m²)")
+    glucose: Optional[float] = Field(None, description="Blood glucose (mg/dL)")
+    hba1c: Optional[float] = Field(None, description="HbA1c (%)")
+
+    # Lipids
+    total_cholesterol: Optional[float] = Field(None, description="Total cholesterol (mg/dL)")
+    ldl: Optional[float] = Field(None, description="LDL cholesterol (mg/dL)")
+    hdl: Optional[float] = Field(None, description="HDL cholesterol (mg/dL)")
+    triglycerides: Optional[float] = Field(None, description="Triglycerides (mg/dL)")
+
+    # Coagulation / inflammation
+    inr: Optional[float] = Field(None, description="INR")
+    crp: Optional[float] = Field(None, description="CRP (mg/L)")
+    esr: Optional[float] = Field(None, description="ESR (mm/hr)")
+
+    # Free-text
+    findings: Optional[List[str]] = Field(
+        default_factory=list,
+        description="Notable lab findings in free text",
+    )
+    raw_text: Optional[str] = Field(None, description="Full lab report text")
+
+
+# --------------------------------------------------------------------- #
+#  Primary request model                                                 #
+# --------------------------------------------------------------------- #
 
 class AnalyzeRequest(BaseModel):
     """
-    Main analysis request — the three connector-point inputs.
+    Top-level request model for the analysis pipeline.
 
-    This is the POST body your frontend sends to /api/process/analyze.
+    Passed directly into PipelineService.run() and
+    WorkflowService._run_analysis_pipeline().
     """
-    symptoms: SymptomsPayload = Field(
-        ..., description="Connector point 1: patient symptoms & history"
-    )
-    ecg: Optional[ECGPayload] = Field(
-        None, description="Connector point 2: ECG analysis (null if skipped)"
-    )
-    labs: Optional[LabPayload] = Field(
-        None, description="Connector point 3: lab results (null if skipped)"
-    )
+
+    # The request mirrors the frontend session form, with optional ECG/labs so
+    # the pipeline can skip those steps without changing the contract.
+
+    symptoms: SymptomsPayload
+    ecg: Optional[ECGPayload] = None
+    labs: Optional[LabsPayload] = None
     experience_level: str = Field(
         default="seasoned",
-        description="'newbie' | 'seasoned' | 'expert' — controls ORA output verbosity",
+        description="'newbie' | 'seasoned' – controls ORA output verbosity",
+    )
+    patient_id: Optional[str] = Field(
+        None,
+        description="MongoDB patient _id (hex string). Used for Supabase row linking.",
+    )
+    doctor_id: Optional[str] = Field(
+        None,
+        description="Doctor identifier – stored for audit trail.",
+    )
+    session_id: Optional[str] = Field(
+        None,
+        description="Workflow session_id if this request is part of a multi-step session.",
+    )
+    context_override: Optional[str] = Field(
+        None,
+        description="Optional pre-built context string – skips FAISS search when provided.",
     )
 
-
-# =================================================================== #
-#  RESPONSE MODELS                                                      #
-# =================================================================== #
-
-class PipelineStepInfo(BaseModel):
-    """Timing and status for each pipeline step."""
-    step: str
-    status: str
-    duration_ms: Optional[int] = None
-    supabase_id: Optional[str] = None
-
-
-
-class RareCaseAlertResponse(BaseModel):
-    """Rare-case detection alert included when triggered."""
-    triggered: bool
-    condition: str = ""
-    similarity_score: float = 0.0
-    source_pmcid: Optional[str] = None
-    source_url: Optional[str] = None
-    doi: Optional[str] = None
-    diseases: List[str] = Field(default_factory=list)
-    year: Optional[str] = None
-    contradictions: List[str] = Field(default_factory=list)
-    missing_data: List[str] = Field(default_factory=list)
-    reasoning: str = ""
-
-
-class AnalysisResponse(BaseModel):
-    """
-    Full response returned by /api/process/analyze.
-    """
-    session_id: str = Field(..., description="Local SQLite session UUID for tracking")
-    status: str = Field(..., description="'COMPLETED' | 'PARTIAL' | 'FAILED'")
-
-    # Supabase references for downstream use
-    supabase_payload_id: Optional[str] = Field(
-        None, description="Row ID in analysis_payloads table"
-    )
-    supabase_kra_id: Optional[str] = Field(
-        None, description="Row ID in kra_outputs table"
-    )
-    supabase_ora_id: Optional[str] = Field(
-        None, description="Row ID in ora_outputs table"
-    )
-
-    # ORA output — the clinician-facing result
-    refined_output: Optional[str] = Field(
-        None, description="ORA-formatted clinical diagnostic report"
-    )
-    disclaimer: Optional[str] = Field(
-        None, description="Mandatory AI disclaimer from ORA"
-    )
-
-    # KRA raw output (for debugging / research use)
-    kra_raw: Optional[str] = Field(
-        None, description="Raw KRA Markdown/text output"
-    )
-
-    # Rare-case detection
-    rare_case_alert: Optional[RareCaseAlertResponse] = Field(
-        None, description="Rare pathology detection alert (present only when triggered)"
-    )
-
-    # Pipeline metadata
-    experience_level: str
-    processing_steps: List[PipelineStepInfo] = Field(default_factory=list)
-    total_duration_ms: Optional[int] = None
-    error: Optional[str] = Field(
-        None, description="Error message if status='FAILED'"
-    )
-
-
-class SessionStatusResponse(BaseModel):
-    """Response for GET /api/process/session/{session_id}."""
-    session_id: str
-    status: str
-    step: Optional[str]
-    experience_level: str
-    supabase_payload_id: Optional[str]
-    supabase_kra_id: Optional[str]
-    supabase_ora_id: Optional[str]
-    error_message: Optional[str]
-    created_at: str
-    updated_at: str
-
-
-class HealthResponse(BaseModel):
-    """Response for GET /api/process/health."""
-    status: str
-    faiss_ready: bool
-    rare_cases_ready: bool = False
-    supabase_ready: bool
-    kra_endpoint: str
-    ora_endpoint: str
+    class Config:
+        # Allow extra fields so callers can pass additional metadata
+        # without breaking validation.
+        extra = "ignore"

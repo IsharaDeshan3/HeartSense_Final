@@ -1,9 +1,11 @@
+import os
+
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from database import connect_to_mongo, close_mongo_connection, get_database, mongodb
 from config import settings
-from routers import auth, patients, recommendations, patient_history, diabetic, heart
+from routers import auth, patients, recommendations, patient_history, diabetic, heart, lab_reports
 import logging
 
 # Configure logging
@@ -34,7 +36,12 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure this appropriately for production
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        os.getenv("FRONTEND_URL", "http://localhost:3000"),
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -47,6 +54,7 @@ app.include_router(recommendations.router)
 app.include_router(patient_history.router)
 app.include_router(diabetic.router)
 app.include_router(heart.router)
+app.include_router(lab_reports.router)
 
 @app.get("/")
 async def root():

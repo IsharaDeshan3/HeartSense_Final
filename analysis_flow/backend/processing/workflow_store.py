@@ -11,6 +11,9 @@ from typing import Any, Optional
 
 from .workflow_state import WorkflowState, can_transition, state_index
 
+# WorkflowService and routes/workflow.py use this store as the local session
+# database that keeps state transitions, step payloads, and retrieval history.
+
 
 _local = threading.local()
 _DEFAULT_DB_PATH = os.getenv("WORKFLOW_DB_PATH", str(Path(__file__).parent.parent / "database" / "session_temp.db"))
@@ -83,8 +86,9 @@ CREATE INDEX IF NOT EXISTS idx_events_session ON orchestration_events(session_id
 CREATE INDEX IF NOT EXISTS idx_retrieval_session_source ON retrieval_context(session_id, source_type);
 """
 
-
 class WorkflowStore:
+    # This store persists the workflow session lifecycle that the frontend
+    # drives through init, extraction, lab/ecg, analysis, and cleanup steps.
     def __init__(self, db_path: str = _DEFAULT_DB_PATH) -> None:
         self.db_path = db_path
         self._ensure_schema()
@@ -444,4 +448,22 @@ class WorkflowStore:
             """,
             (ora_id, now, session_id),
         )
+        conn.commit()
+
+    def get_sessions_for_patient(self, patient_id: str) -> list[str]:
+        """Return all session_ids for a given patient_id."""
+        conn = _get_connection(self.db_path)
+        rows = conn.execute(
+            "SELECT session_id FROM sessions WHERE patient_id = ?",
+            (patient_id,),
+        ).fetchall()
+        return [row["session_id"] for row in rows]
+
+    def delete_session(self, session_id: str) -> None:
+        """Delete a session and all its related data from local SQLite."""
+        conn = _get_connection(self.db_path)
+        conn.execute("DELETE FROM retrieval_context WHERE session_id = ?", (session_id,))
+        conn.execute("DELETE FROM orchestration_events WHERE session_id = ?", (session_id,))
+        conn.execute("DELETE FROM step_payloads WHERE session_id = ?", (session_id,))
+        conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
         conn.commit()

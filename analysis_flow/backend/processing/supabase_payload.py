@@ -16,12 +16,16 @@ import json
 import logging
 import os
 import requests
-from typing import Any, Dict, Optional, Tuple
+from collections import Counter
+from typing import Any, Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv, find_dotenv
 
 load_dotenv(find_dotenv())
 logger = logging.getLogger(__name__)
+
+# WorkflowService uses this module for the persisted handoff points between
+# retrieval, KRA, ORA, and patient-history cleanup.
 
 
 # --------------------------------------------------------------------- #
@@ -30,10 +34,11 @@ logger = logging.getLogger(__name__)
 
 _base_url: Optional[str] = None
 _headers: Optional[Dict[str, str]] = None
+_session: Optional[requests.Session] = None
 
 
 def _init():
-    global _base_url, _headers
+    global _base_url, _headers, _session
     if _base_url is not None:
         return
     url = os.getenv("SUPABASE_URL")
@@ -50,19 +55,43 @@ def _init():
         "Content-Type": "application/json",
         "Prefer": "return=representation",
     }
+    # Use a pooled session for all Supabase HTTP calls — avoids TCP/TLS
+    # handshake overhead on every request, which was a major latency source.
+    _session = requests.Session()
+    _session.headers.update(_headers)
+    adapter = requests.adapters.HTTPAdapter(
+        pool_connections=4,
+        pool_maxsize=8,
+        max_retries=requests.adapters.Retry(
+            total=2,
+            backoff_factor=0.3,
+            status_forcelist=[502, 503, 504],
+        ),
+    )
+    _session.mount("https://", adapter)
+    _session.mount("http://", adapter)
 
 
 def _post(table: str, row: Dict[str, Any]) -> Dict[str, Any]:
     """Insert a row and return the inserted data."""
     _init()
     url = f"{_base_url}/rest/v1/{table}"
-    resp = requests.post(url, headers=_headers, json=row, timeout=30)
+    resp = _session.post(url, json=row, timeout=20)
     if resp.status_code >= 400:
         detail = resp.text[:500]
-        logger.error(
-            "Supabase INSERT into '%s' failed (HTTP %s): %s  |  row keys: %s",
-            table, resp.status_code, detail, list(row.keys()),
-        )
+        # Detect missing-column errors and provide actionable guidance
+        if "does not exist" in detail or "could not find" in detail.lower():
+            logger.error(
+                "Supabase INSERT into '%s' failed – column(s) missing. "
+                "Run the migration script: backend/database/migration_add_columns.sql "
+                "in the Supabase SQL Editor.  Detail: %s  |  row keys: %s",
+                table, detail, list(row.keys()),
+            )
+        else:
+            logger.error(
+                "Supabase INSERT into '%s' failed (HTTP %s): %s  |  row keys: %s",
+                table, resp.status_code, detail, list(row.keys()),
+            )
         resp.raise_for_status()
     data = resp.json()
     if not data:
@@ -74,7 +103,7 @@ def _patch(table: str, values: Dict[str, Any], eq_col: str, eq_val: str) -> None
     """Update rows matching a filter."""
     _init()
     url = f"{_base_url}/rest/v1/{table}?{eq_col}=eq.{eq_val}"
-    resp = requests.patch(url, headers=_headers, json=values, timeout=30)
+    resp = _session.patch(url, json=values, timeout=15)
     resp.raise_for_status()
 
 
@@ -82,17 +111,13 @@ def _get(table: str, query_params: str, single: bool = False) -> Any:
     """Select rows with optional PostgREST query string."""
     _init()
     url = f"{_base_url}/rest/v1/{table}?{query_params}"
-    resp = requests.get(url, headers=_headers, timeout=30)
+    resp = _session.get(url, timeout=15)
     resp.raise_for_status()
     data = resp.json()
     if single:
         return data[0] if data else None
     return data
 
-
-# --------------------------------------------------------------------- #
-#  analysis_payloads                                                      #
-# --------------------------------------------------------------------- #
 
 def check_existing_payload(session_id: str) -> Optional[str]:
     """
@@ -110,7 +135,7 @@ def check_existing_payload(session_id: str) -> Optional[str]:
             f"session_id=eq.{session_id}&select=id&limit=1",
             single=True,
         )
-        return row["id"] if row else None
+        return str(row["id"]) if row else None
     except Exception as exc:
         logger.warning("check_existing_payload(%s) failed: %s – treating as not found", session_id, exc)
         return None
@@ -123,40 +148,36 @@ def save_analysis_payload(
     labs: Optional[Dict[str, Any]],
     context_text: str,
     quality: Optional[Dict[str, Any]] = None,
+    patient_id: Optional[str] = None,
+    history_json: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, str]:
     """
     Insert raw patient inputs + FAISS context into `analysis_payloads`.
 
-    Args:
-        session_id: Local SQLite session UUID.
-        symptoms: Patient symptoms dict.
-        ecg: ECG findings dict or None.
-        labs: Lab results dict or None.
-        context_text: FAISS-retrieved context string.
-        quality: FAISS retrieval quality metrics dict.
-
     Returns:
-        (row_id, public_url) where
-          row_id     = UUID of the inserted Supabase row
-          public_url = Supabase REST URL that HF Spaces use to fetch the row
+        (row_id, public_url)
     """
+    # Step 3 of the workflow stores the raw inputs and retrieval context so
+    # KRA and later history views can link back to the exact source payload.
     row = {
         "session_id": session_id,
         "symptoms_json": symptoms,
-        "history_json": {},
+        "history_json": history_json or {},
         "ecg_json": ecg if ecg is not None else {},
         "labs_json": labs if labs is not None else {},
         "context_text": context_text,
         "quality_json": quality or {},
         "status": "pending",
     }
+    if patient_id:
+        row["patient_id"] = patient_id
 
     inserted = _post("analysis_payloads", row)
-    row_id: str = inserted["id"]
+    row_id: str = str(inserted["id"])
     _init()
     public_url = f"{_base_url}/rest/v1/analysis_payloads?id=eq.{row_id}"
 
-    logger.info("Saved analysis_payload row_id=%s", row_id)
+    logger.info("Saved analysis_payload row_id=%s patient_id=%s", row_id, patient_id)
     return row_id, public_url
 
 
@@ -174,25 +195,22 @@ def save_kra_output(
     payload_id: str,
     symptoms_text: str,
     kra_result: Any,
+    patient_id: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
     Insert KRA agent output into `kra_outputs`.
 
-    Args:
-        session_id: Local session UUID.
-        payload_id: FK to analysis_payloads row.
-        symptoms_text: Plain-text symptom string (ORA needs this).
-        kra_result: Raw output from KRA -- dict or string.
-
     Returns:
         (row_id, public_url) pointing to the new kra_outputs row.
     """
+    # Step 4 stores the KRA output before ORA refines it, which makes the
+    # raw reasoning available for audits and downstream history queries.
     if isinstance(kra_result, str):
         kra_output_dict: Dict[str, Any] = {}
         raw_text: Optional[str] = kra_result
     else:
         kra_output_dict = kra_result
-        raw_text = None
+        raw_text = kra_result.get("raw_text")
 
     row = {
         "session_id": session_id,
@@ -201,13 +219,15 @@ def save_kra_output(
         "kra_output": kra_output_dict,
         "raw_text": raw_text,
     }
+    if patient_id:
+        row["patient_id"] = patient_id
 
     inserted = _post("kra_outputs", row)
-    row_id: str = inserted["id"]
+    row_id: str = str(inserted["id"])
     _init()
     public_url = f"{_base_url}/rest/v1/kra_outputs?id=eq.{row_id}"
 
-    logger.info("Saved kra_output row_id=%s", row_id)
+    logger.info("Saved kra_output row_id=%s patient_id=%s", row_id, patient_id)
     return row_id, public_url
 
 
@@ -227,6 +247,7 @@ def save_ora_output(
     refined_output: str,
     disclaimer: Optional[str],
     status: str = "success",
+    patient_id: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
     Insert ORA agent output into `ora_outputs`.
@@ -234,6 +255,7 @@ def save_ora_output(
     Returns:
         (row_id, public_url) of the inserted row.
     """
+    # Step 5 is the final persistence point for the clinician-facing output.
     row = {
         "session_id": session_id,
         "kra_output_id": kra_output_id,
@@ -242,12 +264,14 @@ def save_ora_output(
         "disclaimer": disclaimer,
         "status": status,
     }
+    if patient_id:
+        row["patient_id"] = patient_id
 
     inserted = _post("ora_outputs", row)
-    row_id: str = inserted["id"]
+    row_id: str = str(inserted["id"])
     _init()
     public_url = f"{_base_url}/rest/v1/ora_outputs?id=eq.{row_id}"
-    logger.info("Saved ora_output row_id=%s", row_id)
+    logger.info("Saved ora_output row_id=%s patient_id=%s", row_id, patient_id)
     return row_id, public_url
 
 
@@ -258,6 +282,309 @@ def save_ora_output(
 def get_analysis_payload(payload_id: str) -> Optional[Dict[str, Any]]:
     """Fetch a single analysis_payloads row."""
     return _get("analysis_payloads", f"id=eq.{payload_id}&select=*", single=True)
+
+
+def _history_record_rank(record: Dict[str, Any]) -> tuple[int, int, int, int]:
+    experience_level = str(record.get("experience_level") or "").strip().lower()
+    if experience_level in {"seasoned", "expert"}:
+        experience_rank = 3
+    elif experience_level in {"newbie", "junior"}:
+        experience_rank = 2
+    elif experience_level:
+        experience_rank = 1
+    else:
+        experience_rank = 0
+
+    return (
+        1 if record.get("refined_output") else 0,
+        experience_rank,
+        1 if record.get("ora_id") else 0,
+        1 if record.get("kra_id") else 0,
+    )
+
+
+def _normalize_experience_level(value: Any) -> str:
+    level = str(value or "").strip().lower()
+    if level in {"newbie", "junior"}:
+        return "newbie"
+    if level in {"seasoned", "expert"}:
+        return "seasoned"
+    return ""
+
+
+def _dedupe_history_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    deduped: List[Dict[str, Any]] = []
+    payload_index: Dict[str, int] = {}
+    ora_outputs_by_payload: Dict[str, Dict[str, str]] = {}
+    ora_disclaimers_by_payload: Dict[str, Dict[str, str]] = {}
+
+    for record in records:
+        payload_id = str(record.get("payload_id") or "").strip()
+        if not payload_id:
+            deduped.append(record)
+            continue
+
+        mode = _normalize_experience_level(record.get("experience_level"))
+        refined_output = str(record.get("refined_output") or "").strip()
+        disclaimer = str(record.get("disclaimer") or "").strip()
+
+        if mode and refined_output:
+            ora_outputs_by_payload.setdefault(payload_id, {})[mode] = refined_output
+        if mode and disclaimer:
+            ora_disclaimers_by_payload.setdefault(payload_id, {})[mode] = disclaimer
+
+        existing_index = payload_index.get(payload_id)
+        if existing_index is None:
+            payload_index[payload_id] = len(deduped)
+            deduped.append(record)
+            continue
+
+        if _history_record_rank(record) > _history_record_rank(deduped[existing_index]):
+            deduped[existing_index] = record
+
+    for record in deduped:
+        payload_id = str(record.get("payload_id") or "").strip()
+        if not payload_id:
+            continue
+
+        outputs = ora_outputs_by_payload.get(payload_id)
+        disclaimers = ora_disclaimers_by_payload.get(payload_id)
+        if outputs:
+            record["ora_outputs"] = outputs
+        if disclaimers:
+            record["ora_disclaimers"] = disclaimers
+
+    return deduped
+
+
+def _get_patient_diagnosis_history_with_status(
+    patient_id: str,
+) -> Tuple[List[Dict[str, Any]], str]:
+    """
+    Fetch all past diagnoses for a patient from the diagnosis_history view.
+
+    Returns (records, status) where status is "ok" or "unreachable".
+    """
+    # This feeds the history bundle that WorkflowService injects back into the
+    # KRA prompt when a patient has prior diagnosis records.
+    try:
+        _init()
+        records = _get(
+            "diagnosis_history",
+            f"patient_id=eq.{patient_id}&order=created_at.desc",
+        )
+        records = _dedupe_history_records(records)
+
+        # Batch-fetch doctor names for all unique doctor_ids
+        doctor_ids = list({r.get("doctor_id") for r in records if r.get("doctor_id")})
+        doctor_map: Dict[str, str] = {}
+        if doctor_ids:
+            try:
+                id_filter = ",".join(doctor_ids)
+                profiles = _get("profiles", f"id=in.({id_filter})&select=id,full_name")
+                for profile in (profiles or []):
+                    if profile.get("id") and profile.get("full_name"):
+                        doctor_map[profile["id"]] = profile["full_name"]
+            except Exception as e:
+                logger.warning("Failed to fetch doctor profiles: %s", e)
+
+        for record in records:
+            did = record.get("doctor_id")
+            record["doctor_name"] = doctor_map.get(did) if did else None
+
+        return records, "ok"
+    except Exception as exc:
+        logger.warning(
+            "get_patient_diagnosis_history(%s) failed: %s", patient_id, exc
+        )
+        return [], "unreachable"
+
+
+def get_patient_diagnosis_history(patient_id: str) -> list:
+    records, _ = _get_patient_diagnosis_history_with_status(patient_id)
+    return records
+
+
+def _extract_top_diagnoses(records: List[Dict[str, Any]]) -> List[str]:
+    conditions: List[str] = []
+    for record in records:
+        kra_output = record.get("kra_output") or {}
+        diagnoses = kra_output.get("diagnoses") if isinstance(kra_output, dict) else None
+        if not isinstance(diagnoses, list):
+            continue
+        for diagnosis in diagnoses[:2]:
+            if not isinstance(diagnosis, dict):
+                continue
+            condition = str(diagnosis.get("condition") or "").strip()
+            if condition:
+                conditions.append(condition)
+    return conditions
+
+
+def _extract_lab_abnormalities(records: List[Dict[str, Any]]) -> List[str]:
+    abnormalities: List[str] = []
+    for record in records:
+        labs_json = record.get("labs_json") or {}
+        findings = labs_json.get("findings") if isinstance(labs_json, dict) else None
+        if isinstance(findings, list):
+            for finding in findings:
+                text = str(finding or "").strip()
+                if text:
+                    abnormalities.append(text)
+    return abnormalities
+
+
+def build_patient_history_summary(
+    patient_id: str,
+    records: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """
+    Build a clinically-compressed longitudinal summary for KRA reasoning.
+
+    The summary is generated from Supabase diagnosis history only, making
+    Supabase the canonical reasoning source for prior AI diagnoses and lab
+    findings.
+    """
+    # WorkflowService passes this compressed summary to KRA so the model sees
+    # a concise longitudinal view without loading every prior row.
+    records = records if records is not None else get_patient_diagnosis_history(patient_id)
+    if not records:
+        return {
+            "patient_id": patient_id,
+            "visit_count": 0,
+            "latest_visit_at": None,
+            "top_conditions": [],
+            "key_lab_findings": [],
+            "summary_text": "No prior AI diagnosis or lab history available.",
+        }
+
+    top_conditions = _extract_top_diagnoses(records)
+    condition_counts = Counter(top_conditions)
+    key_conditions = [condition for condition, _ in condition_counts.most_common(5)]
+
+    lab_abnormalities = _extract_lab_abnormalities(records)
+    lab_counts = Counter(lab_abnormalities)
+    key_labs = [finding for finding, _ in lab_counts.most_common(6)]
+
+    latest_visit = records[0].get("created_at")
+
+    summary_lines = [
+        f"Prior visits recorded: {len(records)}.",
+        f"Latest visit: {latest_visit or 'unknown'}.",
+    ]
+    if key_conditions:
+        summary_lines.append(
+            "Most recurrent prior AI diagnoses: " + ", ".join(key_conditions) + "."
+        )
+    else:
+        summary_lines.append("No structured prior AI diagnoses were captured.")
+
+    if key_labs:
+        summary_lines.append(
+            "Important prior lab abnormalities: " + "; ".join(key_labs) + "."
+        )
+    else:
+        summary_lines.append("No major prior lab abnormalities were captured.")
+
+    latest_refined_output = str(records[0].get("refined_output") or "").strip()
+    if latest_refined_output:
+        summary_lines.append(
+            "Latest clinician-facing AI summary: "
+            + latest_refined_output[:700]
+            + ("…" if len(latest_refined_output) > 700 else "")
+        )
+
+    return {
+        "patient_id": patient_id,
+        "visit_count": len(records),
+        "latest_visit_at": latest_visit,
+        "top_conditions": key_conditions,
+        "key_lab_findings": key_labs,
+        "summary_text": "\n".join(summary_lines),
+    }
+
+
+def get_patient_history_bundle(patient_id: str) -> Dict[str, Any]:
+    """Return full history records plus the clinically-compressed summary."""
+    records, status = _get_patient_diagnosis_history_with_status(patient_id)
+    summary = build_patient_history_summary(patient_id, records)
+    return {
+        "patient_id": patient_id,
+        "summary": summary,
+        "records": records,
+        "supabase_status": status,
+    }
+
+
+def delete_history_record(payload_id: str) -> Dict[str, Any]:
+    """Delete one history entry and its dependent KRA/ORA rows."""
+    # Cleanup mirrors the workflow session delete path in backend/routes/workflow.py.
+    _init()
+
+    deleted: Dict[str, int] = {
+        "analysis_payloads": 0,
+        "kra_outputs": 0,
+        "ora_outputs": 0,
+        "local_sessions": 0,
+    }
+
+    payload = get_analysis_payload(payload_id)
+    if not payload:
+        raise ValueError("PAYLOAD_NOT_FOUND")
+
+    session_id = str(payload.get("session_id") or "").strip()
+
+    try:
+        kra_rows = _get("kra_outputs", f"payload_id=eq.{payload_id}&select=id")
+    except Exception as exc:
+        logger.warning("Failed to enumerate kra_outputs for payload %s: %s", payload_id, exc)
+        kra_rows = []
+
+    for kra_row in kra_rows:
+        kra_id = str(kra_row.get("id") or "").strip()
+        if not kra_id:
+            continue
+        try:
+            url = f"{_base_url}/rest/v1/ora_outputs?kra_output_id=eq.{kra_id}"
+            resp = _session.delete(url, timeout=15)
+            if resp.status_code >= 400:
+                resp.raise_for_status()
+            deleted["ora_outputs"] += len(resp.json()) if resp.text.strip() else 0
+        except Exception as exc:
+            logger.warning("Failed to delete ora_outputs for kra_output %s: %s", kra_id, exc)
+
+    try:
+        url = f"{_base_url}/rest/v1/kra_outputs?payload_id=eq.{payload_id}"
+        resp = _session.delete(url, timeout=15)
+        if resp.status_code >= 400:
+            resp.raise_for_status()
+        deleted["kra_outputs"] += len(resp.json()) if resp.text.strip() else 0
+    except Exception as exc:
+        logger.warning("Failed to delete kra_outputs for payload %s: %s", payload_id, exc)
+
+    try:
+        url = f"{_base_url}/rest/v1/analysis_payloads?id=eq.{payload_id}"
+        resp = _session.delete(url, timeout=15)
+        if resp.status_code >= 400:
+            resp.raise_for_status()
+        deleted["analysis_payloads"] += len(resp.json()) if resp.text.strip() else 0
+    except Exception as exc:
+        logger.warning("Failed to delete analysis_payloads for payload %s: %s", payload_id, exc)
+
+    if session_id:
+        try:
+            from .workflow_store import WorkflowStore
+
+            store = WorkflowStore()
+            session = store.get_session(session_id)
+            if session and str(session.get("supabase_payload_id") or "") == payload_id:
+                store.delete_session(session_id)
+                deleted["local_sessions"] = 1
+        except Exception as exc:
+            logger.warning("Failed to delete local workflow session %s: %s", session_id, exc)
+
+    logger.info("History payload %s cleanup: %s", payload_id, deleted)
+    return deleted
 
 
 def ping_supabase() -> bool:
@@ -272,3 +599,151 @@ def ping_supabase() -> bool:
     except Exception as exc:
         logger.error("Supabase ping failed: %s", exc)
         return False
+
+
+def verify_schema() -> Dict[str, Any]:
+    """
+    Validate that all required columns exist on the 3 pipeline tables.
+
+    Attempts a zero-row SELECT for each expected column.  Returns a dict:
+        {
+            "ok": True/False,
+            "tables": {
+                "analysis_payloads": {"ok": True, "missing": []},
+                "kra_outputs":       {"ok": True, "missing": []},
+                "ora_outputs":       {"ok": True, "missing": []},
+            },
+            "migration_hint": "..."  (only when ok=False)
+        }
+    """
+    _init()
+
+    expected: Dict[str, list[str]] = {
+        "analysis_payloads": [
+            "id", "session_id", "patient_id", "symptoms_json", "history_json",
+            "ecg_json", "labs_json", "context_text", "quality_json", "status",
+            "created_at",
+        ],
+        "kra_outputs": [
+            "id", "payload_id", "session_id", "patient_id", "symptoms_text",
+            "kra_output", "raw_text", "created_at",
+        ],
+        "ora_outputs": [
+            "id", "kra_output_id", "session_id", "patient_id",
+            "experience_level", "refined_output", "disclaimer", "status",
+            "created_at",
+        ],
+    }
+
+    result: Dict[str, Any] = {"ok": True, "tables": {}}
+
+    for table, cols in expected.items():
+        missing: list[str] = []
+        select = ",".join(cols)
+        try:
+            _get(table, f"select={select}&limit=0")
+        except requests.exceptions.HTTPError as exc:
+            # PostgREST returns 400 when a column is unknown.
+            # Try each column individually to find which are missing.
+            for col in cols:
+                try:
+                    _get(table, f"select={col}&limit=0")
+                except Exception:
+                    missing.append(col)
+        except Exception as exc:
+            logger.warning("verify_schema: table '%s' check failed: %s", table, exc)
+            missing = ["<table unreachable>"]
+
+        table_ok = len(missing) == 0
+        result["tables"][table] = {"ok": table_ok, "missing": missing}
+        if not table_ok:
+            result["ok"] = False
+
+    if not result["ok"]:
+        result["migration_hint"] = (
+            "Run backend/database/migration_add_columns.sql in the Supabase "
+            "SQL Editor to add the missing columns."
+        )
+        logger.warning("Supabase schema validation FAILED: %s", result)
+    else:
+        logger.info("Supabase schema validation passed – all columns present.")
+
+    return result
+
+
+# --------------------------------------------------------------------- #
+#  Patient cleanup                                                        #
+# --------------------------------------------------------------------- #
+
+def delete_patient_data(patient_id: str) -> Dict[str, Any]:
+    """
+    Delete ALL Supabase analysis data for a patient across all 3 pipeline tables.
+
+    Uses the `session_id` column which stores the workflow session_id.
+    The workflow store tracks sessions by patient_id, so we first get all
+    session_ids for this patient from the local store, then delete matching
+    Supabase rows.
+
+    Args:
+        patient_id: The patient identifier (MongoDB _id).
+
+    Returns:
+        Dict with counts of deleted rows per table.
+    """
+    _init()
+
+    deleted: Dict[str, int] = {"analysis_payloads": 0, "kra_outputs": 0, "ora_outputs": 0}
+
+    try:
+        # Find all workflow sessions for this patient in the local SQLite store
+        from .workflow_store import WorkflowStore
+        store = WorkflowStore()
+        session_ids = store.get_sessions_for_patient(patient_id)
+
+        if not session_ids:
+            logger.info("No workflow sessions found for patient %s", patient_id)
+            return deleted
+
+        for sid in session_ids:
+            # Delete ora_outputs first (FK dependency)
+            try:
+                url = f"{_base_url}/rest/v1/ora_outputs?session_id=eq.{sid}"
+                resp = _session.delete(url, timeout=15)
+                if resp.status_code < 400:
+                    count = len(resp.json()) if resp.text.strip() else 0
+                    deleted["ora_outputs"] += count
+            except Exception as exc:
+                logger.warning("Failed to delete ora_outputs for session %s: %s", sid, exc)
+
+            # Delete kra_outputs
+            try:
+                url = f"{_base_url}/rest/v1/kra_outputs?session_id=eq.{sid}"
+                resp = _session.delete(url, timeout=15)
+                if resp.status_code < 400:
+                    count = len(resp.json()) if resp.text.strip() else 0
+                    deleted["kra_outputs"] += count
+            except Exception as exc:
+                logger.warning("Failed to delete kra_outputs for session %s: %s", sid, exc)
+
+            # Delete analysis_payloads
+            try:
+                url = f"{_base_url}/rest/v1/analysis_payloads?session_id=eq.{sid}"
+                resp = _session.delete(url, timeout=15)
+                if resp.status_code < 400:
+                    count = len(resp.json()) if resp.text.strip() else 0
+                    deleted["analysis_payloads"] += count
+            except Exception as exc:
+                logger.warning("Failed to delete analysis_payloads for session %s: %s", sid, exc)
+
+            # Delete local SQLite session
+            try:
+                store.delete_session(sid)
+            except Exception as exc:
+                logger.warning("Failed to delete local session %s: %s", sid, exc)
+
+        logger.info("Patient %s cleanup: %s", patient_id, deleted)
+        return deleted
+
+    except Exception as exc:
+        logger.error("Patient data cleanup failed for %s: %s", patient_id, exc)
+        return deleted
