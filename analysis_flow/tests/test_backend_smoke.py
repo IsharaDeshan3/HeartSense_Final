@@ -58,40 +58,20 @@ class BackendSmokeTest(unittest.TestCase):
     def test_full_backend_smoke(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            os.environ["LOCAL_MODE"] = "true"
             os.environ["WORKFLOW_DB_PATH"] = str(temp_path / "session_temp.db")
 
             _install_fake_faiss_retriever()
 
             main_module = _fresh_import("backend.main")
             workflow_module = importlib.import_module("routes.workflow")
-            local_analysis_module = importlib.import_module("routes.local_analysis")
             workflow_store_module = importlib.import_module("backend.processing.workflow_store")
             supabase_payload_module = importlib.import_module("processing.supabase_payload")
             llm_engine_module = importlib.import_module("core.llm_engine")
-
-            class DummyPipeline:
-                def run(self, case):
-                    return {
-                        "status": "SUCCESS",
-                        "session_id": "mock-local-session",
-                        "confidence": 0.91,
-                        "is_critical": False,
-                        "banner": "MOCK LOCAL PIPELINE",
-                        "safety_reasons": [],
-                        "retrieval_quality": {"status": "HIGH_CONFIDENCE"},
-                        "processing_time_ms": 1,
-                        "kra": {"success": True, "diagnoses": []},
-                        "ora_newbie": "mock newbie output",
-                        "ora_seasoned": "mock seasoned output",
-                        "disclaimer": "mock disclaimer",
-                    }
 
             dummy_engine = DummyEngine()
 
             with patch.object(supabase_payload_module, "verify_schema", return_value={"ok": True, "tables": {}}), \
                  patch.object(llm_engine_module.LLMEngine, "instance", return_value=dummy_engine), \
-                 patch.object(local_analysis_module, "get_pipeline", return_value=DummyPipeline()), \
                  patch.object(workflow_module._workflow, "run_analysis", return_value={
                      "session_id": "mock-workflow-session",
                      "status": "SUCCESS",
@@ -107,18 +87,6 @@ class BackendSmokeTest(unittest.TestCase):
                     health_response = client.get("/health")
                     self.assertEqual(health_response.status_code, 200)
                     self.assertEqual(health_response.json()["status"], "healthy")
-
-                    local_analysis_response = client.post(
-                        "/api/analysis/analyze",
-                        json={
-                            "symptoms": "Chest pain with shortness of breath",
-                            "ecg": {"lead_ii": "normal sinus rhythm"},
-                            "labs": {"troponin": "negative"},
-                            "lab_component_recommendations": ["repeat troponin"],
-                        },
-                    )
-                    self.assertEqual(local_analysis_response.status_code, 200)
-                    self.assertEqual(local_analysis_response.json()["status"], "SUCCESS")
 
                     init_response = client.post(
                         "/api/workflow/v1/session/init",

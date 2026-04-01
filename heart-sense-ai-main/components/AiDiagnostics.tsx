@@ -36,8 +36,6 @@ import PipelineWorkflow from "@/components/PipelineWorkflow";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type ExperienceLevel = "newbie" | "seasoned";
-
 interface AiDiagnosticsProps {
   patientId: string;
   symptoms: string[];
@@ -65,17 +63,7 @@ function getAnalysisProgressKey(sessionId: string) {
   return `workspace:analysis-progress:${sessionId}`;
 }
 
-const EXPERIENCE_OPTIONS: {
-  value: ExperienceLevel;
-  label: string;
-  desc: string;
-}[] = [
-    { value: "newbie", label: "Newbie", desc: "Detailed explanations" },
-    { value: "seasoned", label: "Seasoned", desc: "Standard clinical" },
-  ];
-
 const PIPELINE_STEP_LABELS: Record<string, string> = {
-  session_init: "Session Init",
   faiss_search: "Knowledge Retrieval",
   rare_case_search: "Rare Case Check",
   supabase_save_payload: "Saving Payload",
@@ -93,31 +81,81 @@ function mapPersistedRecordToAnalysisResponse(record: PatientDiagnosisRecord): A
   const preferredMode = normalizeOraMode(record.experience_level);
   const refinedOutput = record.refined_output?.trim();
   const disclaimer = record.disclaimer?.trim();
+  const persistedOutputs = record.ora_outputs;
+  const persistedDisclaimers = record.ora_disclaimers;
+
+  const newbieOutput = persistedOutputs?.newbie?.trim();
+  const seasonedOutput = persistedOutputs?.seasoned?.trim();
+  const newbieDisclaimer = persistedDisclaimers?.newbie?.trim();
+  const seasonedDisclaimer = persistedDisclaimers?.seasoned?.trim();
+
+  const selectedOutput =
+    (preferredMode === "newbie" ? newbieOutput : seasonedOutput) ||
+    seasonedOutput ||
+    newbieOutput ||
+    refinedOutput;
+  const selectedDisclaimer =
+    (preferredMode === "newbie" ? newbieDisclaimer : seasonedDisclaimer) ||
+    seasonedDisclaimer ||
+    newbieDisclaimer ||
+    disclaimer;
 
   return {
     session_id: record.session_id,
-    status: refinedOutput ? "COMPLETED" : "PARTIAL",
+    status: selectedOutput ? "COMPLETED" : "PARTIAL",
     supabase_payload_id: record.payload_id,
     supabase_kra_id: record.kra_id,
     supabase_ora_id: record.ora_id,
     experience_level: preferredMode,
     processing_steps: [],
     kra_raw: record.kra_raw_text,
-    ora_outputs: refinedOutput
+    ora_outputs: selectedOutput
       ? {
-        newbie: refinedOutput,
-        seasoned: refinedOutput,
+        newbie: newbieOutput || selectedOutput,
+        seasoned: seasonedOutput || selectedOutput,
       }
       : undefined,
-    ora_disclaimers: disclaimer
+    ora_disclaimers: selectedDisclaimer
       ? {
-        newbie: disclaimer,
-        seasoned: disclaimer,
+        newbie: newbieDisclaimer || selectedDisclaimer,
+        seasoned: seasonedDisclaimer || selectedDisclaimer,
       }
       : undefined,
     refined_output:
-      refinedOutput ||
+      selectedOutput ||
       "### Analysis Complete\n\nThe workflow completed, but no ORA report text was available in the persisted record.",
+    disclaimer: selectedDisclaimer,
+  };
+}
+
+function applyOraModeToResponse(
+  response: AnalysisResponse,
+  mode: "newbie" | "seasoned",
+): AnalysisResponse {
+  const rawNewbie = response.ora_outputs?.newbie?.trim() || "";
+  const rawSeasoned = response.ora_outputs?.seasoned?.trim() || "";
+  const modeText = mode === "newbie" ? rawNewbie : rawSeasoned;
+  const fallbackText = rawSeasoned || rawNewbie || response.refined_output || "";
+  const bothPresent = Boolean(rawNewbie && rawSeasoned);
+  const equalOutputs = bothPresent && rawNewbie === rawSeasoned;
+  const modeLabel = mode === "newbie" ? "Newbie" : "Seasoned";
+  const displayText = modeText || fallbackText;
+  const refinedText =
+    displayText && equalOutputs
+      ? `### ${modeLabel} Output\n\n${displayText}`
+      : displayText;
+
+  const rawNewbieDisclaimer = response.ora_disclaimers?.newbie?.trim() || "";
+  const rawSeasonedDisclaimer = response.ora_disclaimers?.seasoned?.trim() || "";
+  const disclaimer =
+    (mode === "newbie" ? rawNewbieDisclaimer : rawSeasonedDisclaimer) ||
+    rawSeasonedDisclaimer ||
+    rawNewbieDisclaimer ||
+    response.disclaimer;
+
+  return {
+    ...response,
+    refined_output: refinedText,
     disclaimer,
   };
 }
@@ -139,7 +177,6 @@ export default function AiDiagnostics({
   labSkipped = false,
   onWorkflowStateChange,
 }: AiDiagnosticsProps) {
-  const [experience, setExperience] = useState<ExperienceLevel>("seasoned");
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<AnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -287,8 +324,9 @@ export default function AiDiagnostics({
             try {
               const recovered = await recoverPersistedResult();
               if (recovered) {
-                setOraMode(normalizeOraMode(recovered.experience_level));
-                setResult(recovered);
+                const recoveredMode = normalizeOraMode(recovered.experience_level);
+                setOraMode(recoveredMode);
+                setResult(applyOraModeToResponse(recovered, recoveredMode));
                 setFailedPipelineStep(undefined);
                 stopAnalysisUi({ clearError: true, keepCompletedSteps: true });
                 onWorkflowStateChange?.("ANALYSIS_DONE");
@@ -327,7 +365,7 @@ export default function AiDiagnostics({
     setError(null);
     setResult(null);
     setFailedPipelineStep(undefined);
-    setCurrentPipelineStep("session_init");
+    setCurrentPipelineStep("faiss_search");
     setCompletedPipelineSteps([]);
     toast.info("Diagnostic pipeline initiated — CPU inference may take 3-5 minutes…");
 
@@ -396,14 +434,9 @@ export default function AiDiagnostics({
 
       if (useWorkflow) {
         onWorkflowStateChange?.("ANALYSIS_RUNNING" as WorkflowState);
-        const workflowRes = await WorkflowService.runAnalysis(workflowSessionId, experience);
-        const selectedOraMode: "newbie" | "seasoned" = experience === "newbie" ? "newbie" : "seasoned";
-        const selectedOutput =
-          workflowRes.ora_outputs?.[selectedOraMode] ||
-          workflowRes.refined_output;
-        const selectedDisclaimer =
-          workflowRes.ora_disclaimers?.[selectedOraMode] ||
-          workflowRes.disclaimer;
+        const workflowRes = await WorkflowService.runAnalysis(workflowSessionId);
+        const selectedOraMode: "newbie" | "seasoned" =
+          workflowRes.ora_outputs?.seasoned ? "seasoned" : "newbie";
         res = {
           session_id: workflowRes.session_id,
           status: workflowRes.status,
@@ -418,12 +451,13 @@ export default function AiDiagnostics({
           ora_disclaimers: workflowRes.ora_disclaimers,
           rare_case_alert: workflowRes.rare_case_alert as any,
           refined_output:
-            selectedOutput ||
+            workflowRes.refined_output ||
             (workflowRes.context_preview
               ? `### Phase C Partial\n\nContext prepared but ORA output missing.\n\n**Context Preview**\n${workflowRes.context_preview}`
               : "### Phase C Partial\n\nContext prepared but ORA output missing."),
-          disclaimer: selectedDisclaimer,
+          disclaimer: workflowRes.disclaimer,
         } as AnalysisResponse;
+        res = applyOraModeToResponse(res, selectedOraMode);
         setOraMode(selectedOraMode);
       } else {
         throw new Error("Workflow session not ready for analysis");
@@ -478,8 +512,9 @@ export default function AiDiagnostics({
             if (session.current_state === "ANALYSIS_DONE") {
               const recovered = await recoverPersistedResult();
               if (recovered) {
-                setOraMode(normalizeOraMode(recovered.experience_level));
-                setResult(recovered);
+                const recoveredMode = normalizeOraMode(recovered.experience_level);
+                setOraMode(recoveredMode);
+                setResult(applyOraModeToResponse(recovered, recoveredMode));
                 setFailedPipelineStep(undefined);
                 setError(null);
                 onWorkflowStateChange?.("ANALYSIS_DONE" as WorkflowState);
@@ -523,7 +558,7 @@ export default function AiDiagnostics({
     setIsStopping(true);
     try {
       await WorkflowService.stopAnalysis(workflowSessionId);
-      stopAnalysisUi({ clearError: true, keepCompletedSteps: true });
+      stopAnalysisUi({ clearError: true, keepCompletedSteps: false });
       onWorkflowStateChange?.("LAB_DONE" as WorkflowState);
       toast.success("Stop requested. Analysis has been terminated.");
     } catch (err: any) {
@@ -583,29 +618,13 @@ export default function AiDiagnostics({
 
       {/* ─── Controls Bar ───────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-5 rounded-2xl border border-white/5 bg-white/[0.02]">
-        {/* Experience Level Selector */}
-        <div className="space-y-2">
+        <div className="space-y-1">
           <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
-            Experience Level
+            Analysis Mode
           </p>
-          <div className="flex gap-2">
-            {EXPERIENCE_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setExperience(opt.value)}
-                disabled={isRunning}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${experience === opt.value
-                  ? "bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20"
-                  : "bg-white/5 border-white/10 text-muted-foreground hover:border-primary/30 hover:text-white"
-                  } disabled:opacity-50`}
-              >
-                <span className="block">{opt.label}</span>
-                <span className="block text-[8px] font-normal opacity-70 mt-0.5">
-                  {opt.desc}
-                </span>
-              </button>
-            ))}
-          </div>
+          <p className="text-xs text-muted-foreground">
+            System auto-generates both Newbie and Seasoned outputs every run.
+          </p>
         </div>
 
         {/* Run / Status */}
@@ -798,13 +817,7 @@ export default function AiDiagnostics({
             onClick={() => {
               setOraMode("newbie");
               setResult((prev) =>
-                prev
-                  ? {
-                    ...prev,
-                    refined_output: prev.ora_outputs?.newbie ?? prev.refined_output,
-                    disclaimer: prev.ora_disclaimers?.newbie ?? prev.disclaimer,
-                  }
-                  : prev,
+                prev ? applyOraModeToResponse(prev, "newbie") : prev,
               );
             }}
           >
@@ -818,13 +831,7 @@ export default function AiDiagnostics({
             onClick={() => {
               setOraMode("seasoned");
               setResult((prev) =>
-                prev
-                  ? {
-                    ...prev,
-                    refined_output: prev.ora_outputs?.seasoned ?? prev.refined_output,
-                    disclaimer: prev.ora_disclaimers?.seasoned ?? prev.disclaimer,
-                  }
-                  : prev,
+                prev ? applyOraModeToResponse(prev, "seasoned") : prev,
               );
             }}
           >

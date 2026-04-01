@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const ANALYSIS_BACKEND_URL =
-  process.env.DIAGNOSTIC_BACKEND_URL ?? process.env.WORKFLOW_BACKEND_URL ?? "http://127.0.0.1:8080";
+const EXTRACTION_BACKEND_URL =
+  process.env.DATA_EXTRACTION_BACKEND_URL ?? "http://127.0.0.1:8001";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,37 +12,40 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing transcript" }, { status: 400 });
     }
 
-    const backendRes = await fetch(`${ANALYSIS_BACKEND_URL}/api/analysis/analyze`, {
+    const backendRes = await fetch(`${EXTRACTION_BACKEND_URL}/process-transcript`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        symptoms: transcript,
-        ecg: payload.ecg ?? {},
-        labs: payload.labs ?? {},
-        lab_component_recommendations: payload.lab_component_recommendations ?? [],
+        session_id: String(payload.session_id ?? "web-session"),
+        transcript_si: transcript,
+        current_state: payload.current_state ?? {
+          symptoms: {},
+          medical_history: {},
+          allergies: {},
+          risk_factors: {},
+        },
       }),
-      signal: AbortSignal.timeout(600_000),
+      signal: AbortSignal.timeout(60_000),
     });
 
-    const analysis = await backendRes.json().catch(() => ({}));
+    const extraction = await backendRes.json().catch(() => ({}));
 
     if (!backendRes.ok) {
       return NextResponse.json(
         {
-          error: "Cannot reach analysis backend",
-          target: ANALYSIS_BACKEND_URL,
-          detail: analysis,
+          error: "Cannot reach extraction backend",
+          target: EXTRACTION_BACKEND_URL,
+          detail: extraction,
         },
         { status: backendRes.status },
       );
     }
 
     return NextResponse.json({
-      updated_state: payload.current_state ?? payload.currentState ?? {},
-      missing_critical: payload.missing_critical ?? { symptoms: [], risk_factors: [] },
-      translated_text:
-        analysis.ora_newbie || analysis.ora_seasoned || analysis.banner || transcript,
-      analysis,
+      updated_state: extraction.updated_state ?? payload.current_state ?? payload.currentState ?? {},
+      missing_critical: extraction.missing_critical ?? { symptoms: [], risk_factors: [] },
+      translated_text: extraction.translated_text ?? transcript,
+      extraction,
     });
   } catch (error: any) {
     return NextResponse.json(

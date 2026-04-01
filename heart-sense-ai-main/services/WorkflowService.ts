@@ -36,6 +36,8 @@ export interface PatientDiagnosisRecord {
   experience_level?: string;
   refined_output?: string;
   disclaimer?: string;
+  ora_outputs?: { newbie?: string; seasoned?: string };
+  ora_disclaimers?: { newbie?: string; seasoned?: string };
 }
 
 export interface PatientHistorySummary {
@@ -51,6 +53,10 @@ export type PatientHistoryStatus = "ok" | "unreachable";
 
 function normalizeSessionId(value: unknown) {
   return typeof value === "string" ? value : "";
+}
+
+function normalizeOraMode(experienceLevel?: string | null): "newbie" | "seasoned" {
+  return String(experienceLevel || "").toLowerCase() === "newbie" ? "newbie" : "seasoned";
 }
 
 export const WorkflowService = {
@@ -107,13 +113,13 @@ export const WorkflowService = {
     return postStep(`/api/workflow/session/${sessionId}/lab`, { result });
   },
 
-  async runAnalysis(sessionId: string, experienceLevel: "newbie" | "seasoned") {
+  async runAnalysis(sessionId: string) {
     const runAnalysisUrl = `/api/workflow/session/${sessionId}/analysis/run`;
 
     const res = await fetch(runAnalysisUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ experience_level: experienceLevel }),
+      body: JSON.stringify({}),
     });
 
     if (!res.ok) {
@@ -215,11 +221,63 @@ export const WorkflowService = {
 
   async getPatientDiagnosisRecord(patientId: string, sessionId: string) {
     const history = await this.getPatientHistory(patientId);
-    return (
-      history.records.find(
-        (record) => normalizeSessionId(record.session_id) === sessionId,
-      ) ?? null
+    const sessionRecords = history.records.filter(
+      (record) => normalizeSessionId(record.session_id) === sessionId,
     );
+
+    if (!sessionRecords.length) {
+      return null;
+    }
+
+    const oraOutputs: { newbie?: string; seasoned?: string } = {};
+    const oraDisclaimers: { newbie?: string; seasoned?: string } = {};
+
+    for (const record of sessionRecords) {
+      const mode = normalizeOraMode(record.experience_level);
+      const refined = String(record.refined_output || "").trim();
+      const disclaimer = String(record.disclaimer || "").trim();
+      if (refined) {
+        oraOutputs[mode] = refined;
+      }
+      if (disclaimer) {
+        oraDisclaimers[mode] = disclaimer;
+      }
+    }
+
+    const preferred =
+      sessionRecords.find((record) => normalizeOraMode(record.experience_level) === "seasoned") ||
+      sessionRecords[0];
+    const preferredMode = normalizeOraMode(preferred.experience_level);
+
+    return {
+      ...preferred,
+      ora_outputs: Object.keys(oraOutputs).length ? oraOutputs : undefined,
+      ora_disclaimers: Object.keys(oraDisclaimers).length ? oraDisclaimers : undefined,
+      refined_output:
+        oraOutputs[preferredMode] || oraOutputs.seasoned || oraOutputs.newbie || preferred.refined_output,
+      disclaimer:
+        oraDisclaimers[preferredMode] || oraDisclaimers.seasoned || oraDisclaimers.newbie || preferred.disclaimer,
+      experience_level: preferredMode,
+    } as PatientDiagnosisRecord;
+  },
+
+  async deleteHistoryEntry(payloadId: string): Promise<{
+    status: string;
+    payload_id: string;
+    deleted?: Record<string, number>;
+  }> {
+    const res = await fetch(`/api/workflow/history/${encodeURIComponent(payloadId)}`, {
+      method: "DELETE",
+      headers: { Accept: "application/json" },
+    });
+
+    if (!res.ok) {
+      throw new Error(
+        await extractErrorMessage(res, "Failed to delete history entry"),
+      );
+    }
+
+    return res.json();
   },
 };
 

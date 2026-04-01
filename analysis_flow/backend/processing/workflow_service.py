@@ -26,10 +26,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# --------------------------------------------------------------------------- #
-#  Pipeline Event Bus                                                          #
-# --------------------------------------------------------------------------- #
-
 class PipelineEventBus:
     """
     Thread-safe publish-subscribe bus for pipeline step events.
@@ -729,9 +725,9 @@ class WorkflowService:
         )
         self._raise_if_cancelled(session_id)
 
-        # ── Step 4: Persist KRA and run ORA directly from KRA in parallel ───
-        # ORA only needs the KRA result, so persistence and refinement run
-        # together to keep the session responsive.
+        # ── Step 4: Persist KRA and run ORA outputs (NEWBIE + SEASONED) ─────
+        # ORA only needs KRA output, so we run both experience levels once and
+        # return both variants to the frontend toggle.
         requested_level = str(experience_level or "seasoned").strip().upper()
         if requested_level not in {"NEWBIE", "SEASONED"}:
             requested_level = "SEASONED"
@@ -751,53 +747,131 @@ class WorkflowService:
             result["duration_ms"] = int((time.time() - started_at) * 1000)
             return result
 
-        def run_ora_refinement() -> dict[str, Any]:
+        def run_ora_refinement(level: str) -> dict[str, Any]:
             started_at = time.time()
             result = self._ora.refine(
                 kra_result=kra_result,
                 symptoms_text=symptoms_text,
-                experience_level=requested_level,
+                experience_level=level,
                 cancel_event=cancel_event,
             )
             return {
+                "level": level,
                 "ora_result": result,
                 "duration_ms": int((time.time() - started_at) * 1000),
             }
 
+        ora_levels = ["NEWBIE", "SEASONED"]
+        selected_key = requested_level.lower()
+        if selected_key not in {"newbie", "seasoned"}:
+            selected_key = "seasoned"
+        ora_runs: dict[str, dict[str, Any]] = {}
+        ora_failures: dict[str, str] = {}
+
         with ThreadPoolExecutor(max_workers=2) as executor:
             kra_save_future = executor.submit(run_kra_persist)
-            ora_future = executor.submit(run_ora_refinement)
+            ora_futures = {
+                level: executor.submit(run_ora_refinement, level)
+                for level in ora_levels
+            }
             done, pending = wait(
-                {kra_save_future, ora_future},
+                {kra_save_future, *ora_futures.values()},
                 timeout=self._ora_timeout_seconds(),
                 return_when=FIRST_EXCEPTION,
             )
-            if ora_future not in done:
+
+            primary_future = ora_futures[selected_key.upper()]
+            if primary_future not in done:
                 cancel_event.set()
                 logger.error("ORA refinement timed out for session %s after %.1fs", session_id, self._ora_timeout_seconds())
                 raise RuntimeError("ORA_TIMEOUT")
-            first_error = next((future.exception() for future in done if future.exception() is not None), None)
-            if first_error is not None:
+
+            kra_error = kra_save_future.exception() if kra_save_future in done else None
+            primary_error = primary_future.exception() if primary_future in done else None
+            if kra_error is not None or primary_error is not None:
                 cancel_event.set()
                 for future in pending:
                     future.cancel()
-                raise first_error
+                raise kra_error or primary_error
+
+            for level, future in ora_futures.items():
+                level_key = level.lower()
+                if future in done:
+                    try:
+                        ora_runs[level_key] = future.result()
+                    except Exception as exc:
+                        ora_failures[level_key] = str(exc)
+                else:
+                    # Secondary mode may exceed timeout; keep pipeline alive and
+                    # synthesize fallback from available mode below.
+                    future.cancel()
+                    ora_failures[level_key] = "ORA_TIMEOUT"
+
             kra_save_result = kra_save_future.result()
             self._raise_if_cancelled(session_id)
-            ora_run = ora_future.result()
+
+            # Keep diagnosis flow resilient: primary ORA must exist, secondary
+            # mode is best-effort with deterministic fallback synthesis.
+            if selected_key not in ora_runs:
+                selected_err = ora_failures.get(selected_key) or "ORA_OUTPUT_EMPTY"
+                raise RuntimeError(selected_err)
+
+            # Ensure both experience-level outputs are always available so
+            # frontend toggles can switch between two concrete variants.
+            required_levels = ("newbie", "seasoned")
+            for missing_level in required_levels:
+                if missing_level in ora_runs:
+                    continue
+                source_level = "seasoned" if missing_level == "newbie" else "newbie"
+                source_payload = ora_runs.get(source_level)
+                if source_payload is None:
+                    continue
+
+                source_result = dict(source_payload.get("ora_result") or {})
+                source_text = str(source_result.get("refined_output") or "").strip()
+                source_disclaimer = str(source_result.get("disclaimer") or "").strip()
+                if not source_text:
+                    continue
+
+                label = "Newbie" if missing_level == "newbie" else "Seasoned"
+                fallback_text = (
+                    f"### {label} Output (Fallback)\n\n"
+                    "The dedicated ORA pass for this mode was unavailable in this run; "
+                    "showing the alternate mode output below.\n\n"
+                    f"{source_text}"
+                )
+                ora_runs[missing_level] = {
+                    "level": missing_level.upper(),
+                    "ora_result": {
+                        "refined_output": fallback_text,
+                        "disclaimer": source_disclaimer,
+                        "status": "partial_fallback",
+                    },
+                    "duration_ms": int(source_payload.get("duration_ms") or 0),
+                }
+
+            if ora_failures:
+                logger.warning("ORA secondary output failure(s) for session %s: %s", session_id, ora_failures)
 
         kra_id = kra_save_result["kra_id"]
         kra_url = kra_save_result.get("kra_url")
         kra_save_ms = int(kra_save_result.get("duration_ms") or 0)
-        ora_result = ora_run["ora_result"]
-        ora_ms = int(ora_run.get("duration_ms") or 0)
+        ora_outputs: dict[str, str] = {}
+        ora_disclaimers: dict[str, str] = {}
+        for level_key, payload in ora_runs.items():
+            ora_result = payload["ora_result"]
+            ora_outputs[level_key] = str(ora_result.get("refined_output") or "")
+            ora_disclaimers[level_key] = str(ora_result.get("disclaimer") or "")
+
+        selected_ora_result = ora_runs[selected_key]["ora_result"]
+        ora_ms = int(ora_runs[selected_key].get("duration_ms") or 0)
         supabase_available = supabase_available and bool(kra_save_result.get("supabase_available"))
 
         logger.info(
             "ORA output for session %s\n%s\n%s",
             session_id,
             "=" * 80,
-            str(ora_result.get("refined_output") or "[empty ORA output]"),
+            str(selected_ora_result.get("refined_output") or "[empty ORA output]"),
         )
 
         processing_steps.append(
@@ -811,9 +885,10 @@ class WorkflowService:
         processing_steps.append(
             {
                 "step": "ora_refinement",
-                "status": ora_result.get("status", "success"),
+                "status": selected_ora_result.get("status", "success"),
                 "duration_ms": ora_ms,
                 "experience_level": requested_level.lower(),
+                "available_levels": sorted(list(ora_outputs.keys())),
             }
         )
         self._emit(
@@ -829,38 +904,52 @@ class WorkflowService:
             "completed",
             duration_ms=ora_ms,
             experience_level=requested_level.lower(),
+            available_levels=sorted(list(ora_outputs.keys())),
         )
         self._raise_if_cancelled(session_id)
 
-        # ── Step 5: Persist ORA history entry ────────────────────────────────
+        # ── Step 5: Persist available ORA history entries ────────────────────
         self._emit(session_id, "supabase_save_ora", "started")
         ora_save_started = time.time()
-        ora_save_result = self._save_ora_history_entry(
-            session_id=session_id,
-            kra_output_id=kra_id,
-            experience_level=requested_level,
-            ora_result=ora_result,
-            patient_id=patient_id,
-        )
+        ora_save_results: dict[str, dict[str, Any]] = {}
+        for level_key, payload in ora_runs.items():
+            try:
+                ora_save_results[level_key] = self._save_ora_history_entry(
+                    session_id=session_id,
+                    kra_output_id=kra_id,
+                    experience_level=level_key.upper(),
+                    ora_result=payload["ora_result"],
+                    patient_id=patient_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "ORA history persistence failed for %s/%s: %s",
+                    session_id,
+                    level_key,
+                    exc,
+                )
+                ora_save_results[level_key] = {
+                    "ora_id": str(uuid.uuid4()),
+                    "ora_url": None,
+                    "supabase_available": False,
+                    "error": str(exc),
+                }
         ora_save_ms = int((time.time() - ora_save_started) * 1000)
-        selected_key = requested_level.lower()
-        selected_ora_id = ora_save_result.get("ora_id") or ""
-        selected_ora_url = ora_save_result.get("ora_url")
-        supabase_available = supabase_available and bool(ora_save_result.get("supabase_available"))
-
-        ora_outputs: dict[str, str] = {
-            selected_key: ora_result.get("refined_output", ""),
-        }
-        ora_disclaimers: dict[str, str] = {
-            selected_key: ora_result.get("disclaimer") or "",
-        }
+        selected_ora_save = ora_save_results.get(selected_key, {})
+        selected_ora_id = selected_ora_save.get("ora_id") or ""
+        selected_ora_url = selected_ora_save.get("ora_url")
+        supabase_available = supabase_available and all(
+            bool(item.get("supabase_available"))
+            for item in ora_save_results.values()
+        )
 
         processing_steps.append(
             {
                 "step": "supabase_save_ora",
-                "status": "success" if ora_save_result.get("supabase_available") else "offline_fallback",
+                "status": "success" if all(bool(item.get("supabase_available")) for item in ora_save_results.values()) else "offline_fallback",
                 "duration_ms": ora_save_ms,
                 "supabase_id": selected_ora_id,
+                "saved_levels": sorted(list(ora_save_results.keys())),
             }
         )
         self._emit(
@@ -868,7 +957,8 @@ class WorkflowService:
             "supabase_save_ora",
             "completed",
             duration_ms=ora_save_ms,
-            supabase_available=bool(ora_save_result.get("supabase_available")),
+            supabase_available=all(bool(item.get("supabase_available")) for item in ora_save_results.values()),
+            saved_levels=sorted(list(ora_save_results.keys())),
         )
         self._raise_if_cancelled(session_id)
 
@@ -903,8 +993,8 @@ class WorkflowService:
             "kra_raw": kra_result.get("raw_text", ""),
             "ora_outputs": ora_outputs,
             "ora_disclaimers": ora_disclaimers,
-            "refined_output": ora_outputs.get(selected_key) or ora_outputs.get("newbie") or ora_outputs.get("expert") or "",
-            "disclaimer": ora_disclaimers.get(selected_key) or ora_disclaimers.get("newbie") or ora_disclaimers.get("expert") or "",
+            "refined_output": ora_outputs.get(selected_key) or ora_outputs.get("seasoned") or ora_outputs.get("newbie") or "",
+            "disclaimer": ora_disclaimers.get(selected_key) or ora_disclaimers.get("seasoned") or ora_disclaimers.get("newbie") or "",
             "rare_case_alert": rare_alert.to_dict() if rare_alert.triggered else None,
             "total_duration_ms": elapsed_ms,
             "context_preview": context_text[:1200],

@@ -68,6 +68,7 @@ export default function PatientHistoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [deletingPayloadId, setDeletingPayloadId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -144,6 +145,39 @@ export default function PatientHistoryPage() {
     router.push(`/dashboard/doctor/workspace/${patientId}`);
   };
 
+  const handleDeleteHistoryEntry = async (payloadId: string) => {
+    const previousHistory = diagnosisHistory;
+    const previousSummary = historySummary;
+
+    // Optimistic UI: remove immediately from timeline.
+    setDiagnosisHistory((prev) => prev.filter((record) => record.payload_id !== payloadId));
+    if (historySummary) {
+      setHistorySummary({
+        ...historySummary,
+        visit_count: Math.max(0, historySummary.visit_count - 1),
+      });
+    }
+    setDeletingPayloadId(payloadId);
+
+    try {
+      await WorkflowService.deleteHistoryEntry(payloadId);
+      toast.success("History entry deleted");
+
+      // Resync from backend to keep summary/top conditions exact.
+      const refreshed = await WorkflowService.getPatientHistory(patientId);
+      setDiagnosisHistory(refreshed.records || []);
+      setHistorySummary(refreshed.summary || null);
+      setHistoryStatus(refreshed.supabase_status ?? "ok");
+    } catch (err: unknown) {
+      setDiagnosisHistory(previousHistory);
+      setHistorySummary(previousSummary);
+      const msg = err instanceof Error ? err.message : "Failed to delete history entry";
+      toast.error(msg);
+    } finally {
+      setDeletingPayloadId(null);
+    }
+  };
+
   return (
     <>
       <DashboardHeader
@@ -206,6 +240,8 @@ export default function PatientHistoryPage() {
             diagnosisHistory={diagnosisHistory}
             historySummary={historySummary}
             labHistory={labHistory}
+            onDeleteHistoryEntry={handleDeleteHistoryEntry}
+            deletingPayloadId={deletingPayloadId}
           />
         ) : null}
       </div>

@@ -1,18 +1,14 @@
 """
 core/llm_engine.py
-
 Central LLM manager — loads GGUF models once at startup and provides
 thread-safe inference methods.
-
 KRA selects a runtime automatically:
     - DeepSeek-R1-Distill-Llama-8B on NVIDIA systems
     - a CPU-safe fallback model when no NVIDIA GPU is detected
-
 ORA always runs on CPU.
 """
 
 from __future__ import annotations
-
 import importlib.util
 import logging
 import os
@@ -29,10 +25,6 @@ from dotenv import load_dotenv, find_dotenv
 
 load_dotenv(find_dotenv(), override=True)
 logger = logging.getLogger(__name__)
-
-# --------------------------------------------------------------------------- #
-#  Default config (overridable via .env)                                       #
-# --------------------------------------------------------------------------- #
 
 _ROOT = Path(__file__).resolve().parent.parent  # analysis_flow/
 _EXPECTED_PYTHON = (3, 10, 11)
@@ -61,10 +53,8 @@ _DEFAULTS: Dict[str, Any] = {
     "ORA_MAX_TOKENS": "2048",
 }
 
-
 def _env(key: str) -> str:
     return os.getenv(key, _DEFAULTS.get(key, ""))
-
 
 def _python_runtime_details() -> Dict[str, Any]:
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
@@ -204,10 +194,6 @@ def _resolve_kra_runtime() -> Dict[str, Any]:
     }
 
 
-# --------------------------------------------------------------------------- #
-#  Singleton                                                                   #
-# --------------------------------------------------------------------------- #
-
 _instance: Optional["LLMEngine"] = None
 _lock = threading.Lock()
 _last_init_error: Optional[str] = None
@@ -308,6 +294,34 @@ def _configure_windows_dll_search_paths() -> Dict[str, Any]:
 
 class LLMEngine:
     """Thread-safe singleton that holds both LLM model handles."""
+
+    @staticmethod
+    def _consume_streamed_text(
+        stream_iter: Any,
+        *,
+        cancel_event: Optional[threading.Event] = None,
+    ) -> str:
+        """Read streamed llama.cpp chat chunks and support cooperative cancel."""
+        parts: list[str] = []
+        for chunk in stream_iter:
+            if cancel_event and cancel_event.is_set():
+                raise RuntimeError("ANALYSIS_CANCELLED")
+
+            content: Optional[str] = None
+            try:
+                choice = (chunk.get("choices") or [None])[0] or {}
+                delta = choice.get("delta") or {}
+                content = delta.get("content")
+                if content is None:
+                    message = choice.get("message") or {}
+                    content = message.get("content")
+            except Exception:
+                content = None
+
+            if content:
+                parts.append(str(content))
+
+        return "".join(parts).strip()
 
     def __init__(self) -> None:
         python_details = _python_runtime_details()
@@ -468,15 +482,24 @@ class LLMEngine:
             if cancel_event and cancel_event.is_set():
                 raise RuntimeError("ANALYSIS_CANCELLED")
 
-            result = self.kra_model.create_chat_completion(
+            # Stream tokens so cancellation can interrupt long GPU runs.
+            stream = self.kra_model.create_chat_completion(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=temp,
                 max_tokens=tokens,
                 top_p=0.9,
                 repeat_penalty=1.1,
+                stream=True,
             )
 
-        text = result["choices"][0]["message"]["content"]
+            text = self._consume_streamed_text(
+                stream,
+                cancel_event=cancel_event,
+            )
+
+            if not text:
+                raise RuntimeError("KRA_OUTPUT_EMPTY")
+
         logger.info("KRA inference completed (%d chars)", len(text))
         return text
 
@@ -511,15 +534,24 @@ class LLMEngine:
             if cancel_event and cancel_event.is_set():
                 raise RuntimeError("ANALYSIS_CANCELLED")
 
-            result = self.ora_model.create_chat_completion(
+            # Stream tokens so cancellation can interrupt long CPU refinement.
+            stream = self.ora_model.create_chat_completion(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=temp,
                 max_tokens=tokens,
                 top_p=0.9,
                 repeat_penalty=1.05,
+                stream=True,
             )
 
-        text = result["choices"][0]["message"]["content"]
+            text = self._consume_streamed_text(
+                stream,
+                cancel_event=cancel_event,
+            )
+
+            if not text:
+                raise RuntimeError("ORA_OUTPUT_EMPTY")
+
         logger.info("ORA inference completed (%d chars)", len(text))
         return text
 

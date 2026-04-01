@@ -8,7 +8,6 @@ setlocal enabledelayedexpansion
 :: ============================================================
 
 set ROOT=%~dp0
-set LOCAL_MODE=true
 
 :: ---- Detect Python ----
 set PY_VER=
@@ -201,7 +200,7 @@ echo.
 echo [Phase 4] Checking .env configuration ...
 
 set AF_ENV=%ROOT%analysis_flow\.env
-"%AF_PYTHON%" -c "import pathlib; p=pathlib.Path(r'%AF_ENV%'); c=p.read_text(encoding='utf-8') if p.exists() else ''; need=not p.exists() or ('LOCAL_MODE' not in c); print('Adding LLM config...' if need else 'LLM config already present. Skipping append.'); p.write_text('LOCAL_MODE=true\n# Local LLM Config\nKRA_MODEL_PATH=models/deepseek-r1-8b-q5_k_m.gguf\nKRA_N_GPU_LAYERS=28\nKRA_N_CTX=8192\nKRA_CPU_FALLBACK_MODEL_PATH=models/DeepSeek-R1-Distill-Llama-8B-Q5_K_M.gguf\nKRA_CPU_FALLBACK_N_GPU_LAYERS=0\nKRA_CPU_FALLBACK_N_CTX=4096\nKRA_CPU_FALLBACK_TEMPERATURE=0.2\nKRA_CPU_FALLBACK_MAX_TOKENS=1024\nORA_MODEL_PATH=models/phi-3.5-mini-q4_k_m.gguf\nORA_N_GPU_LAYERS=0\nORA_N_CTX=4096\nORA_TEMPERATURE=0.3\n', encoding='utf-8') if need else None"
+"%AF_PYTHON%" -c "import pathlib; p=pathlib.Path(r'%AF_ENV%'); c=p.read_text(encoding='utf-8') if p.exists() else ''; need=not p.exists() or ('KRA_MODEL_PATH' not in c); print('Adding LLM config...' if need else 'LLM config already present. Skipping append.'); p.write_text('# LLM Config\nKRA_MODEL_PATH=models/deepseek-r1-8b-q5_k_m.gguf\nKRA_N_GPU_LAYERS=28\nKRA_N_CTX=8192\nKRA_CPU_FALLBACK_MODEL_PATH=models/DeepSeek-R1-Distill-Llama-8B-Q5_K_M.gguf\nKRA_CPU_FALLBACK_N_GPU_LAYERS=0\nKRA_CPU_FALLBACK_N_CTX=4096\nKRA_CPU_FALLBACK_TEMPERATURE=0.2\nKRA_CPU_FALLBACK_MAX_TOKENS=1024\nORA_MODEL_PATH=models/phi-3.5-mini-q4_k_m.gguf\nORA_N_GPU_LAYERS=0\nORA_N_CTX=4096\nORA_TEMPERATURE=0.3\n', encoding='utf-8') if need else None"
 echo.
 
 :: ============================================================
@@ -216,7 +215,7 @@ if exist "%KRA_GPU_MODEL%" (
 )
 
 if exist "%KRA_CPU_MODEL%" (
-    call :report_model_size "%KRA_CPU_MODEL%" "KRA CPU model - Qwen2.5-7B"
+    call :report_model_size "%KRA_CPU_MODEL%" "KRA CPU fallback model - DeepSeek-R1-Distill-Llama-8B"
 ) else (
     echo   WARNING: KRA CPU fallback model not found — inference may fail without GPU.
 )

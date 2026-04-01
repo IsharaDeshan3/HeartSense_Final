@@ -21,6 +21,8 @@ import {
   CircleCheck,
   CircleAlert,
   Network,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +62,8 @@ interface PatientHistoryProps {
   historySummary?: PatientHistorySummary | null;
   labHistory: LabHistoryEntry[];
   isLoading?: boolean;
+  onDeleteHistoryEntry?: (payloadId: string) => Promise<void> | void;
+  deletingPayloadId?: string | null;
 }
 
 type TabKey = "timeline" | "labs" | "summary" | "overview";
@@ -1009,6 +1013,8 @@ export default function PatientHistory({
   historySummary,
   labHistory,
   isLoading = false,
+  onDeleteHistoryEntry,
+  deletingPayloadId = null,
 }: PatientHistoryProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedLabId, setExpandedLabId] = useState<string | null>(null);
@@ -1187,6 +1193,7 @@ export default function PatientHistory({
             <div className="space-y-4 pl-16">
               {diagnosisHistory.map((record, idx) => {
                 const isExpanded = expandedId === record.payload_id;
+                const isDeleting = deletingPayloadId === record.payload_id;
                 const ecgFields = extractEcgFields(record.ecg_json);
                 const labFields = extractLabFields(record.labs_json);
                 const diagnosisSections = parseDiagnosisOutput(
@@ -1217,90 +1224,115 @@ export default function PatientHistory({
                     >
                       <CardContent className="p-0">
                         {/* Header row */}
-                        <button
-                          onClick={() => toggleExpand(record.payload_id)}
-                          className="w-full flex items-start gap-4 p-5 text-left hover:bg-white/2 transition-colors"
-                        >
-                          <div
-                            className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
-                              isCompleted
-                                ? "bg-emerald-500/10"
-                                : "bg-amber-500/10"
-                            }`}
+                        <div className="flex items-start gap-3 p-5">
+                          <button
+                            onClick={() => toggleExpand(record.payload_id)}
+                            className="flex-1 min-w-0 flex items-start gap-4 text-left hover:bg-white/2 transition-colors rounded-xl p-1 -m-1"
                           >
-                            {isCompleted ? (
-                              <CircleCheck className="h-5 w-5 text-emerald-400" />
-                            ) : (
-                              <CircleAlert className="h-5 w-5 text-amber-400" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                              <span className="text-sm font-bold">
-                                {formatDate(record.created_at)}
-                              </span>
-                              <Badge
-                                className={
-                                  isCompleted
-                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[9px]"
-                                    : "bg-amber-500/10 text-amber-400 border-amber-500/20 text-[9px]"
-                                }
-                              >
-                                {record.status || "unknown"}
-                              </Badge>
-                              {record.experience_level && (
-                                <Badge variant="outline" className="text-[9px]">
-                                  {record.experience_level}
+                            <div
+                              className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                                isCompleted
+                                  ? "bg-emerald-500/10"
+                                  : "bg-amber-500/10"
+                              }`}
+                            >
+                              {isCompleted ? (
+                                <CircleCheck className="h-5 w-5 text-emerald-400" />
+                              ) : (
+                                <CircleAlert className="h-5 w-5 text-amber-400" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                                <span className="text-sm font-bold">
+                                  {formatDate(record.created_at)}
+                                </span>
+                                <Badge
+                                  className={
+                                    isCompleted
+                                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[9px]"
+                                      : "bg-amber-500/10 text-amber-400 border-amber-500/20 text-[9px]"
+                                  }
+                                >
+                                  {record.status || "unknown"}
                                 </Badge>
-                              )}
-                              <span className="text-[10px] text-muted-foreground/50 font-mono">
-                                Visit #{diagnosisHistory.length - idx}
-                              </span>
-                              {(record.doctor_name || record.doctor_id) && (
-                                <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/70 bg-white/4 border border-border/20 rounded-full px-2 py-0.5">
-                                  <Stethoscope className="h-2.5 w-2.5 shrink-0" />
-                                  {record.doctor_name ?? record.doctor_id}
+                                {record.experience_level && (
+                                  <Badge variant="outline" className="text-[9px]">
+                                    {record.experience_level}
+                                  </Badge>
+                                )}
+                                <span className="text-[10px] text-muted-foreground/50 font-mono">
+                                  Visit #{diagnosisHistory.length - idx}
                                 </span>
+                                {(record.doctor_name || record.doctor_id) && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/70 bg-white/4 border border-border/20 rounded-full px-2 py-0.5">
+                                    <Stethoscope className="h-2.5 w-2.5 shrink-0" />
+                                    {record.doctor_name ?? record.doctor_id}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground leading-relaxed">
+                                {extractSymptomsSummary(record.symptoms_json)}
+                              </p>
+                              {/* Data chips */}
+                              <div className="flex gap-1.5 mt-2.5 flex-wrap">
+                                {record.symptoms_json && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] bg-blue-500/8 border border-blue-500/15 text-blue-400 rounded-full px-2 py-0.5">
+                                    <FileText className="h-2.5 w-2.5" /> Symptoms
+                                  </span>
+                                )}
+                                {record.ecg_json && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] bg-violet-500/8 border border-violet-500/15 text-violet-400 rounded-full px-2 py-0.5">
+                                    <Activity className="h-2.5 w-2.5" /> ECG
+                                  </span>
+                                )}
+                                {record.labs_json && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] bg-cyan-500/8 border border-cyan-500/15 text-cyan-400 rounded-full px-2 py-0.5">
+                                    <Microscope className="h-2.5 w-2.5" /> Labs
+                                  </span>
+                                )}
+                                {record.refined_output && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] bg-primary/8 border border-primary/15 text-primary rounded-full px-2 py-0.5">
+                                    <BrainCircuit className="h-2.5 w-2.5" /> AI
+                                    Diagnosis
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div
+                              className={`p-1.5 rounded-lg transition-colors shrink-0 mt-0.5 ${isExpanded ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}
+                            >
+                              {isExpanded ? (
+                                <ChevronUp className="h-4 w-4" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4" />
                               )}
                             </div>
-                            <p className="text-xs text-muted-foreground leading-relaxed">
-                              {extractSymptomsSummary(record.symptoms_json)}
-                            </p>
-                            {/* Data chips */}
-                            <div className="flex gap-1.5 mt-2.5 flex-wrap">
-                              {record.symptoms_json && (
-                                <span className="inline-flex items-center gap-1 text-[9px] bg-blue-500/8 border border-blue-500/15 text-blue-400 rounded-full px-2 py-0.5">
-                                  <FileText className="h-2.5 w-2.5" /> Symptoms
-                                </span>
+                          </button>
+
+                          {onDeleteHistoryEntry && (
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!window.confirm("Delete this history entry? This will remove linked KRA/ORA records.")) {
+                                  return;
+                                }
+                                await onDeleteHistoryEntry(record.payload_id);
+                              }}
+                              disabled={isDeleting}
+                              className="h-9 w-9 shrink-0 rounded-lg border border-rose-500/25 text-rose-400 hover:bg-rose-500/10 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center"
+                              title="Delete history entry"
+                              aria-label="Delete history entry"
+                            >
+                              {isDeleting ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
                               )}
-                              {record.ecg_json && (
-                                <span className="inline-flex items-center gap-1 text-[9px] bg-violet-500/8 border border-violet-500/15 text-violet-400 rounded-full px-2 py-0.5">
-                                  <Activity className="h-2.5 w-2.5" /> ECG
-                                </span>
-                              )}
-                              {record.labs_json && (
-                                <span className="inline-flex items-center gap-1 text-[9px] bg-cyan-500/8 border border-cyan-500/15 text-cyan-400 rounded-full px-2 py-0.5">
-                                  <Microscope className="h-2.5 w-2.5" /> Labs
-                                </span>
-                              )}
-                              {record.refined_output && (
-                                <span className="inline-flex items-center gap-1 text-[9px] bg-primary/8 border border-primary/15 text-primary rounded-full px-2 py-0.5">
-                                  <BrainCircuit className="h-2.5 w-2.5" /> AI
-                                  Diagnosis
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div
-                            className={`p-1.5 rounded-lg transition-colors shrink-0 mt-0.5 ${isExpanded ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}
-                          >
-                            {isExpanded ? (
-                              <ChevronUp className="h-4 w-4" />
-                            ) : (
-                              <ChevronDown className="h-4 w-4" />
-                            )}
-                          </div>
-                        </button>
+                            </button>
+                          )}
+                        </div>
 
                         {/* Expanded detail panel */}
                         {isExpanded && (
