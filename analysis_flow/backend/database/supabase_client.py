@@ -92,8 +92,7 @@ class SupabaseClient :
     Supabase client for medical knowledge base operations.
     Handles vector embeddings and user profile operations.
     """
-    # The analysis and admin routes import this class when LOCAL_MODE is off,
-    # so Supabase remains the source of truth for profiles and knowledge.
+    # Supabase remains the source of truth for profiles and knowledge.
 
     def __init__ (self ):
 

@@ -119,10 +119,6 @@ def _get(table: str, query_params: str, single: bool = False) -> Any:
     return data
 
 
-# --------------------------------------------------------------------- #
-#  analysis_payloads                                                      #
-# --------------------------------------------------------------------- #
-
 def check_existing_payload(session_id: str) -> Optional[str]:
     """
     Return the Supabase row-id of an already-saved analysis_payload for
@@ -307,15 +303,35 @@ def _history_record_rank(record: Dict[str, Any]) -> tuple[int, int, int, int]:
     )
 
 
+def _normalize_experience_level(value: Any) -> str:
+    level = str(value or "").strip().lower()
+    if level in {"newbie", "junior"}:
+        return "newbie"
+    if level in {"seasoned", "expert"}:
+        return "seasoned"
+    return ""
+
+
 def _dedupe_history_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     deduped: List[Dict[str, Any]] = []
     payload_index: Dict[str, int] = {}
+    ora_outputs_by_payload: Dict[str, Dict[str, str]] = {}
+    ora_disclaimers_by_payload: Dict[str, Dict[str, str]] = {}
 
     for record in records:
         payload_id = str(record.get("payload_id") or "").strip()
         if not payload_id:
             deduped.append(record)
             continue
+
+        mode = _normalize_experience_level(record.get("experience_level"))
+        refined_output = str(record.get("refined_output") or "").strip()
+        disclaimer = str(record.get("disclaimer") or "").strip()
+
+        if mode and refined_output:
+            ora_outputs_by_payload.setdefault(payload_id, {})[mode] = refined_output
+        if mode and disclaimer:
+            ora_disclaimers_by_payload.setdefault(payload_id, {})[mode] = disclaimer
 
         existing_index = payload_index.get(payload_id)
         if existing_index is None:
@@ -325,6 +341,18 @@ def _dedupe_history_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any
 
         if _history_record_rank(record) > _history_record_rank(deduped[existing_index]):
             deduped[existing_index] = record
+
+    for record in deduped:
+        payload_id = str(record.get("payload_id") or "").strip()
+        if not payload_id:
+            continue
+
+        outputs = ora_outputs_by_payload.get(payload_id)
+        disclaimers = ora_disclaimers_by_payload.get(payload_id)
+        if outputs:
+            record["ora_outputs"] = outputs
+        if disclaimers:
+            record["ora_disclaimers"] = disclaimers
 
     return deduped
 

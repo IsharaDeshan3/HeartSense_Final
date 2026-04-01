@@ -158,3 +158,36 @@ export async function POST(
     );
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ slug: string[] }> },
+) {
+  const { slug } = await params;
+  const targets = buildTargetUrl(slug, req.nextUrl.search);
+
+  try {
+    const { backendRes } = await fetchWithFallback(targets, {
+      method: "DELETE",
+      headers: { Accept: req.headers.get("Accept") ?? "application/json" },
+      signal: AbortSignal.timeout(60_000),
+    });
+
+    const text = await backendRes.text();
+    return new NextResponse(text, {
+      status: backendRes.status,
+      headers: { "Content-Type": backendRes.headers.get("Content-Type") ?? "application/json" },
+    });
+  } catch (error: unknown) {
+    const proxyError = extractProxyError(error);
+    return NextResponse.json(
+      {
+        error: "Cannot reach workflow backend",
+        target: WORKFLOW_BACKEND_URL,
+        attemptedTargets: proxyError.attemptedTargets,
+        detail: proxyError.message,
+      },
+      { status: 502 },
+    );
+  }
+}

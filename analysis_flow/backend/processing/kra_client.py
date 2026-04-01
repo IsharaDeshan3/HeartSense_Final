@@ -36,7 +36,6 @@ class KRAClient:
     Local KRA inference client.
     Uses direct calls to `LLMEngine.generate_kra()`.
     """
-
     # WorkflowService uses this client right after retrieval to turn the FAISS
     # context into a structured diagnosis payload.
 

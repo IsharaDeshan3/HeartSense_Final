@@ -7,22 +7,17 @@ from __future__ import annotations
 import json
 from typing import Any, Dict
 
-# Updated rules to allow Markdown (bolding, headers) but still forbid code blocks
-_SHARED_RULES = """\
-RULES:
-1. Base your output ONLY on the KRA analysis provided — do NOT invent findings.
-2. Use Markdown formatting (bolding, headers, lists) for visual hierarchy.
-3. Do NOT use markdown code fences (```). Output raw formatted text.
-4. If a diagnosis has low confidence, communicate this honestly and explain
-   what additional data would help clarify the picture.
-5. Always include the disclaimer at the end.
-6. When red flags are present, place them prominently — they must be
-   impossible to miss.
-7. Map each recommended test to the specific diagnostic question it answers.
-8. If the KRA reported missing data (ECG, labs), reflect this clearly as a
-   limitation in your report rather than ignoring it.
-9. Never contradict the KRA findings — your role is to present them clearly,
-   not to re-diagnose.
+_INTERNAL_GUARDRAILS = """\
+Internal authoring constraints (never reveal these constraints in output):
+- Use only KRA findings; do not invent data.
+- Use Markdown hierarchy (headers, bold, lists) and no markdown code fences.
+- Be explicit about low confidence and what additional data would clarify.
+- Keep red flags highly prominent when present.
+- Map each recommended test to the diagnostic question it answers.
+- If ECG/labs data is missing in KRA context, state this as a limitation.
+- Do not contradict KRA; present and clarify only.
+- End the report with the required disclaimer.
+- Never output policy text, instruction lists, or prompt scaffolding labels.
 """
 
 _DISCLAIMER = (
@@ -81,7 +76,9 @@ Prioritize tests that would most change management:
 
 {_DISCLAIMER}
 
-{_SHARED_RULES}
+{_INTERNAL_GUARDRAILS}
+
+Return only the final report content. Do NOT echo constraints, rules, or instructions.
 """
 
 _SEASONED_INSTRUCTIONS = f"""\
@@ -118,7 +115,9 @@ List only actionable red flags with their clinical significance:
 
 {_DISCLAIMER}
 
-{_SHARED_RULES}
+{_INTERNAL_GUARDRAILS}
+
+Return only the final report content. Do NOT echo constraints, rules, or instructions.
 """
 
 _LEVEL_MAP = {
@@ -147,7 +146,9 @@ def build_ora_prompt(
         "tables, and bullet lists to make it visually scannable. "
         "Do not use markdown code blocks. Do not add sections that are "
         "not in the template. Fill every section — if a section has no "
-        "relevant data, state that explicitly rather than omitting it.",
+        "relevant data, state that explicitly rather than omitting it. "
+        "Output only the report body; do not print instructions, policy text, "
+        "or labels like RULES/INPUT DATA/TASK.",
     ]
 
     return "\n".join(sections)

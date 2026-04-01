@@ -19,6 +19,53 @@ logger = logging.getLogger(__name__)
 # Valid experience levels
 _VALID_LEVELS = {"NEWBIE", "SEASONED"}
 
+_PROMPT_LEAK_MARKERS = (
+    "RULES:",
+    "Internal authoring constraints",
+    "═══ INPUT DATA ═══",
+    "PATIENT PRESENTATION:",
+    "KRA ANALYSIS:",
+    "═══ TASK ═══",
+)
+
+
+def _sanitize_refined_output(text: str) -> str:
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return cleaned
+
+    # Remove accidental fenced markdown wrappers if the model emits them.
+    cleaned = cleaned.replace("```markdown", "").replace("```", "").strip()
+
+    # If prompt scaffolding leaked into output, trim everything before the
+    # first likely clinical-report section anchor.
+    if any(marker in cleaned for marker in _PROMPT_LEAK_MARKERS):
+        anchors = [
+            "# CLINICAL ASSESSMENT BRIEF",
+            "## 📋 DIAGNOSTIC SUMMARY",
+            "### 🩺 DIFFERENTIAL DIAGNOSIS",
+            "**Overview:**",
+        ]
+        anchor_positions = [cleaned.find(anchor) for anchor in anchors if cleaned.find(anchor) >= 0]
+        if anchor_positions:
+            cleaned = cleaned[min(anchor_positions):].strip()
+        else:
+            # Fallback: strip explicit scaffold/rule lines and keep meaningful text.
+            filtered_lines: list[str] = []
+            for line in cleaned.splitlines():
+                stripped = line.strip()
+                if not stripped:
+                    filtered_lines.append(line)
+                    continue
+                if any(stripped.startswith(marker) for marker in _PROMPT_LEAK_MARKERS):
+                    continue
+                if stripped.startswith(tuple(f"{i}." for i in range(1, 10))):
+                    continue
+                filtered_lines.append(line)
+            cleaned = "\n".join(filtered_lines).strip()
+
+    return cleaned
+
 
 class ORAClient:
     """
@@ -108,7 +155,7 @@ class ORAClient:
         logger.info("ORA raw output (level=%s)\n%s\n%s", level, "=" * 80, raw_text.strip())
 
         return {
-            "refined_output": raw_text.strip(),
+            "refined_output": _sanitize_refined_output(raw_text),
             "disclaimer": (
                 "⚠️ DISCLAIMER: This is an AI-assisted analysis for clinical "
                 "decision support only. It is NOT a medical diagnosis. All "
