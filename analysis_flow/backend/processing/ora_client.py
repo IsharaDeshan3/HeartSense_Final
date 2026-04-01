@@ -1,22 +1,21 @@
 """
-backend/processing/ora_client.py
-
-Local ORA inference client using direct local LLM calls.
-
-Uses Phi-3.5-mini-instruct (Q4_K_M) on CPU via LLMEngine.
+Remote ORA refinement client using Gemini API calls.
 """
 
 from __future__ import annotations
 
-import json
 import logging
+import os
 import threading
 import time
 from typing import Any, Dict, Optional
 
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
 logger = logging.getLogger(__name__)
 
-# Valid experience levels
 _VALID_LEVELS = {"NEWBIE", "SEASONED"}
 
 _PROMPT_LEAK_MARKERS = (
@@ -34,11 +33,8 @@ def _sanitize_refined_output(text: str) -> str:
     if not cleaned:
         return cleaned
 
-    # Remove accidental fenced markdown wrappers if the model emits them.
     cleaned = cleaned.replace("```markdown", "").replace("```", "").strip()
 
-    # If prompt scaffolding leaked into output, trim everything before the
-    # first likely clinical-report section anchor.
     if any(marker in cleaned for marker in _PROMPT_LEAK_MARKERS):
         anchors = [
             "# CLINICAL ASSESSMENT BRIEF",
@@ -50,7 +46,6 @@ def _sanitize_refined_output(text: str) -> str:
         if anchor_positions:
             cleaned = cleaned[min(anchor_positions):].strip()
         else:
-            # Fallback: strip explicit scaffold/rule lines and keep meaningful text.
             filtered_lines: list[str] = []
             for line in cleaned.splitlines():
                 stripped = line.strip()
@@ -67,26 +62,75 @@ def _sanitize_refined_output(text: str) -> str:
     return cleaned
 
 
+def _extract_gemini_text(payload: Dict[str, Any]) -> str:
+    candidates = payload.get("candidates")
+    if not isinstance(candidates, list):
+        return ""
+
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        content = candidate.get("content") or {}
+        parts = content.get("parts") or []
+        text_chunks: list[str] = []
+        for part in parts:
+            if isinstance(part, dict):
+                chunk = str(part.get("text") or "").strip()
+                if chunk:
+                    text_chunks.append(chunk)
+        if text_chunks:
+            return "\n".join(text_chunks).strip()
+
+    return ""
+
+
 class ORAClient:
-    """
-    Local ORA inference client.
-
-    Uses direct calls to `LLMEngine.generate_ora()`.
-    """
-
-    # WorkflowService calls ORA after KRA so the final answer is tailored to
-    # the requested experience level before being saved to Supabase.
+    """ORA refinement client backed by Google Gemini API."""
 
     def __init__(self) -> None:
-        self._engine = None
+        self._api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        self._model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
+        self._api_base = os.getenv("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
 
-    def _get_engine(self):
-        # Shares the same singleton engine as KRA; the module decides which
-        # local model to load for refinement.
-        if self._engine is None:
-            from core.llm_engine import LLMEngine
-            self._engine = LLMEngine.instance()
-        return self._engine
+        try:
+            timeout_raw = os.getenv("ORA_GEMINI_TIMEOUT_SEC") or os.getenv("ORA_TIMEOUT_SEC") or "120"
+            self._timeout_sec = max(5.0, float(timeout_raw))
+        except ValueError:
+            self._timeout_sec = 120.0
+
+        try:
+            self._temperature = float(os.getenv("ORA_GEMINI_TEMPERATURE", "0.2"))
+        except ValueError:
+            self._temperature = 0.2
+
+        try:
+            self._top_p = float(os.getenv("ORA_GEMINI_TOP_P", "0.9"))
+        except ValueError:
+            self._top_p = 0.9
+
+        try:
+            self._max_output_tokens = max(256, int(os.getenv("ORA_GEMINI_MAX_OUTPUT_TOKENS", "2048")))
+        except ValueError:
+            self._max_output_tokens = 2048
+
+        self._session = requests.Session()
+        retries = Retry(
+            total=2,
+            connect=2,
+            read=2,
+            backoff_factor=0.5,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=frozenset(["GET", "POST"]),
+        )
+        adapter = HTTPAdapter(max_retries=retries)
+        self._session.mount("https://", adapter)
+        self._session.mount("http://", adapter)
+
+    def _generate_url(self) -> str:
+        return f"{self._api_base}/models/{self._model}:generateContent"
+
+    def _model_url(self) -> str:
+        return f"{self._api_base}/models/{self._model}"
 
     def refine(
         self,
@@ -100,32 +144,24 @@ class ORAClient:
         supabase_available: bool = True,
         inline_kra_result: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Refine KRA output using local Phi-3.5-mini model.
-
-        Args:
-            kra_result: Raw KRA output dict.
-            symptoms_text: Original patient presentation.
-            experience_level: 'NEWBIE' or 'SEASONED'.
-            cancel_event: Set to abort refinement.
-
-        Returns:
-            Dict with refined_output, disclaimer, status.
-        """
+        """Refine KRA output by calling Gemini generateContent API."""
         from core.ora_prompt import build_ora_prompt
 
-        # ORA normalizes the requested level first so workflow_service.py can
-        # safely pass frontend values without worrying about casing.
         level = experience_level.upper()
         if level not in _VALID_LEVELS:
             logger.warning("Invalid experience_level '%s', defaulting to 'SEASONED'", experience_level)
             level = "SEASONED"
 
-        # Handle legacy inline_kra_result kwargs
         if kra_result is None and inline_kra_result is not None:
             kra_result = inline_kra_result
         if kra_result is None:
             kra_result = {}
+
+        if cancel_event and cancel_event.is_set():
+            raise RuntimeError("ANALYSIS_CANCELLED")
+
+        if not self._api_key:
+            raise RuntimeError("GEMINI_API_KEY_NOT_CONFIGURED")
 
         prompt = build_ora_prompt(
             kra_result=kra_result,
@@ -133,26 +169,46 @@ class ORAClient:
             experience_level=level,
         )
 
-        t0 = time.time()
-        engine = self._get_engine()
+        request_body: Dict[str, Any] = {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": self._temperature,
+                "topP": self._top_p,
+                "maxOutputTokens": self._max_output_tokens,
+            },
+        }
+
+        started = time.time()
+        try:
+            response = self._session.post(
+                self._generate_url(),
+                params={"key": self._api_key},
+                headers={"User-Agent": "analysis-flow-ora-client/1.0"},
+                json=request_body,
+                timeout=self._timeout_sec,
+            )
+        except requests.RequestException as exc:
+            raise RuntimeError(f"ORA_GEMINI_REQUEST_FAILED:{exc}") from exc
 
         if cancel_event and cancel_event.is_set():
             raise RuntimeError("ANALYSIS_CANCELLED")
 
-        # The refined response is the user-facing answer that the workflow
-        # layer persists as the final diagnosis record.
-        raw_text = engine.generate_ora(
-            prompt,
-            cancel_event=cancel_event,
-        )
+        if response.status_code >= 400:
+            detail = response.text[:500]
+            raise RuntimeError(f"ORA_GEMINI_HTTP_{response.status_code}:{detail}")
 
-        if not raw_text or not raw_text.strip():
-            logger.error("ORA returned empty output (level=%s)", level)
+        try:
+            response_payload = response.json()
+        except ValueError as exc:
+            raise RuntimeError("ORA_GEMINI_INVALID_JSON") from exc
+
+        raw_text = _extract_gemini_text(response_payload)
+        if not raw_text:
+            logger.error("Gemini returned empty ORA output (level=%s)", level)
             raise RuntimeError("ORA_OUTPUT_EMPTY")
 
-        elapsed_ms = int((time.time() - t0) * 1000)
-        logger.info("ORA local inference completed (%d ms, level=%s)", elapsed_ms, level)
-        logger.info("ORA raw output (level=%s)\n%s\n%s", level, "=" * 80, raw_text.strip())
+        elapsed_ms = int((time.time() - started) * 1000)
+        logger.info("ORA Gemini refinement completed (%d ms, level=%s)", elapsed_ms, level)
 
         return {
             "refined_output": _sanitize_refined_output(raw_text),
@@ -165,9 +221,16 @@ class ORAClient:
         }
 
     def health_check(self) -> bool:
-        """Return True if the local ORA model is loaded."""
+        """Return True if Gemini model endpoint is reachable."""
+        if not self._api_key:
+            return False
+
         try:
-            engine = self._get_engine()
-            return engine.ora_model is not None
-        except Exception:
+            response = self._session.get(
+                self._model_url(),
+                params={"key": self._api_key},
+                timeout=10,
+            )
+            return response.status_code < 400
+        except requests.RequestException:
             return False

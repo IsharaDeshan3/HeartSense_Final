@@ -86,7 +86,6 @@ CREATE INDEX IF NOT EXISTS idx_events_session ON orchestration_events(session_id
 CREATE INDEX IF NOT EXISTS idx_retrieval_session_source ON retrieval_context(session_id, source_type);
 """
 
-
 class WorkflowStore:
     # This store persists the workflow session lifecycle that the frontend
     # drives through init, extraction, lab/ecg, analysis, and cleanup steps.

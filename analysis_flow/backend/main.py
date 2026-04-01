@@ -52,24 +52,14 @@ async def lifespan(app: FastAPI):
         logger.warning("Supabase schema check skipped (connection issue): %s", exc)
 
     try:
-        from core.llm_engine import LLMEngine
-
-        logger.info("Preloading LLM models for analysis_flow ...")
-        engine = LLMEngine.instance()
-        health = engine.health()
+        provider_readiness = workflow._workflow.readiness_status()  # pylint: disable=protected-access
         logger.info(
-            "LLM models loaded (KRA runtime=%s, fallback=%s, KRA model=%s, ORA model=%s)",
-            health.get("kra_runtime"),
-            health.get("kra_fallback_active"),
-            health.get("kra_model"),
-            health.get("ora_model"),
+            "Inference providers readiness (KRA=%s, ORA=%s)",
+            provider_readiness.get("kra"),
+            provider_readiness.get("ora"),
         )
-    except Exception:
-        from core.llm_engine import LLMEngine
-
-        logger.error("LLM preload failed - models unavailable until environment is fixed")
-        logger.error("LLM diagnostics: %s", LLMEngine.diagnostics())
-        logger.exception("LLM preload exception")
+    except Exception as exc:
+        logger.warning("Inference provider readiness check failed: %s", exc)
 
     try:
         from backend.processing.search_service import SearchService
@@ -92,7 +82,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="KRA-ORA Medical Analysis API",
-    description="Workflow-based AI medical analysis with local LLM inference and Supabase persistence",
+    description="Workflow-based AI medical analysis with remote KRA/ORA providers and Supabase persistence",
     version="2.0.0",
     lifespan=lifespan,
 )

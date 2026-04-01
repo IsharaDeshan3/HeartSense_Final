@@ -44,16 +44,6 @@ def _install_fake_faiss_retriever() -> None:
     sys.modules["faiss_retriever"] = module
 
 
-class DummyEngine:
-    def health(self):
-        return {
-            "kra_runtime": "mock",
-            "kra_fallback_active": False,
-            "kra_model": "mock-kra",
-            "ora_model": "mock-ora",
-        }
-
-
 class BackendSmokeTest(unittest.TestCase):
     def test_full_backend_smoke(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -66,12 +56,8 @@ class BackendSmokeTest(unittest.TestCase):
             workflow_module = importlib.import_module("routes.workflow")
             workflow_store_module = importlib.import_module("backend.processing.workflow_store")
             supabase_payload_module = importlib.import_module("processing.supabase_payload")
-            llm_engine_module = importlib.import_module("core.llm_engine")
-
-            dummy_engine = DummyEngine()
 
             with patch.object(supabase_payload_module, "verify_schema", return_value={"ok": True, "tables": {}}), \
-                 patch.object(llm_engine_module.LLMEngine, "instance", return_value=dummy_engine), \
                  patch.object(workflow_module._workflow, "run_analysis", return_value={
                      "session_id": "mock-workflow-session",
                      "status": "SUCCESS",
