@@ -107,9 +107,6 @@ export default function DoctorLayout({
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col relative overflow-y-auto bg-background">
-        {/* Background Gradients */}
-        <div className="absolute top-[-10%] right-[-10%] w-[800px] h-[800px] bg-primary/10 rounded-full blur-[180px] -z-10 animate-pulse" />
-        {/* Removed blurred accent element */}
         {children}
       </main>
     </div>

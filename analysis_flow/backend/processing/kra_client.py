@@ -57,15 +57,17 @@ class KRAClient:
         self._api_token = os.getenv("KRA_API_TOKEN", "").strip() or os.getenv("HF_TOKEN", "").strip()
 
         try:
-            timeout_raw = os.getenv("KRA_API_TIMEOUT_SEC") or os.getenv("KRA_TIMEOUT_SEC") or "180"
+            # Prefer the orchestration timeout first so client-level HTTP timeout
+            # stays consistent with workflow_service KRA timeout behavior.
+            timeout_raw = os.getenv("KRA_TIMEOUT_SEC") or os.getenv("KRA_API_TIMEOUT_SEC") or "900"
             self._timeout_sec = max(5.0, float(timeout_raw))
         except ValueError:
-            self._timeout_sec = 180.0
+            self._timeout_sec = 900.0
 
         try:
-            self._context_max_chars = max(2000, int(os.getenv("KRA_CONTEXT_MAX_CHARS", "24000")))
+            self._context_max_chars = max(2000, int(os.getenv("KRA_CONTEXT_MAX_CHARS", "100000")))
         except ValueError:
-            self._context_max_chars = 24000
+            self._context_max_chars = 100000
 
         self._session = requests.Session()
         retries = Retry(
