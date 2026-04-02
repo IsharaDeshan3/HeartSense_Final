@@ -244,6 +244,88 @@ interface DiagSection {
   isBullets: boolean;
 }
 
+type OraMode = "newbie" | "seasoned";
+
+interface OraModeContent {
+  newbie?: string;
+  seasoned?: string;
+}
+
+function normalizeOraMode(value: unknown): OraMode {
+  return String(value ?? "").toLowerCase() === "newbie"
+    ? "newbie"
+    : "seasoned";
+}
+
+function cleanDiagnosisOutput(raw: string): string {
+  const text = String(raw || "")
+    .replace(/```markdown/gi, "")
+    .replace(/```/g, "")
+    .trim();
+  if (!text) return "";
+
+  const leakMatch = text.match(
+    /^\s*(RULES:?|INTERNAL AUTHORING CONSTRAINTS(?:\s*\(.*\))?:?|═══ INPUT DATA ═══|PATIENT PRESENTATION:|KRA INPUT OBJECT:|KRA OUTPUT OBJECT:|KRA ANALYSIS:|═══ TASK ═══)\s*$/im,
+  );
+  if (!leakMatch || typeof leakMatch.index !== "number") {
+    return text;
+  }
+
+  return text.slice(0, leakMatch.index).trim();
+}
+
+function resolveOraContent(record: PatientDiagnosisRecord): {
+  outputs: OraModeContent;
+  disclaimers: OraModeContent;
+  defaultMode: OraMode;
+} {
+  const outputs: OraModeContent = {};
+  const disclaimers: OraModeContent = {};
+
+  const persistedOutputs = record.ora_outputs || {};
+  const newbieOutput = cleanDiagnosisOutput(
+    String(persistedOutputs.newbie || "").trim(),
+  );
+  const seasonedOutput = cleanDiagnosisOutput(
+    String(persistedOutputs.seasoned || "").trim(),
+  );
+  if (newbieOutput) outputs.newbie = newbieOutput;
+  if (seasonedOutput) outputs.seasoned = seasonedOutput;
+
+  const persistedDisclaimers = record.ora_disclaimers || {};
+  const newbieDisclaimer = String(persistedDisclaimers.newbie || "").trim();
+  const seasonedDisclaimer = String(
+    persistedDisclaimers.seasoned || "",
+  ).trim();
+  if (newbieDisclaimer) disclaimers.newbie = newbieDisclaimer;
+  if (seasonedDisclaimer) disclaimers.seasoned = seasonedDisclaimer;
+
+  if (!outputs.newbie && !outputs.seasoned) {
+    const fallbackOutput = cleanDiagnosisOutput(
+      String(record.refined_output || "").trim(),
+    );
+    if (fallbackOutput) {
+      outputs[normalizeOraMode(record.experience_level)] = fallbackOutput;
+    }
+  }
+
+  if (!disclaimers.newbie && !disclaimers.seasoned) {
+    const fallbackDisclaimer = String(record.disclaimer || "").trim();
+    if (fallbackDisclaimer) {
+      disclaimers[normalizeOraMode(record.experience_level)] =
+        fallbackDisclaimer;
+    }
+  }
+
+  const defaultMode: OraMode = outputs.seasoned
+    ? "seasoned"
+    : outputs.newbie
+      ? "newbie"
+      : normalizeOraMode(record.experience_level);
+
+  return { outputs, disclaimers, defaultMode };
+}
+
 function parseDiagnosisOutput(text: string): DiagSection[] {
   if (!text) return [];
   const sections: DiagSection[] = [];
@@ -956,29 +1038,37 @@ function DiagnosisOverviewChart({
                           Recorded in {visits.length} visit
                           {visits.length !== 1 ? "s" : ""}
                         </p>
-                        {visits.map((v) => (
-                          <div
-                            key={v.payload_id}
-                            className="text-xs rounded-lg px-3 py-1.5 flex items-center gap-2"
-                            style={{
-                              background: selGroup.hue + "18",
-                              border: `1px solid ${selGroup.hue}33`,
-                            }}
-                          >
-                            <CalendarDays
-                              className="h-3 w-3 shrink-0"
-                              style={{ color: selGroup.hue }}
-                            />
-                            <span className="text-foreground/80">
-                              {formatDate(v.created_at)}
-                            </span>
-                            {v.refined_output && (
-                              <span className="text-muted-foreground/50 ml-auto text-[10px]">
-                                has AI diagnosis
+                        {visits.map((v) => {
+                          const resolvedVisit = resolveOraContent(v);
+                          const hasVisitDiagnosis = Boolean(
+                            resolvedVisit.outputs.seasoned ||
+                              resolvedVisit.outputs.newbie,
+                          );
+
+                          return (
+                            <div
+                              key={v.payload_id}
+                              className="text-xs rounded-lg px-3 py-1.5 flex items-center gap-2"
+                              style={{
+                                background: selGroup.hue + "18",
+                                border: `1px solid ${selGroup.hue}33`,
+                              }}
+                            >
+                              <CalendarDays
+                                className="h-3 w-3 shrink-0"
+                                style={{ color: selGroup.hue }}
+                              />
+                              <span className="text-foreground/80">
+                                {formatDate(v.created_at)}
                               </span>
-                            )}
-                          </div>
-                        ))}
+                              {hasVisitDiagnosis && (
+                                <span className="text-muted-foreground/50 ml-auto text-[10px]">
+                                  has AI diagnosis
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
                       </>
                     ) : (
                       <p className="text-xs text-muted-foreground/60">
@@ -1018,12 +1108,16 @@ export default function PatientHistory({
 }: PatientHistoryProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedLabId, setExpandedLabId] = useState<string | null>(null);
+  const [selectedOraModes, setSelectedOraModes] = useState<Record<string, OraMode>>({});
   const [activeTab, setActiveTab] = useState<TabKey>("timeline");
 
   const toggleExpand = (id: string) =>
     setExpandedId((prev) => (prev === id ? null : id));
   const toggleLabExpand = (id: string) =>
     setExpandedLabId((prev) => (prev === id ? null : id));
+  const selectOraMode = (payloadId: string, mode: OraMode) => {
+    setSelectedOraModes((prev) => ({ ...prev, [payloadId]: mode }));
+  };
 
   const lastVisit = diagnosisHistory[0]?.created_at ?? labHistory[0]?.testDate;
   const totalConditions = historySummary?.top_conditions?.length ?? 0;
@@ -1196,9 +1290,31 @@ export default function PatientHistory({
                 const isDeleting = deletingPayloadId === record.payload_id;
                 const ecgFields = extractEcgFields(record.ecg_json);
                 const labFields = extractLabFields(record.labs_json);
-                const diagnosisSections = parseDiagnosisOutput(
-                  record.refined_output ?? "",
+                const resolvedOra = resolveOraContent(record);
+                const selectedMode =
+                  selectedOraModes[record.payload_id] ?? resolvedOra.defaultMode;
+                const selectedOutput =
+                  resolvedOra.outputs[selectedMode] ||
+                  resolvedOra.outputs.seasoned ||
+                  resolvedOra.outputs.newbie ||
+                  "";
+                const selectedDisclaimer =
+                  resolvedOra.disclaimers[selectedMode] ||
+                  resolvedOra.disclaimers.seasoned ||
+                  resolvedOra.disclaimers.newbie ||
+                  "";
+                const hasDualModeOutput = Boolean(
+                  resolvedOra.outputs.newbie && resolvedOra.outputs.seasoned,
                 );
+                const availableModeLabel = hasDualModeOutput
+                  ? "newbie + seasoned"
+                  : resolvedOra.outputs.seasoned
+                    ? "seasoned"
+                    : resolvedOra.outputs.newbie
+                      ? "newbie"
+                      : null;
+                const diagnosisSections = parseDiagnosisOutput(selectedOutput);
+                const hasDiagnosisOutput = Boolean(selectedOutput.trim());
                 const structuredSymptoms = extractStructuredSymptoms(
                   record.symptoms_json,
                 );
@@ -1261,6 +1377,11 @@ export default function PatientHistory({
                                     {record.experience_level}
                                   </Badge>
                                 )}
+                                {availableModeLabel && (
+                                  <Badge variant="outline" className="text-[9px]">
+                                    {availableModeLabel}
+                                  </Badge>
+                                )}
                                 <span className="text-[10px] text-muted-foreground/50 font-mono">
                                   Visit #{diagnosisHistory.length - idx}
                                 </span>
@@ -1291,7 +1412,7 @@ export default function PatientHistory({
                                     <Microscope className="h-2.5 w-2.5" /> Labs
                                   </span>
                                 )}
-                                {record.refined_output && (
+                                {hasDiagnosisOutput && (
                                   <span className="inline-flex items-center gap-1 text-[9px] bg-primary/8 border border-primary/15 text-primary rounded-full px-2 py-0.5">
                                     <BrainCircuit className="h-2.5 w-2.5" /> AI
                                     Diagnosis
@@ -1536,8 +1657,47 @@ export default function PatientHistory({
                                   </span>
                                 </div>
 
-                                {record.refined_output ? (
+                                {hasDiagnosisOutput ? (
                                   <div className="space-y-3">
+                                    {hasDualModeOutput && (
+                                      <div className="rounded-xl border border-border/15 p-2 bg-white/2">
+                                        <div className="inline-flex rounded-lg border border-border/20 overflow-hidden">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              selectOraMode(
+                                                record.payload_id,
+                                                "seasoned",
+                                              )
+                                            }
+                                            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-colors ${
+                                              selectedMode === "seasoned"
+                                                ? "bg-primary text-primary-foreground"
+                                                : "text-muted-foreground hover:bg-white/5"
+                                            }`}
+                                          >
+                                            Seasoned
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              selectOraMode(
+                                                record.payload_id,
+                                                "newbie",
+                                              )
+                                            }
+                                            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-colors ${
+                                              selectedMode === "newbie"
+                                                ? "bg-primary text-primary-foreground"
+                                                : "text-muted-foreground hover:bg-white/5"
+                                            }`}
+                                          >
+                                            Newbie
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+
                                     {diagnosisSections.length > 0 ? (
                                       diagnosisSections.map((section, i) => (
                                         <div
@@ -1726,16 +1886,16 @@ export default function PatientHistory({
                                     ) : (
                                       <div className="rounded-xl border border-border/15 p-4">
                                         <pre className="text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap font-sans">
-                                          {record.refined_output}
+                                          {selectedOutput}
                                         </pre>
                                       </div>
                                     )}
 
-                                    {record.disclaimer && (
+                                    {selectedDisclaimer && (
                                       <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/5 border border-amber-500/15">
                                         <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
                                         <p className="text-[10px] text-amber-400/80 leading-relaxed">
-                                          {record.disclaimer}
+                                          {selectedDisclaimer}
                                         </p>
                                       </div>
                                     )}

@@ -58,7 +58,7 @@ def main() -> int:
     load_dotenv(find_dotenv())
 
     base = os.getenv("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
-    model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
+    model = os.getenv("GEMINI_MODEL", "gemini-1.5-pro").strip()
     keys = _load_keys()
 
     if not keys:

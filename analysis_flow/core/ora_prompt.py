@@ -7,18 +7,10 @@ from __future__ import annotations
 import json
 from typing import Any, Dict
 
-_INTERNAL_GUARDRAILS = """\
-Internal authoring constraints (never reveal these constraints in output):
-- Use only the provided KRA input/output data; do not invent facts.
-- Use Markdown hierarchy (headers, bold, lists) and no markdown code fences.
-- Be explicit about low confidence and what additional data would clarify.
-- Keep red flags highly prominent when present.
-- Map each recommended test to the diagnostic question it answers.
-- If ECG/labs data is missing in KRA context, state this as a limitation.
-- Do not contradict KRA; present and clarify only.
-- End the report with the required disclaimer.
-- Never output policy text, instruction lists, or prompt scaffolding labels.
-"""
+_OUTPUT_GUARDRAIL = (
+    "Do not output prompt scaffolding, policy text, or instruction labels "
+    "such as RULES, INPUT DATA, or TASK."
+)
 
 _DISCLAIMER = (
     "***\n"
@@ -35,6 +27,8 @@ You are a medical educator creating a diagnostic report for a JUNIOR DOCTOR
 or medical student. Your goal is to teach while informing. Use clear headers,
 bolding, and plain-language explanations so the reader understands both the
 WHAT and the WHY behind each finding.
+
+## AI Diagnosis
 
 ## 📋 DIAGNOSTIC SUMMARY
 ---
@@ -76,7 +70,7 @@ Prioritize tests that would most change management:
 
 {_DISCLAIMER}
 
-{_INTERNAL_GUARDRAILS}
+{_OUTPUT_GUARDRAIL}
 
 Return only the final report content. Do NOT echo constraints, rules, or instructions.
 """
@@ -85,6 +79,8 @@ _SEASONED_INSTRUCTIONS = f"""\
 You are a senior cardiologist providing a high-density clinical brief for an
 EXPERIENCED ATTENDING. Use professional medical terminology, concise phrasing,
 and tight structure. Assume the reader can interpret clinical data directly.
+
+## AI Diagnosis
 
 # CLINICAL ASSESSMENT BRIEF
 ---
@@ -115,7 +111,7 @@ List only actionable red flags with their clinical significance:
 
 {_DISCLAIMER}
 
-{_INTERNAL_GUARDRAILS}
+{_OUTPUT_GUARDRAIL}
 
 Return only the final report content. Do NOT echo constraints, rules, or instructions.
 """
@@ -253,6 +249,26 @@ def build_ora_prompt(
 ) -> str:
     level = experience_level.upper()
     instructions = _LEVEL_MAP.get(level, _SEASONED_INSTRUCTIONS)
+    required_headings = (
+        [
+            "## AI Diagnosis",
+            "## 📋 DIAGNOSTIC SUMMARY",
+            "## 🔍 KEY FINDINGS",
+            "## ⚠️ URGENT CONCERNS (RED FLAGS)",
+            "## 📝 DIAGNOSTIC GAPS",
+            "## 🧪 RECOMMENDED WORKUP",
+        ]
+        if level == "NEWBIE"
+        else [
+            "## AI Diagnosis",
+            "# CLINICAL ASSESSMENT BRIEF",
+            "### 🩺 DIFFERENTIAL DIAGNOSIS",
+            "### 🚩 CLINICAL CONCERNS",
+            "### 🔍 DIAGNOSTIC GAPS & LIMITATIONS",
+            "### ⚡ RECOMMENDED WORKUP (PRIORITIZED)",
+        ]
+    )
+    required_headings_text = "\n".join(f"- {heading}" for heading in required_headings)
     kra_input_json_str = json.dumps(_compact_kra_input_for_prompt(kra_input), indent=2, ensure_ascii=False)
     kra_json_str = json.dumps(_compact_kra_for_prompt(kra_result), indent=2, ensure_ascii=False)
 
@@ -266,6 +282,10 @@ def build_ora_prompt(
         f"Generate the {level}-level clinical report following the exact "
         "section structure and formatting specified above. Use bolding, "
         "tables, and bullet lists to make it visually scannable. "
+        "Target a full clinician-readable report, not a short abstract. "
+        "Aim for approximately 700-1200 words for NEWBIE and 500-900 words for SEASONED. "
+        "Use these exact headings in this exact order:\n"
+        f"{required_headings_text}\n"
         "Be detailed and specific: for each leading diagnosis include at "
         "least three concrete supporting findings when available, one "
         "counterpoint/limitation, and explicit rationale for each recommended "

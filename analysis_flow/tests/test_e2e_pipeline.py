@@ -5,12 +5,14 @@ Tests that KRA (HuggingFace) and ORA (Gemini) are reachable and produce results.
 """
 
 import json
+import os
 import sys
 import time
 import requests
 
 BASE = "http://localhost:8080"
 API = f"{BASE}/api/workflow/v1"
+ANALYSIS_TIMEOUT_SEC = int(os.getenv("E2E_ANALYSIS_TIMEOUT_SEC", "600"))
 
 def step(name, ok=True):
     status = "✅" if ok else "❌"
@@ -142,7 +144,7 @@ def main():
     step(f"Lab saved → state={lab_result['state']}, rev={lab_result['revision']}")
 
     # ── 4. Run Analysis ──────────────────────────────────────────
-    step("Starting analysis pipeline (KRA → ORA)... This may take 30-120 seconds")
+    step(f"Starting analysis pipeline (KRA → ORA)... timeout={ANALYSIS_TIMEOUT_SEC}s")
     analysis_payload = {"experience_level": "seasoned"}
     started = time.time()
     
@@ -150,10 +152,10 @@ def main():
         r = requests.post(
             f"{API}/session/{session_id}/analysis/run",
             json=analysis_payload,
-            timeout=300  # 5 min timeout
+            timeout=ANALYSIS_TIMEOUT_SEC,
         )
     except requests.Timeout:
-        step("Analysis TIMED OUT after 5 minutes", ok=False)
+        step(f"Analysis TIMED OUT after {ANALYSIS_TIMEOUT_SEC}s", ok=False)
         print_latest_kra_from_history(patient_id)
         sys.exit(1)
     

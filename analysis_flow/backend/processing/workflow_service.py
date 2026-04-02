@@ -28,7 +28,6 @@ logger = logging.getLogger(__name__)
 # This module orchestrates the end-to-end clinical analysis workflow:
 # session state checks, retrieval, KRA/ORA model calls, persistence, and SSE events.
 
-
 class PipelineEventBus:
     """
     Thread-safe function for pipeline step events.
@@ -106,7 +105,7 @@ class WorkflowService:
             "kra_provider": "huggingface_api",
             "ora_provider": "gemini_api",
             "kra_api_url_configured": bool(os.getenv("KRA_API_URL", "").strip()),
-            "gemini_model": os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
+            "gemini_model": "gemini-1.5-pro",
             "gemini_api_key_configured": bool(os.getenv("GEMINI_API_KEY", "").strip()),
         }
         return {
