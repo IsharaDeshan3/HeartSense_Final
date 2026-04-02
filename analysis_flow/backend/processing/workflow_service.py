@@ -109,11 +109,6 @@ class WorkflowService:
             "gemini_model": os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
             "gemini_api_key_configured": bool(os.getenv("GEMINI_API_KEY", "").strip()),
         }
-        logger.info(
-            "Provider readiness — KRA: %s ORA: %s",
-            kra_ok,
-            ora_ok,
-        )
         return {
             "kra": kra_ok,
             "ora": ora_ok,
@@ -138,6 +133,15 @@ class WorkflowService:
             return max(30.0, float(timeout_raw))
         except ValueError:
             return 600.0
+
+    @staticmethod
+    def _ora_secondary_timeout_seconds() -> float:
+        """Bound how long we wait for the optional secondary ORA mode."""
+        try:
+            timeout_raw = os.getenv("ORA_SECONDARY_TIMEOUT_SEC", "45")
+            return max(0.0, float(timeout_raw))
+        except ValueError:
+            return 45.0
 
     @staticmethod
     def _is_valid_kra_result(kra_result: dict[str, Any]) -> bool:
@@ -757,6 +761,16 @@ class WorkflowService:
         # ── Step 4: Persist KRA and run ORA outputs (NEWBIE + SEASONED) ─────
         # ORA only needs KRA output, so we run both experience levels once and
         # return both variants to the frontend toggle.
+        kra_input_package = {
+            "session_id": session_id,
+            "symptoms_text": symptoms_text,
+            "context_text": context_text,
+            "ecg": ecg_json,
+            "labs": labs_json,
+            "history_summary_text": history_summary_text,
+            "quality": quality,
+        }
+
         requested_level = str(experience_level or "seasoned").strip().upper()
         if requested_level not in {"NEWBIE", "SEASONED"}:
             requested_level = "SEASONED"
@@ -781,6 +795,7 @@ class WorkflowService:
             """Worker: produce one ORA variant for a specific experience level."""
             started_at = time.time()
             result = self._ora.refine(
+                kra_input=kra_input_package,
                 kra_result=kra_result,
                 symptoms_text=symptoms_text,
                 experience_level=level,
@@ -806,29 +821,44 @@ class WorkflowService:
                 level: executor.submit(run_ora_refinement, level)
                 for level in ora_levels
             }
-            done, pending = wait(
-                {kra_save_future, *ora_futures.values()},
+            primary_future = ora_futures[selected_key.upper()]
+            required_futures = {kra_save_future, primary_future}
+            done_required, pending_required = wait(
+                required_futures,
                 timeout=self._ora_timeout_seconds(),
                 return_when=FIRST_EXCEPTION,
             )
 
-            primary_future = ora_futures[selected_key.upper()]
-            if primary_future not in done:
+            if primary_future not in done_required:
                 cancel_event.set()
                 logger.error("ORA refinement timed out for session %s after %.1fs", session_id, self._ora_timeout_seconds())
+                for future in ora_futures.values():
+                    future.cancel()
                 raise RuntimeError("ORA_TIMEOUT")
 
-            kra_error = kra_save_future.exception() if kra_save_future in done else None
-            primary_error = primary_future.exception() if primary_future in done else None
+            kra_error = kra_save_future.exception() if kra_save_future in done_required else None
+            primary_error = primary_future.exception() if primary_future in done_required else None
             if kra_error is not None or primary_error is not None:
                 cancel_event.set()
-                for future in pending:
+                for future in ora_futures.values():
                     future.cancel()
                 raise kra_error or primary_error
 
+            secondary_futures = {
+                level: future
+                for level, future in ora_futures.items()
+                if future is not primary_future
+            }
+            secondary_done = set()
+            if secondary_futures:
+                secondary_done, _ = wait(
+                    set(secondary_futures.values()),
+                    timeout=self._ora_secondary_timeout_seconds(),
+                )
+
             for level, future in ora_futures.items():
                 level_key = level.lower()
-                if future in done:
+                if future in done_required or future in secondary_done:
                     try:
                         ora_runs[level_key] = future.result()
                     except Exception as exc:

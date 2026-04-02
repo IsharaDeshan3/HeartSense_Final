@@ -3,12 +3,8 @@
 # Python 3.10+ required
 # =============================================================================
 
-# Local LLM Inference (GGUF models via llama.cpp)
-# ── IMPORTANT: Do NOT install llama-cpp-python via this file. ──
-# backends.bat installs it separately with the correct CUDA wheel:
-#   pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu118
-# If you need to install manually (CPU-only fallback):
-#   pip install llama-cpp-python
+# Remote provider mode
+# KRA inference is called via Hugging Face Space API and ORA via Gemini API.
 
 # Model download (first-time setup only)
 huggingface-hub>=0.20.0

@@ -88,7 +88,9 @@ class ORAClient:
     """ORA refinement client backed by Google Gemini API."""
 
     def __init__(self) -> None:
-        self._api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        self._api_keys = self._load_api_keys()
+        self._key_index = 0
+        self._key_lock = threading.Lock()
         self._model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
         self._api_base = os.getenv("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
 
@@ -114,17 +116,44 @@ class ORAClient:
             self._max_output_tokens = 2048
 
         self._session = requests.Session()
-        retries = Retry(
-            total=2,
-            connect=2,
-            read=2,
-            backoff_factor=0.5,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=frozenset(["GET", "POST"]),
-        )
-        adapter = HTTPAdapter(max_retries=retries)
+        # Disable implicit HTTP retries for POST so request latency stays predictable.
+        adapter = HTTPAdapter(max_retries=Retry(total=0, connect=0, read=0, status=0))
         self._session.mount("https://", adapter)
         self._session.mount("http://", adapter)
+
+    @staticmethod
+    def _load_api_keys() -> list[str]:
+        """Load Gemini keys from env with stable order and duplicate filtering."""
+        raw_values: list[str] = []
+
+        key_list_env = os.getenv("GEMINI_API_KEYS", "").strip()
+        if key_list_env:
+            raw_values.extend(part.strip() for part in key_list_env.split(","))
+
+        raw_values.extend(
+            [
+                os.getenv("GEMINI_API_KEY", "").strip(),
+                os.getenv("GEMINI_API_KEY_2", "").strip(),
+            ]
+        )
+
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for value in raw_values:
+            if not value or value in seen:
+                continue
+            deduped.append(value)
+            seen.add(value)
+        return deduped
+
+    def _next_api_key(self) -> str:
+        """Round-robin key selection; safe across concurrent ORA calls."""
+        with self._key_lock:
+            if not self._api_keys:
+                return ""
+            key = self._api_keys[self._key_index % len(self._api_keys)]
+            self._key_index += 1
+            return key
 
     def _generate_url(self) -> str:
         return f"{self._api_base}/models/{self._model}:generateContent"
@@ -135,6 +164,7 @@ class ORAClient:
     def refine(
         self,
         *,
+        kra_input: Optional[Dict[str, Any]] = None,
         kra_result: Optional[Dict[str, Any]] = None,
         symptoms_text: str = "",
         experience_level: str = "SEASONED",
@@ -156,14 +186,17 @@ class ORAClient:
             kra_result = inline_kra_result
         if kra_result is None:
             kra_result = {}
+        if kra_input is None:
+            kra_input = {}
 
         if cancel_event and cancel_event.is_set():
             raise RuntimeError("ANALYSIS_CANCELLED")
 
-        if not self._api_key:
+        if not self._api_keys:
             raise RuntimeError("GEMINI_API_KEY_NOT_CONFIGURED")
 
         prompt = build_ora_prompt(
+            kra_input=kra_input,
             kra_result=kra_result,
             symptoms_text=symptoms_text,
             experience_level=level,
@@ -179,36 +212,69 @@ class ORAClient:
         }
 
         started = time.time()
-        try:
-            response = self._session.post(
-                self._generate_url(),
-                params={"key": self._api_key},
-                headers={"User-Agent": "analysis-flow-ora-client/1.0"},
-                json=request_body,
-                timeout=self._timeout_sec,
-            )
-        except requests.RequestException as exc:
-            raise RuntimeError(f"ORA_GEMINI_REQUEST_FAILED:{exc}") from exc
+        attempt_errors: list[str] = []
+        response_payload: Dict[str, Any] | None = None
+        raw_text = ""
+
+        for attempt in range(len(self._api_keys)):
+            api_key = self._next_api_key()
+            if not api_key:
+                break
+
+            try:
+                response = self._session.post(
+                    self._generate_url(),
+                    params={"key": api_key},
+                    headers={"User-Agent": "analysis-flow-ora-client/1.0"},
+                    json=request_body,
+                    timeout=self._timeout_sec,
+                )
+            except requests.Timeout as exc:
+                attempt_errors.append(f"attempt_{attempt + 1}:timeout:{exc}")
+                continue
+            except requests.RequestException as exc:
+                attempt_errors.append(f"attempt_{attempt + 1}:request_failed:{exc}")
+                continue
+
+            if cancel_event and cancel_event.is_set():
+                raise RuntimeError("ANALYSIS_CANCELLED")
+
+            if response.status_code in {429, 500, 502, 503, 504}:
+                detail = response.text[:160].replace("\n", " ")
+                attempt_errors.append(f"attempt_{attempt + 1}:http_{response.status_code}:{detail}")
+                continue
+            if response.status_code >= 400:
+                detail = response.text[:500]
+                raise RuntimeError(f"ORA_GEMINI_HTTP_{response.status_code}:{detail}")
+
+            try:
+                response_payload = response.json()
+            except ValueError as exc:
+                attempt_errors.append(f"attempt_{attempt + 1}:invalid_json")
+                continue
+
+            raw_text = _extract_gemini_text(response_payload)
+            if raw_text:
+                break
+
+            attempt_errors.append(f"attempt_{attempt + 1}:empty_output")
 
         if cancel_event and cancel_event.is_set():
             raise RuntimeError("ANALYSIS_CANCELLED")
 
-        if response.status_code >= 400:
-            detail = response.text[:500]
-            raise RuntimeError(f"ORA_GEMINI_HTTP_{response.status_code}:{detail}")
-
-        try:
-            response_payload = response.json()
-        except ValueError as exc:
-            raise RuntimeError("ORA_GEMINI_INVALID_JSON") from exc
-
-        raw_text = _extract_gemini_text(response_payload)
         if not raw_text:
-            logger.error("Gemini returned empty ORA output (level=%s)", level)
+            error_preview = " | ".join(attempt_errors[:3])
+            if error_preview:
+                raise RuntimeError(f"ORA_GEMINI_RETRY_EXHAUSTED:{error_preview}")
             raise RuntimeError("ORA_OUTPUT_EMPTY")
 
         elapsed_ms = int((time.time() - started) * 1000)
-        logger.info("ORA Gemini refinement completed (%d ms, level=%s)", elapsed_ms, level)
+        logger.info(
+            "ORA Gemini refinement completed (%d ms, level=%s, attempts=%d)",
+            elapsed_ms,
+            level,
+            len(attempt_errors) + 1,
+        )
 
         return {
             "refined_output": _sanitize_refined_output(raw_text),
@@ -222,15 +288,18 @@ class ORAClient:
 
     def health_check(self) -> bool:
         """Return True if Gemini model endpoint is reachable."""
-        if not self._api_key:
+        if not self._api_keys:
             return False
 
-        try:
-            response = self._session.get(
-                self._model_url(),
-                params={"key": self._api_key},
-                timeout=10,
-            )
-            return response.status_code < 400
-        except requests.RequestException:
-            return False
+        for api_key in self._api_keys:
+            try:
+                response = self._session.get(
+                    self._model_url(),
+                    params={"key": api_key},
+                    timeout=10,
+                )
+                if response.status_code < 400:
+                    return True
+            except requests.RequestException:
+                continue
+        return False

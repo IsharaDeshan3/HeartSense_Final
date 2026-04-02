@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import sys
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -23,21 +24,36 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 load_dotenv(find_dotenv(), override=True)
 
-from routes import workflow
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
+
+for noisy_logger in (
+    "httpx",
+    "urllib3",
+    "urllib3.connectionpool",
+    "huggingface_hub",
+    "sentence_transformers",
+    "transformers",
+    "filelock",
+):
+    level = logging.ERROR if noisy_logger == "urllib3.connectionpool" else logging.WARNING
+    logging.getLogger(noisy_logger).setLevel(level)
+
 logger = logging.getLogger(__name__)
+
+from routes import workflow
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: validate dependencies and warm heavy components."""
+    startup_started = time.perf_counter()
     logger.info("Starting KRA-ORA Medical Analysis System...")
 
     try:
+        schema_started = time.perf_counter()
         from processing.supabase_payload import verify_schema
 
         schema_result = verify_schema()
@@ -46,36 +62,39 @@ async def lifespan(app: FastAPI):
                 "SUPABASE SCHEMA INCOMPLETE - run migration_add_columns.sql. Details: %s",
                 schema_result["tables"],
             )
-        else:
-            logger.info("Supabase schema OK - all pipeline columns present")
+        logger.info("Startup: schema check completed in %.1fms", (time.perf_counter() - schema_started) * 1000)
     except Exception as exc:
         logger.warning("Supabase schema check skipped (connection issue): %s", exc)
 
     try:
+        provider_started = time.perf_counter()
         provider_readiness = workflow._workflow.readiness_status()  # pylint: disable=protected-access
         logger.info(
-            "Inference providers readiness (KRA=%s, ORA=%s)",
+            "Startup: provider readiness KRA=%s ORA=%s in %.1fms",
             provider_readiness.get("kra"),
             provider_readiness.get("ora"),
+            (time.perf_counter() - provider_started) * 1000,
         )
     except Exception as exc:
         logger.warning("Inference provider readiness check failed: %s", exc)
 
     try:
+        faiss_started = time.perf_counter()
         from backend.processing.search_service import SearchService
 
         search_svc = SearchService()
         readiness = search_svc.readiness_status()
         logger.info(
-            "FAISS indexes preloaded (textbook=%s, rare_cases=%s)",
+            "Startup: FAISS preload textbook=%s rare_cases=%s in %.1fms",
             readiness.get("faiss_ready"),
             readiness.get("rare_cases_ready"),
+            (time.perf_counter() - faiss_started) * 1000,
         )
     except Exception:
         logger.warning("FAISS index preload failed - first search will be slower")
         logger.exception("FAISS preload exception")
 
-    logger.info("System ready")
+    logger.info("System ready in %.1fs", (time.perf_counter() - startup_started))
     yield
     logger.info("Shutting down...")
 
