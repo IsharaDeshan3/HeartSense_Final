@@ -41,7 +41,7 @@ def _get_textbook_retriever() -> FAISSRetriever:
     global _textbook_retriever
     if _textbook_retriever is None:
         _textbook_retriever = FAISSRetriever()
-        logger.info(
+        logger.debug(
             "Textbook FAISS index loaded: %d vectors",
             _textbook_retriever.index.ntotal,
         )
@@ -52,7 +52,7 @@ def _get_rare_retriever() -> RareCaseRetriever:
     if _rare_retriever is None:
         try:
             _rare_retriever = RareCaseRetriever()
-            logger.info(
+            logger.debug(
                 "Rare-case FAISS index loaded: %d vectors",
                 _rare_retriever.index.ntotal,
             )

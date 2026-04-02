@@ -13,7 +13,7 @@ Startup sequence:
 2. Apply Windows selector event-loop policy when running on Windows.
 3. Run lifespan warmup:
    - Supabase schema check via `verify_schema()`.
-   - LLM preload via `LLMEngine.instance()`.
+   - Inference provider readiness check via `WorkflowService.readiness_status()`.
    - FAISS readiness preload via `SearchService().readiness_status()`.
 4. Register one router only:
    - `app.include_router(workflow.router, prefix="/api/workflow/v1", tags=["Workflow v1"])`

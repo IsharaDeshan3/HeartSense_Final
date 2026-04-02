@@ -228,6 +228,22 @@ export default function AiDiagnostics({
     return null;
   };
 
+  const waitForWorkflowState = async (
+    sessionId: string,
+    acceptableStates: WorkflowState[],
+    timeoutMs = 8000,
+  ) => {
+    const deadline = Date.now() + timeoutMs;
+    let session = await WorkflowService.getSession(sessionId);
+
+    while (!acceptableStates.includes(session.current_state) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      session = await WorkflowService.getSession(sessionId);
+    }
+
+    return session;
+  };
+
   // Data readiness flags
   const hasNlp =
     symptoms.length > 0 ||
@@ -358,6 +374,24 @@ export default function AiDiagnostics({
     if (isWorkflowAnalysisRunning) {
       toast.info("Analysis is already running for this session. Please wait for completion.");
       return;
+    }
+
+    if (workflowSessionId) {
+      try {
+        const session = await WorkflowService.getSession(workflowSessionId);
+        if (session.current_state === "ANALYSIS_RUNNING") {
+          toast.info("Previous analysis is still stopping. Waiting for the session to settle...");
+          const settled = await waitForWorkflowState(workflowSessionId, ["LAB_DONE", "ANALYSIS_DONE", "FAILED"], 8000);
+          if (settled.current_state === "ANALYSIS_RUNNING") {
+            toast.warning("Analysis is still shutting down. Please retry in a few seconds.");
+            return;
+          }
+          onWorkflowStateChange?.(settled.current_state as WorkflowState);
+        }
+      } catch {
+        // If the session lookup fails, fall through and let the run request
+        // report the real backend error.
+      }
     }
 
     setIsRunning(true);
@@ -558,8 +592,9 @@ export default function AiDiagnostics({
     setIsStopping(true);
     try {
       await WorkflowService.stopAnalysis(workflowSessionId);
+      const settled = await waitForWorkflowState(workflowSessionId, ["LAB_DONE", "ANALYSIS_DONE", "FAILED"], 8000);
       stopAnalysisUi({ clearError: true, keepCompletedSteps: false });
-      onWorkflowStateChange?.("LAB_DONE" as WorkflowState);
+      onWorkflowStateChange?.(settled.current_state as WorkflowState);
       toast.success("Stop requested. Analysis has been terminated.");
     } catch (err: any) {
       toast.error(err?.message || "Failed to stop analysis");

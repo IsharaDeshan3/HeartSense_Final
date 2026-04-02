@@ -4,8 +4,8 @@ backend/processing — KRA-ORA 7-step pipeline package.
 Provides:
   supabase_payload  — Supabase CRUD for analysis data
   search_service    — FAISS retrieval wrapper
-  kra_client        — local KRA inference client
-  ora_client        — local ORA inference client
+  kra_client        — remote KRA (Hugging Face API) client
+  ora_client        — remote ORA (Gemini API) client
   schemas           — Pydantic request/response models
   workflow_service  — main orchestrator (active pipeline)
   workflow_store    — SQLite-backed workflow session store

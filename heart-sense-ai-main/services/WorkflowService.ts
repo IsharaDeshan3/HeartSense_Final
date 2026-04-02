@@ -210,13 +210,32 @@ export const WorkflowService = {
     records: PatientDiagnosisRecord[];
     supabase_status?: PatientHistoryStatus;
   }> {
-    const res = await fetch(`/api/workflow/patient/${patientId}/history`);
-    if (!res.ok) {
-      throw new Error(
-        await extractErrorMessage(res, "Failed to fetch patient history"),
-      );
+    const fallback = {
+      patient_id: patientId,
+      summary: {
+        patient_id: patientId,
+        visit_count: 0,
+        latest_visit_at: null,
+        top_conditions: [],
+        key_lab_findings: [],
+        summary_text: "Patient history is currently unavailable.",
+      },
+      records: [],
+      supabase_status: "unreachable" as PatientHistoryStatus,
+    };
+
+    try {
+      const res = await fetch(`/api/workflow/patient/${patientId}/history`);
+      if (!res.ok) {
+        const message = await extractErrorMessage(res, "Failed to fetch patient history");
+        console.warn("[WorkflowService] getPatientHistory fallback:", message);
+        return fallback;
+      }
+      return res.json();
+    } catch (error) {
+      console.warn("[WorkflowService] getPatientHistory network fallback:", error);
+      return fallback;
     }
-    return res.json();
   },
 
   async getPatientDiagnosisRecord(patientId: string, sessionId: string) {

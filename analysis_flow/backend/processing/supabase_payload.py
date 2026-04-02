@@ -64,6 +64,8 @@ def _init():
         pool_maxsize=8,
         max_retries=requests.adapters.Retry(
             total=2,
+            connect=0,
+            read=0,
             backoff_factor=0.3,
             status_forcelist=[502, 503, 504],
         ),
@@ -616,7 +618,20 @@ def verify_schema() -> Dict[str, Any]:
             "migration_hint": "..."  (only when ok=False)
         }
     """
-    _init()
+    try:
+        _init()
+    except Exception as exc:
+        logger.warning("Supabase schema validation unavailable: %s", exc)
+        return {
+            "ok": False,
+            "tables": {},
+            "supabase_status": "unreachable",
+            "error": str(exc),
+            "migration_hint": (
+                "Supabase is unreachable or not configured. Set SUPABASE_URL and "
+                "SUPABASE_SERVICE_KEY, then retry schema check."
+            ),
+        }
 
     expected: Dict[str, list[str]] = {
         "analysis_payloads": [

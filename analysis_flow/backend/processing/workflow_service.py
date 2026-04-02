@@ -25,25 +25,32 @@ from backend.processing.workflow_store import WorkflowStore
 import logging
 logger = logging.getLogger(__name__)
 
+# This module orchestrates the end-to-end clinical analysis workflow:
+# session state checks, retrieval, KRA/ORA model calls, persistence, and SSE events.
+
 
 class PipelineEventBus:
     """
-    Thread-safe publish-subscribe bus for pipeline step events.
+    Thread-safe function for pipeline step events.
     The pipeline calls emit() from a thread-pool worker.
     SSE route handlers subscribe via subscribe() and read from queue.Queue.
     """
 
     def __init__(self) -> None:
+        # session_id -> list of subscriber queues (one queue per SSE listener)
         self._subscribers: dict[str, list[queue.Queue]] = {}
+        # Protects subscribe/unsubscribe/emit snapshot operations.
         self._lock = threading.Lock()
 
     def subscribe(self, session_id: str) -> queue.Queue:
+        """Register a listener queue for a session's live pipeline events."""
         q: queue.Queue = queue.Queue(maxsize=100)
         with self._lock:
             self._subscribers.setdefault(session_id, []).append(q)
         return q
 
     def unsubscribe(self, session_id: str, q: queue.Queue) -> None:
+        """Detach a listener queue and clean up empty subscriber lists."""
         with self._lock:
             listeners = self._subscribers.get(session_id, [])
             if q in listeners:
@@ -73,36 +80,35 @@ _ANALYSIS_READY_STATES = {
     WorkflowState.LAB_DONE.value,
 }
 
-
 class WorkflowService:
     # This service is the bridge between the session store, retrieval layer,
-    # Supabase persistence helpers, and the local KRA/ORA model clients.
+    # Supabase persistence helpers, and remote KRA/ORA provider clients.
     def __init__(self) -> None:
+        """Wire all collaborating components used by the workflow pipeline."""
+        # Local store for session state, step payloads, and retrieval traces.
         self._store = WorkflowStore()
+        # Retrieval and model clients used by the analysis phases.
         self._search = SearchService()
         self._kra = KRAClient()
         self._ora = ORAClient()
+        # Cancellation bookkeeping: set membership + per-session event handle.
         self._cancel_requested: set[str] = set()
         self._cancel_lock = threading.Lock()
         self._cancel_events: dict[str, threading.Event] = {}  # per-session cancel events
+        # Shared event bus consumed by SSE routes.
         self.event_bus = PipelineEventBus()
 
     def readiness_status(self) -> dict[str, Any]:
-        """Non-blocking readiness check for local KRA and ORA models.
-
-        Uses LLMEngine.is_loaded() so the health endpoint never blocks
-        while models are still loading during startup.
-        """
-        from core.llm_engine import LLMEngine
-        kra_ok, ora_ok = LLMEngine.is_loaded()
-        diagnostics = LLMEngine.diagnostics()
-        logger.info(
-            "Model readiness — KRA: %s  ORA: %s  python_ok=%s  init_error=%s",
-            kra_ok,
-            ora_ok,
-            diagnostics.get("python_version_supported"),
-            diagnostics.get("init_error_type"),
-        )
+        """Readiness check for remote KRA and ORA providers."""
+        kra_ok = self._kra.health_check()
+        ora_ok = self._ora.health_check()
+        diagnostics = {
+            "kra_provider": "huggingface_api",
+            "ora_provider": "gemini_api",
+            "kra_api_url_configured": bool(os.getenv("KRA_API_URL", "").strip()),
+            "gemini_model": os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
+            "gemini_api_key_configured": bool(os.getenv("GEMINI_API_KEY", "").strip()),
+        }
         return {
             "kra": kra_ok,
             "ora": ora_ok,
@@ -112,20 +118,34 @@ class WorkflowService:
 
     @staticmethod
     def _kra_timeout_seconds() -> float:
+        """Read KRA timeout from env and clamp to a safe minimum."""
         try:
-            return max(30.0, float(os.getenv("KRA_TIMEOUT_SEC", "900")))
+            timeout_raw = os.getenv("KRA_TIMEOUT_SEC") or os.getenv("KRA_API_TIMEOUT_SEC") or "900"
+            return max(30.0, float(timeout_raw))
         except ValueError:
             return 900.0
 
     @staticmethod
     def _ora_timeout_seconds() -> float:
+        """Read ORA timeout from env and clamp to a safe minimum."""
         try:
-            return max(30.0, float(os.getenv("ORA_TIMEOUT_SEC", "600")))
+            timeout_raw = os.getenv("ORA_TIMEOUT_SEC") or os.getenv("ORA_GEMINI_TIMEOUT_SEC") or "600"
+            return max(30.0, float(timeout_raw))
         except ValueError:
             return 600.0
 
     @staticmethod
+    def _ora_secondary_timeout_seconds() -> float:
+        """Bound how long we wait for the optional secondary ORA mode."""
+        try:
+            timeout_raw = os.getenv("ORA_SECONDARY_TIMEOUT_SEC", "45")
+            return max(0.0, float(timeout_raw))
+        except ValueError:
+            return 45.0
+
+    @staticmethod
     def _is_valid_kra_result(kra_result: dict[str, Any]) -> bool:
+        """Guard against malformed KRA output before invoking downstream ORA."""
         diagnoses = kra_result.get("diagnoses")
         uncertainties = kra_result.get("uncertainties")
         recommended_tests = kra_result.get("recommended_tests")
@@ -139,7 +159,7 @@ class WorkflowService:
             ]
         )
 
-    def check_spaces_health(self) -> dict[str, bool]:
+    def check_spaces_health(self) -> dict[str, Any]:
         """Backward-compatible alias for older callers."""
         return self.readiness_status()
 
@@ -172,6 +192,7 @@ class WorkflowService:
         }
 
     def _clear_cancel_request(self, session_id: str) -> None:
+        """Clear any stale cancellation flags/events before or after a run."""
         with self._cancel_lock:
             self._cancel_requested.discard(session_id)
             self._cancel_events.pop(session_id, None)
@@ -184,12 +205,15 @@ class WorkflowService:
             return self._cancel_events[session_id]
 
     def _raise_if_cancelled(self, session_id: str) -> None:
+        """Checkpoint helper used across the pipeline for cooperative cancellation."""
         with self._cancel_lock:
             cancelled = session_id in self._cancel_requested
         if cancelled:
             raise RuntimeError("ANALYSIS_CANCELLED")
 
     def run_analysis(self, session_id: str, experience_level: str = "seasoned") -> dict[str, Any]:
+        """Entry point: validate state, prepare inputs, and execute the pipeline."""
+        # Start with a clean cancel state so a previous stop request does not leak.
         self._clear_cancel_request(session_id)
         session = self._store.get_session(session_id)
         if session is None:
@@ -237,6 +261,7 @@ class WorkflowService:
             )
 
         started = time.time()
+        # Missing optional steps are represented as explicit "skipped" payloads.
         extraction_payload = extraction["payload"]
         ecg_payload = ecg["payload"] if ecg is not None else {"result": {"status": "skipped", "reason": "not_submitted"}}
         lab_payload = lab["payload"] if lab is not None else {"result": {"status": "skipped", "reason": "not_submitted"}}
@@ -302,6 +327,7 @@ class WorkflowService:
             self.event_bus.close_session(session_id)
 
     def _emit(self, session_id: str, step: str, status: str, **kwargs: Any) -> None:
+        """Small helper to keep event payloads consistent across steps."""
         self.event_bus.emit(session_id, {"step": step, "status": status, **kwargs})
 
     def _save_payload_snapshot(
@@ -316,6 +342,7 @@ class WorkflowService:
         history_json: dict[str, Any],
         patient_id: Optional[str],
     ) -> dict[str, Any]:
+        """Persist the merged request snapshot; fallback locally if Supabase fails."""
         # Step 3 persists the merged patient payload so later steps can link
         # KRA/ORA output back to the same workflow session and Supabase row.
         try:
@@ -359,6 +386,7 @@ class WorkflowService:
         kra_result: dict[str, Any],
         patient_id: Optional[str],
     ) -> dict[str, Any]:
+        """Persist raw KRA output for traceability and downstream linkage."""
         # Step 4 stores the raw KRA result in Supabase and mirrors the ID in
         # the local workflow store for later ORA and cleanup steps.
         try:
@@ -393,6 +421,7 @@ class WorkflowService:
         ora_result: dict[str, Any],
         patient_id: Optional[str],
     ) -> dict[str, Any]:
+        """Persist ORA-refined output; fallback to local IDs on remote failure."""
         # Step 5 stores the ORA-refined result as the final analyst-facing
         # record for this session.
         try:
@@ -430,6 +459,7 @@ class WorkflowService:
         started: float,
         patient_id: Optional[str] = None,
     ) -> dict[str, Any]:
+        """Core pipeline: normalize -> retrieve -> KRA -> ORA -> persist -> return."""
         processing_steps: list[dict[str, Any]] = []
         self._raise_if_cancelled(session_id)
 
@@ -596,6 +626,7 @@ class WorkflowService:
             return bundle
 
         def run_payload_save(history_bundle_ref: list) -> dict[str, Any]:
+            """Worker: persist the normalized request snapshot and timing metadata."""
             started_at = time.time()
             # Wait for history to be available from the shared ref
             hb = history_bundle_ref[0] if history_bundle_ref else {"patient_id": patient_id, "summary": {}, "records": []}
@@ -613,6 +644,7 @@ class WorkflowService:
             return result
 
         def run_kra_analysis(history_bundle_ref: list) -> dict[str, Any]:
+            """Worker: run KRA with retrieved context and optional history summary."""
             started_at = time.time()
             # Extract history summary text from the fetched bundle
             hb = history_bundle_ref[0] if history_bundle_ref else {}
@@ -635,6 +667,7 @@ class WorkflowService:
 
         # Phase 1: Fetch history first (fast network call), then fire payload+KRA in parallel
         with ThreadPoolExecutor(max_workers=3) as executor:
+            # Stage A: fetch history first so both downstream workers use same data.
             history_future = executor.submit(run_history_fetch)
 
             # Wait for history before starting payload save and KRA (they both need it)
@@ -728,6 +761,16 @@ class WorkflowService:
         # ── Step 4: Persist KRA and run ORA outputs (NEWBIE + SEASONED) ─────
         # ORA only needs KRA output, so we run both experience levels once and
         # return both variants to the frontend toggle.
+        kra_input_package = {
+            "session_id": session_id,
+            "symptoms_text": symptoms_text,
+            "context_text": context_text,
+            "ecg": ecg_json,
+            "labs": labs_json,
+            "history_summary_text": history_summary_text,
+            "quality": quality,
+        }
+
         requested_level = str(experience_level or "seasoned").strip().upper()
         if requested_level not in {"NEWBIE", "SEASONED"}:
             requested_level = "SEASONED"
@@ -736,6 +779,7 @@ class WorkflowService:
         self._emit(session_id, "ora_refinement", "started")
 
         def run_kra_persist() -> dict[str, Any]:
+            """Worker: persist KRA output while ORA refinement executes in parallel."""
             started_at = time.time()
             result = self._save_kra_history_entry(
                 session_id=session_id,
@@ -748,8 +792,10 @@ class WorkflowService:
             return result
 
         def run_ora_refinement(level: str) -> dict[str, Any]:
+            """Worker: produce one ORA variant for a specific experience level."""
             started_at = time.time()
             result = self._ora.refine(
+                kra_input=kra_input_package,
                 kra_result=kra_result,
                 symptoms_text=symptoms_text,
                 experience_level=level,
@@ -769,34 +815,50 @@ class WorkflowService:
         ora_failures: dict[str, str] = {}
 
         with ThreadPoolExecutor(max_workers=2) as executor:
+            # Stage B: run KRA persistence + dual ORA variants concurrently.
             kra_save_future = executor.submit(run_kra_persist)
             ora_futures = {
                 level: executor.submit(run_ora_refinement, level)
                 for level in ora_levels
             }
-            done, pending = wait(
-                {kra_save_future, *ora_futures.values()},
+            primary_future = ora_futures[selected_key.upper()]
+            required_futures = {kra_save_future, primary_future}
+            done_required, pending_required = wait(
+                required_futures,
                 timeout=self._ora_timeout_seconds(),
                 return_when=FIRST_EXCEPTION,
             )
 
-            primary_future = ora_futures[selected_key.upper()]
-            if primary_future not in done:
+            if primary_future not in done_required:
                 cancel_event.set()
                 logger.error("ORA refinement timed out for session %s after %.1fs", session_id, self._ora_timeout_seconds())
+                for future in ora_futures.values():
+                    future.cancel()
                 raise RuntimeError("ORA_TIMEOUT")
 
-            kra_error = kra_save_future.exception() if kra_save_future in done else None
-            primary_error = primary_future.exception() if primary_future in done else None
+            kra_error = kra_save_future.exception() if kra_save_future in done_required else None
+            primary_error = primary_future.exception() if primary_future in done_required else None
             if kra_error is not None or primary_error is not None:
                 cancel_event.set()
-                for future in pending:
+                for future in ora_futures.values():
                     future.cancel()
                 raise kra_error or primary_error
 
+            secondary_futures = {
+                level: future
+                for level, future in ora_futures.items()
+                if future is not primary_future
+            }
+            secondary_done = set()
+            if secondary_futures:
+                secondary_done, _ = wait(
+                    set(secondary_futures.values()),
+                    timeout=self._ora_secondary_timeout_seconds(),
+                )
+
             for level, future in ora_futures.items():
                 level_key = level.lower()
-                if future in done:
+                if future in done_required or future in secondary_done:
                     try:
                         ora_runs[level_key] = future.result()
                     except Exception as exc:
@@ -1002,6 +1064,7 @@ class WorkflowService:
 
     @staticmethod
     def _to_float(value: Any) -> Optional[float]:
+        """Best-effort scalar parser used during payload normalization."""
         try:
             if value is None or value == "":
                 return None
@@ -1010,6 +1073,7 @@ class WorkflowService:
             return None
 
     def _normalize_symptoms_payload(self, extraction_payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
+        """Convert extraction payload into canonical symptoms JSON + narrative text."""
         if not isinstance(extraction_payload, dict):
             extraction_payload = {"translated_text": str(extraction_payload or "")}
 
@@ -1041,6 +1105,7 @@ class WorkflowService:
         return symptoms_json, symptoms_text
 
     def _normalize_ecg_payload(self, ecg_payload: dict[str, Any]) -> dict[str, Any]:
+        """Flatten ECG payload variants into a single model-friendly schema."""
         raw = ecg_payload.get("result", {}) if isinstance(ecg_payload, dict) else {}
         if not isinstance(raw, dict):
             raw = {}
@@ -1057,6 +1122,7 @@ class WorkflowService:
         diagnosis = raw.get("diagnosis", {}) or {}
 
         findings: list[str] = []
+        # Build a compact findings list from multiple possible ECG sections.
         for item in (abnormalities.get("abnormalities", []) or []):
             if item:
                 findings.append(str(item))
@@ -1091,6 +1157,7 @@ class WorkflowService:
         }
 
     def _normalize_lab_payload(self, lab_payload: dict[str, Any]) -> dict[str, Any]:
+        """Flatten lab payload into structured markers + human-readable findings."""
         raw = lab_payload.get("result", {}) if isinstance(lab_payload, dict) else {}
         if not isinstance(raw, dict):
             raw = {}
@@ -1104,6 +1171,7 @@ class WorkflowService:
 
         comparisons = raw.get("labComparison", []) or []
         findings: list[str] = []
+        # Convert non-normal comparison entries into text snippets for retrieval.
         for item in comparisons:
             if not isinstance(item, dict):
                 continue
@@ -1117,6 +1185,7 @@ class WorkflowService:
         group2 = raw.get("extractedJsonGroup2", {}) or {}
 
         def _pick(*keys: str) -> Optional[float]:
+            """Pick first parseable numeric value across group1/group2/raw aliases."""
             for key in keys:
                 value = self._to_float(group1.get(key))
                 if value is not None:
