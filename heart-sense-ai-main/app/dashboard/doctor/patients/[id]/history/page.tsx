@@ -211,7 +211,7 @@ export default function PatientHistoryPage() {
           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-800 flex items-start gap-3">
             <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5" />
             <div className="text-sm">
-              Patient history is temporarily unavailable (Supabase timeout). Please try again later.
+              Patient history is unavailable right now. Showing the rest of the patient record.
             </div>
           </div>
         )}
