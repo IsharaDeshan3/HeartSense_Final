@@ -2,6 +2,40 @@ import neurokit2 as nk
 import numpy as np
 
 
+def _as_clean_indices(values):
+    """Normalize candidate index arrays by dropping NaNs and casting to int."""
+    if values is None:
+        return []
+    arr = np.array(values, dtype=float)
+    if arr.size == 0:
+        return []
+    return [int(v) for v in arr if not np.isnan(v)]
+
+
+def _nearest_non_negative_delta(anchor_idx, candidate_indices):
+    """Return nearest non-negative sample delta from anchor to candidate indices."""
+    deltas = [idx - anchor_idx for idx in candidate_indices if idx >= anchor_idx]
+    if not deltas:
+        return None
+    return min(deltas)
+
+
+def _mean_interval_ms(anchor_indices, candidate_indices, sampling_rate):
+    """Estimate mean interval duration (ms) between paired wave peaks."""
+    if not anchor_indices or not candidate_indices or sampling_rate <= 0:
+        return 0.0
+
+    durations = []
+    for anchor in anchor_indices:
+        delta = _nearest_non_negative_delta(anchor, candidate_indices)
+        if delta is not None:
+            durations.append(delta / sampling_rate * 1000.0)
+
+    if not durations:
+        return 0.0
+    return float(np.mean(durations))
+
+
 def extract_signal_data(signal_data, sampling_rate=500):
     """
     Extract full cleaned signal arrays and annotated peak indices for frontend visualization.
@@ -80,37 +114,45 @@ def extract_features(signal_data, sampling_rate=500):
     try:
         # Clean the signal again with NeuroKit's specific filters
         ecg_cleaned = nk.ecg_clean(signal_data, sampling_rate=sampling_rate)
-        
+
         # Find R-peaks
         peaks, info = nk.ecg_peaks(ecg_cleaned, sampling_rate=sampling_rate)
-        
+
+        r_peak_indices = [int(v) for v in info.get("ECG_R_Peaks", [])]
+
         # Calculate heart rate
         hr = nk.ecg_rate(peaks, sampling_rate=sampling_rate, desired_length=len(ecg_cleaned))
-        avg_hr = np.mean(hr)
-        
-        # Full analysis (Intervals)
-        # Note: This requires a full lead interpretation, but we'll extract basics
-        # We need to find P, Q, S, T waves
+        avg_hr = float(np.mean(hr)) if len(hr) else 0.0
+
+        # Delineate waves to estimate interval metrics.
         _, waves_peak = nk.ecg_delineate(ecg_cleaned, peaks, sampling_rate=sampling_rate, method="peak")
-        
-        # Calculate key intervals if waves are detected
-        qrs_duration = 0
-        pr_interval = 0
-        qt_interval = 0
-        
-        # Simplified interval calculation for research demonstration
-        if 'ECG_P_Peaks' in waves_peak and not np.isnan(waves_peak['ECG_P_Peaks']).all():
-             # Logic to calculate intervals between peaks
-             pass
-             
+
+        p_peaks = _as_clean_indices(waves_peak.get("ECG_P_Peaks"))
+        q_peaks = _as_clean_indices(waves_peak.get("ECG_Q_Peaks"))
+        s_peaks = _as_clean_indices(waves_peak.get("ECG_S_Peaks"))
+        t_peaks = _as_clean_indices(waves_peak.get("ECG_T_Peaks"))
+
+        # Approximate intervals in milliseconds using nearest valid pairings.
+        pr_interval = _mean_interval_ms(p_peaks, q_peaks, sampling_rate)
+        qrs_duration = _mean_interval_ms(q_peaks, s_peaks, sampling_rate)
+        qt_interval = _mean_interval_ms(q_peaks, t_peaks, sampling_rate)
+
+        rr_samples = np.diff(r_peak_indices) if len(r_peak_indices) > 1 else np.array([])
+        hrv_seconds = float(np.std(rr_samples / sampling_rate)) if rr_samples.size else 0.0
+
         return {
-            "heart_rate_avg": float(avg_hr),
-            "peak_count": len(peaks),
-            "hrv": float(np.std(np.diff(peaks['ECG_R_Peaks'])) / sampling_rate) if len(peaks) > 1 else 0,
-            "status": "success"
+            "heart_rate_avg": avg_hr,
+            "peak_count": len(r_peak_indices),
+            "hrv": hrv_seconds,
+            "intervals_ms": {
+                "pr_interval": round(pr_interval, 2),
+                "qrs_duration": round(qrs_duration, 2),
+                "qt_interval": round(qt_interval, 2),
+            },
+            "status": "success",
         }
     except Exception as e:
         return {
             "status": "error",
-            "message": str(e)
+            "message": str(e),
         }
