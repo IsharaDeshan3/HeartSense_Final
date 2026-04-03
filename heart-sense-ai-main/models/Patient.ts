@@ -47,6 +47,32 @@ const PatientSchema = new Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
     }],
+    // Diagnostic history with doctor attribution
+    diagnosticHistory: [{
+      doctorId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true,
+      },
+      doctorName: {
+        type: String,
+        required: true,
+      },
+      type: {
+        type: String,
+        enum: ["NLP", "ECG", "Lab", "AI_Diagnostic"],
+        required: true,
+      },
+      summary: {
+        type: String,
+      },
+      data: {
+        type: mongoose.Schema.Types.Mixed,
+      },
+      date: {
+        type: Date,
+      },
+    }],
   },
   {
     timestamps: true,

@@ -1,8 +1,21 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
-import { Mic, MicOff, Activity, AlertCircle, History, Check, Shield, Edit3, Heart, Video } from "lucide-react";
+import SpeechRecognition, {
+  useSpeechRecognition,
+} from "react-speech-recognition";
+import {
+  Mic,
+  MicOff,
+  Activity,
+  AlertCircle,
+  History,
+  Check,
+  Shield,
+  Edit3,
+  Heart,
+  Video,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -24,7 +37,7 @@ interface BackendResponse {
   translated_text: string;
 }
 
-const BACKEND_URL = "http://localhost:8001";
+const TRANSCRIPT_PROXY_URL = "/api/proxy/process-transcript";
 
 export default function NlpProcessor({
   onUpdateSummary,
@@ -68,7 +81,7 @@ export default function NlpProcessor({
 
     setIsProcessing(true);
     try {
-      const response = await fetch(`${BACKEND_URL}/process-transcript`, {
+      const response = await fetch(TRANSCRIPT_PROXY_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -105,7 +118,7 @@ export default function NlpProcessor({
     }
     delayTimerRef.current = setTimeout(() => {
       sendTranscript(transcriptText);
-    }, 5000);
+    }, 2500);
   };
 
   // Handle when listening starts — skip during video call (VideoCallModal manages its own)
@@ -117,7 +130,7 @@ export default function NlpProcessor({
         if (transcript) {
           scheduleApiCall(transcript);
         }
-      }, 3000);
+      }, 1500);
       return () => clearTimeout(timer);
     }
   }, [listening, showVideoCall]);
@@ -193,7 +206,7 @@ export default function NlpProcessor({
     try {
       localStorage.setItem("nlp.currentState", JSON.stringify(finalState));
       localStorage.setItem("nlp.summary", JSON.stringify(summary));
-    } catch {}
+    } catch { }
     setShowEditor(false);
   };
 
@@ -235,7 +248,7 @@ export default function NlpProcessor({
               onCurrentStateChange(next);
               try {
                 localStorage.setItem("nlp.currentState", JSON.stringify(next));
-              } catch {}
+              } catch { }
             }}
             onSave={handleSaveAndClose}
             onClose={() => setShowEditor(false)}
@@ -247,17 +260,15 @@ export default function NlpProcessor({
           {/* 🎙️ NEURAL GATEWAY / RECORDER */}
           <div className="flex flex-col gap-3">
             <div
-              className={`relative glass rounded-xl p-4 flex flex-col items-center justify-center text-center transition-all duration-1000 border-2 ${
-                listening
+              className={`relative glass rounded-xl p-4 flex flex-col items-center justify-center text-center transition-all duration-1000 border-2 ${listening
                   ? "border-primary/40 shadow-[0_0_50px_rgba(var(--primary-rgb),0.1)]"
                   : "border-white/5"
-              }`}
+                }`}
             >
               {/* Pulsing Core */}
               <div
-                className={`h-14 w-14 rounded-full flex-center mb-3 relative ${
-                  listening ? "bg-primary/20 animate-pulse" : "bg-white/5"
-                }`}
+                className={`h-14 w-14 rounded-full flex-center mb-3 relative ${listening ? "bg-primary/20 animate-pulse" : "bg-white/5"
+                  }`}
               >
                 {listening && (
                   <>
@@ -283,17 +294,27 @@ export default function NlpProcessor({
                   : "Tap the button below to start capturing"}
               </p>
 
-              <Button
-                onClick={toggleListening}
-                disabled={isProcessing}
-                className={`h-10 px-6 rounded-lg font-black uppercase tracking-[0.12em] transition-all text-xs ${
-                  listening
-                    ? "bg-destructive/10 text-destructive border-2 border-destructive/20 hover:bg-destructive/20"
-                    : "bg-primary text-primary-foreground shadow-lg glow-primary border-none hover:scale-105"
-                }`}
-              >
-                {listening ? "Stop Capture" : "Start Voice Capture"}
-              </Button>
+              <div className="flex items-center gap-3">
+                <Button
+                  onClick={toggleListening}
+                  disabled={isProcessing}
+                  className={`h-10 px-6 rounded-lg font-black uppercase tracking-[0.12em] transition-all text-xs ${listening
+                      ? "bg-destructive/10 text-destructive border-2 border-destructive/20 hover:bg-destructive/20"
+                      : "bg-primary text-primary-foreground shadow-lg glow-primary border-none hover:scale-105"
+                    }`}
+                >
+                  {listening ? "Stop Capture" : "Start Voice Capture"}
+                </Button>
+
+                <Button
+                  onClick={() => setShowVideoCall(true)}
+                  disabled={isProcessing || listening}
+                  className="h-10 w-10 p-0 rounded-lg bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-600/20 transition-all hover:scale-105"
+                  title="Start Video Call"
+                >
+                  <Video className="h-4 w-4" />
+                </Button>
+              </div>
 
               {isProcessing && (
                 <div className="absolute bottom-3 flex items-center gap-2 text-[9px] font-black text-primary animate-pulse">
@@ -302,81 +323,47 @@ export default function NlpProcessor({
               )}
             </div>
 
-            <h3 className="text-sm font-black tracking-tight mb-0.5">
-              {listening ? "Capturing Voice..." : "AI Voice Recognition is Active"}
-            </h3>
-            <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-bold opacity-60 mb-3 max-w-[220px]">
-              {listening ? "Listening to patient conversation in Sinhala" : "Tap the button below to start capturing"}
-            </p>
-
-            <div className="flex items-center gap-3">
-              <Button
-                onClick={toggleListening}
-                disabled={isProcessing}
-                className={`h-10 px-6 rounded-lg font-black uppercase tracking-[0.12em] transition-all text-xs ${listening
-                  ? 'bg-destructive/10 text-destructive border-2 border-destructive/20 hover:bg-destructive/20'
-                  : 'bg-primary text-primary-foreground shadow-lg glow-primary border-none hover:scale-105'
-                  }`}
-              >
-                {listening ? "Stop Capture" : "Start Voice Capture"}
-              </Button>
-
-              <Button
-                onClick={() => setShowVideoCall(true)}
-                disabled={isProcessing || listening}
-                className="h-10 w-10 p-0 rounded-lg bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-600/20 transition-all hover:scale-105"
-                title="Start Video Call"
-              >
-                <Video className="h-4 w-4" />
-              </Button>
-            </div>
-
             {backendResponse && (
-              <div className="glass border-white/5 bg-white/[0.02] rounded-[2rem] shadow-xl overflow-hidden">
-                <div className="p-4 space-y-4">
-                    {backendResponse.missing_critical.symptoms?.length > 0 && (
-                      <div>
-                        <p className="text-[10px] font-black text-red-300/80 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                          <span className="h-1.5 w-1.5 rounded-full bg-red-400 inline-block" />
-                          Symptoms to Clarify
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {backendResponse.missing_critical.symptoms.map(
-                            (s) => (
-                              <span
-                                key={s}
-                                className="px-3 py-1.5 rounded-xl bg-red-500/15 text-red-300 text-xs font-bold border border-red-500/30 hover:bg-red-500/25 transition-colors"
-                              >
-                                {s}
-                              </span>
-                            ),
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {backendResponse.missing_critical.risk_factors?.length >
-                      0 && (
-                      <div>
-                        <p className="text-[10px] font-black text-orange-300/80 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                          <span className="h-1.5 w-1.5 rounded-full bg-orange-400 inline-block" />
-                          Risk Factors to Verify
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {backendResponse.missing_critical.risk_factors.map(
-                            (r) => (
-                              <span
-                                key={r}
-                                className="px-3 py-1.5 rounded-xl bg-orange-500/15 text-orange-300 text-xs font-bold border border-orange-500/30 hover:bg-orange-500/25 transition-colors"
-                              >
-                                {r}
-                              </span>
-                            ),
-                          )}
-                        </div>
-                      </div>
-                    )}
+              <div className="p-4 space-y-4">
+                {backendResponse.missing_critical.symptoms?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-black text-red-300/80 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-red-400 inline-block" />
+                      Symptoms to Clarify
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {backendResponse.missing_critical.symptoms.map((s) => (
+                        <span
+                          key={s}
+                          className="px-3 py-1.5 rounded-xl bg-red-500/15 text-red-300 text-xs font-bold border border-red-500/30 hover:bg-red-500/25 transition-colors"
+                        >
+                          {s}
+                        </span>
+                      ))}
+                    </div>
                   </div>
+                )}
+
+                {backendResponse.missing_critical.risk_factors?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-black text-orange-300/80 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-orange-400 inline-block" />
+                      Risk Factors to Verify
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {backendResponse.missing_critical.risk_factors.map(
+                        (r) => (
+                          <span
+                            key={r}
+                            className="px-3 py-1.5 rounded-xl bg-orange-500/15 text-orange-300 text-xs font-bold border border-orange-500/30 hover:bg-orange-500/25 transition-colors"
+                          >
+                            {r}
+                          </span>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -413,11 +400,10 @@ export default function NlpProcessor({
                       <button
                         key={key}
                         type="button"
-                        className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${
-                          data.status === "approved"
+                        className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${data.status === "approved"
                             ? "bg-orange-500/5 text-orange-400 border-orange-500/10"
                             : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20 cursor-pointer hover:bg-yellow-500/20"
-                        }`}
+                          }`}
                         onClick={() =>
                           data.status !== "approved" &&
                           approveItem("symptoms", key)
@@ -467,11 +453,10 @@ export default function NlpProcessor({
                         <button
                           key={key}
                           type="button"
-                          className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${
-                            data.status === "approved"
+                          className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${data.status === "approved"
                               ? "bg-blue-500/5 text-blue-400 border-blue-500/10"
                               : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20 cursor-pointer hover:bg-yellow-500/20"
-                          }`}
+                            }`}
                           onClick={() =>
                             data.status !== "approved" &&
                             approveItem("medical_history", key)
@@ -517,11 +502,10 @@ export default function NlpProcessor({
                         <button
                           key={key}
                           type="button"
-                          className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${
-                            data.status === "approved"
+                          className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${data.status === "approved"
                               ? "bg-red-500/5 text-red-400 border-red-500/10"
                               : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20 cursor-pointer hover:bg-yellow-500/20"
-                          }`}
+                            }`}
                           onClick={() =>
                             data.status !== "approved" &&
                             approveItem("allergies", key)
@@ -567,11 +551,10 @@ export default function NlpProcessor({
                         <button
                           key={key}
                           type="button"
-                          className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${
-                            data.status === "approved"
+                          className={`px-3 py-1 rounded-lg text-[10px] font-black border animate-in zoom-in-95 duration-300 flex items-center gap-1.5 ${data.status === "approved"
                               ? "bg-primary/5 text-primary border-primary/10"
                               : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20 cursor-pointer hover:bg-yellow-500/20"
-                          }`}
+                            }`}
                           onClick={() =>
                             data.status !== "approved" &&
                             approveItem("risk_factors", key)

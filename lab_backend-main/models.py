@@ -331,3 +331,68 @@ class RecommendationResponse(BaseModel):
         "json_encoders": {ObjectId: str}
     }
 
+
+# Lab Report Series Models
+class LabComparisonItem(BaseModel):
+    """A single lab test comparison row."""
+    test: str
+    actualValue: Any
+    normalRange: str
+    status: Literal["Normal", "High", "Low"]
+
+
+class LabReportCreate(BaseModel):
+    """Model for creating a single lab report in the patient's series."""
+    patientId: str = Field(..., min_length=1, validation_alias=AliasChoices("patientId", "userId"))
+    reportDate: Optional[str] = None          # ISO YYYY-MM-DD, auto-extracted by Gemini
+    reportLabel: Optional[str] = None         # e.g. "Report 1"
+    extractedJsonGroup1: dict = Field(default_factory=dict)
+    extractedJsonGroup2: dict = Field(default_factory=dict)
+    labComparison: list = Field(default_factory=list)
+    summary: str = Field(..., min_length=1)
+    recommendedTests: list = Field(default_factory=list)
+    dailyHealthAdvice: list = Field(default_factory=list)
+    patientInfo: dict = Field(default_factory=dict)
+
+
+class LabReport(BaseModel):
+    """Lab report document model."""
+    id: Optional[str] = Field(default=None, alias="_id")
+    patientId: str = Field(..., validation_alias=AliasChoices("patientId", "userId"))
+    reportDate: Optional[str] = None
+    reportLabel: Optional[str] = None
+    extractedJsonGroup1: dict
+    extractedJsonGroup2: dict
+    labComparison: list
+    summary: str
+    recommendedTests: list
+    dailyHealthAdvice: list
+    patientInfo: dict
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+
+    model_config = {
+        "populate_by_name": True,
+        "arbitrary_types_allowed": True,
+        "json_encoders": {ObjectId: str}
+    }
+
+
+class LabReportResponse(BaseModel):
+    """Lab report response model."""
+    id: str
+    patientId: str
+    reportDate: Optional[str] = None
+    reportLabel: Optional[str] = None
+    extractedJsonGroup1: dict
+    extractedJsonGroup2: dict
+    labComparison: list
+    summary: str
+    recommendedTests: list
+    dailyHealthAdvice: list
+    patientInfo: dict
+    createdAt: datetime
+
+    model_config = {
+        "json_encoders": {ObjectId: str}
+    }
+

@@ -11,6 +11,9 @@ from typing import Any, Optional
 
 from .workflow_state import WorkflowState, can_transition, state_index
 
+# WorkflowService and routes/workflow.py use this store as the local session
+# database that keeps state transitions, step payloads, and retrieval history.
+
 
 _local = threading.local()
 _DEFAULT_DB_PATH = os.getenv("WORKFLOW_DB_PATH", str(Path(__file__).parent.parent / "database" / "session_temp.db"))
@@ -83,8 +86,9 @@ CREATE INDEX IF NOT EXISTS idx_events_session ON orchestration_events(session_id
 CREATE INDEX IF NOT EXISTS idx_retrieval_session_source ON retrieval_context(session_id, source_type);
 """
 
-
 class WorkflowStore:
+    # This store persists the workflow session lifecycle that the frontend
+    # drives through init, extraction, lab/ecg, analysis, and cleanup steps.
     def __init__(self, db_path: str = _DEFAULT_DB_PATH) -> None:
         self.db_path = db_path
         self._ensure_schema()

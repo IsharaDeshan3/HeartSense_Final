@@ -1,4 +1,4 @@
-// ─── Shared analysis and health types ───────────────────────────────────────
+// ─── Shared analysis types ─────────────────────────────────────────────────
 
 export interface SymptomsPayload {
   text: string;
@@ -10,6 +10,7 @@ export interface SymptomsPayload {
 
 export interface ECGPayload {
   status: "present" | "skipped" | "error";
+  skip_reason?: string;
   rhythm?: string;
   heart_rate?: number;
   qrs_duration?: number;
@@ -21,6 +22,7 @@ export interface ECGPayload {
 
 export interface LabPayload {
   status: "present" | "skipped" | "error";
+  skip_reason?: string;
   troponin?: number;
   ldh?: number;
   bnp?: number;
@@ -75,40 +77,3 @@ export interface AnalysisResponse {
   error?: string;
 }
 
-export interface HealthResponse {
-  status: string;
-  faiss_ready: boolean;
-  rare_cases_ready?: boolean;
-  supabase_ready: boolean;
-  /** True when DeepSeek-R1 8B GGUF is loaded in GPU memory */
-  kra_model_loaded: boolean;
-  /** True when Phi-3.5-mini GGUF is loaded in CPU memory */
-  ora_model_loaded: boolean;
-  /** KRA runtime description, e.g. "nvidia_gpu" or "cpu_fallback" */
-  kra_runtime?: string;
-  cuda_toolkit_path?: string;
-  cuda_toolkit_version?: string;
-  dll_search_paths?: string[];
-}
-
-// ─── Service ────────────────────────────────────────────────────────────────
-
-export const DiagnosticService = {
-  /**
-   * Check pipeline component health
-   */
-  async checkHealth(): Promise<HealthResponse> {
-    const res = await fetch("/api/diagnostic/health");
-    if (!res.ok) {
-      return {
-        status: "offline",
-        faiss_ready: false,
-        rare_cases_ready: false,
-        supabase_ready: false,
-        kra_model_loaded: false,
-        ora_model_loaded: false,
-      };
-    }
-    return res.json();
-  },
-};

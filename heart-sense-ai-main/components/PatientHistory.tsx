@@ -21,6 +21,8 @@ import {
   CircleCheck,
   CircleAlert,
   Network,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +31,7 @@ import type {
   PatientHistorySummary,
 } from "@/services/WorkflowService";
 
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Types Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Types
 
 interface PatientInfo {
   _id: string;
@@ -60,11 +62,13 @@ interface PatientHistoryProps {
   historySummary?: PatientHistorySummary | null;
   labHistory: LabHistoryEntry[];
   isLoading?: boolean;
+  onDeleteHistoryEntry?: (payloadId: string) => Promise<void> | void;
+  deletingPayloadId?: string | null;
 }
 
 type TabKey = "timeline" | "labs" | "summary" | "overview";
 
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Helpers
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "Unknown date";
@@ -82,7 +86,7 @@ function formatDate(dateStr: string | null | undefined): string {
 }
 
 function formatDateShort(dateStr: string | null | undefined): string {
-  if (!dateStr) return "Ã¢â‚¬â€";
+  if (!dateStr) return "-";
   try {
     return new Date(dateStr).toLocaleDateString("en-US", {
       month: "short",
@@ -94,7 +98,7 @@ function formatDateShort(dateStr: string | null | undefined): string {
   }
 }
 
-// Sinhala unicode range: 0D80â€“0DFF
+// Sinhala unicode range: 0D80-0DFF
 function hasSinhala(s: string): boolean {
   return /[\u0D80-\u0DFF]/.test(s);
 }
@@ -167,7 +171,7 @@ function extractSymptomsSummary(
   if (!symptomsJson) return "No symptoms recorded";
   const s = extractStructuredSymptoms(symptomsJson);
   const parts = [s.chiefComplaint, ...s.symptoms.slice(0, 3)].filter(Boolean);
-  if (parts.length) return parts.join(" Â· ");
+  if (parts.length) return parts.join(" | ");
   // fallback: cleaned text field
   const raw = symptomsJson.text;
   if (typeof raw === "string" && !hasSinhala(raw)) return raw.slice(0, 120);
@@ -238,6 +242,88 @@ interface DiagSection {
   content: string;
   isTable: boolean;
   isBullets: boolean;
+}
+
+type OraMode = "newbie" | "seasoned";
+
+interface OraModeContent {
+  newbie?: string;
+  seasoned?: string;
+}
+
+function normalizeOraMode(value: unknown): OraMode {
+  return String(value ?? "").toLowerCase() === "newbie"
+    ? "newbie"
+    : "seasoned";
+}
+
+function cleanDiagnosisOutput(raw: string): string {
+  const text = String(raw || "")
+    .replace(/```markdown/gi, "")
+    .replace(/```/g, "")
+    .trim();
+  if (!text) return "";
+
+  const leakMatch = text.match(
+    /^\s*(RULES:?|INTERNAL AUTHORING CONSTRAINTS(?:\s*\(.*\))?:?|═══ INPUT DATA ═══|PATIENT PRESENTATION:|KRA INPUT OBJECT:|KRA OUTPUT OBJECT:|KRA ANALYSIS:|═══ TASK ═══)\s*$/im,
+  );
+  if (!leakMatch || typeof leakMatch.index !== "number") {
+    return text;
+  }
+
+  return text.slice(0, leakMatch.index).trim();
+}
+
+function resolveOraContent(record: PatientDiagnosisRecord): {
+  outputs: OraModeContent;
+  disclaimers: OraModeContent;
+  defaultMode: OraMode;
+} {
+  const outputs: OraModeContent = {};
+  const disclaimers: OraModeContent = {};
+
+  const persistedOutputs = record.ora_outputs || {};
+  const newbieOutput = cleanDiagnosisOutput(
+    String(persistedOutputs.newbie || "").trim(),
+  );
+  const seasonedOutput = cleanDiagnosisOutput(
+    String(persistedOutputs.seasoned || "").trim(),
+  );
+  if (newbieOutput) outputs.newbie = newbieOutput;
+  if (seasonedOutput) outputs.seasoned = seasonedOutput;
+
+  const persistedDisclaimers = record.ora_disclaimers || {};
+  const newbieDisclaimer = String(persistedDisclaimers.newbie || "").trim();
+  const seasonedDisclaimer = String(
+    persistedDisclaimers.seasoned || "",
+  ).trim();
+  if (newbieDisclaimer) disclaimers.newbie = newbieDisclaimer;
+  if (seasonedDisclaimer) disclaimers.seasoned = seasonedDisclaimer;
+
+  if (!outputs.newbie && !outputs.seasoned) {
+    const fallbackOutput = cleanDiagnosisOutput(
+      String(record.refined_output || "").trim(),
+    );
+    if (fallbackOutput) {
+      outputs[normalizeOraMode(record.experience_level)] = fallbackOutput;
+    }
+  }
+
+  if (!disclaimers.newbie && !disclaimers.seasoned) {
+    const fallbackDisclaimer = String(record.disclaimer || "").trim();
+    if (fallbackDisclaimer) {
+      disclaimers[normalizeOraMode(record.experience_level)] =
+        fallbackDisclaimer;
+    }
+  }
+
+  const defaultMode: OraMode = outputs.seasoned
+    ? "seasoned"
+    : outputs.newbie
+      ? "newbie"
+      : normalizeOraMode(record.experience_level);
+
+  return { outputs, disclaimers, defaultMode };
 }
 
 function parseDiagnosisOutput(text: string): DiagSection[] {
@@ -329,7 +415,7 @@ function renderInline(text: string): React.ReactNode[] {
   );
 }
 
-// â”€â”€â”€ Overview map (interactive SVG radial node chart) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Overview map (interactive SVG radial node chart)
 
 type SelectedNode =
   | { type: "hub"; groupLabel: string }
@@ -365,7 +451,7 @@ function DiagnosisOverviewChart({
   const MAX_ITEMS = 6;
   const ARC_SPAN = 110;
 
-  // Dynamic fill helper â€” brightens rgba fill for hover/selected states
+  // Dynamic fill helper - brightens rgba fill for hover/selected states
   const dynFill = (base: string, state: "normal" | "hover" | "selected") => {
     const op = { normal: 0.18, hover: 0.32, selected: 0.5 }[state];
     return base.replace(/[\d.]+\)$/, op + ")");
@@ -952,29 +1038,37 @@ function DiagnosisOverviewChart({
                           Recorded in {visits.length} visit
                           {visits.length !== 1 ? "s" : ""}
                         </p>
-                        {visits.map((v) => (
-                          <div
-                            key={v.payload_id}
-                            className="text-xs rounded-lg px-3 py-1.5 flex items-center gap-2"
-                            style={{
-                              background: selGroup.hue + "18",
-                              border: `1px solid ${selGroup.hue}33`,
-                            }}
-                          >
-                            <CalendarDays
-                              className="h-3 w-3 shrink-0"
-                              style={{ color: selGroup.hue }}
-                            />
-                            <span className="text-foreground/80">
-                              {formatDate(v.created_at)}
-                            </span>
-                            {v.refined_output && (
-                              <span className="text-muted-foreground/50 ml-auto text-[10px]">
-                                has AI diagnosis
+                        {visits.map((v) => {
+                          const resolvedVisit = resolveOraContent(v);
+                          const hasVisitDiagnosis = Boolean(
+                            resolvedVisit.outputs.seasoned ||
+                              resolvedVisit.outputs.newbie,
+                          );
+
+                          return (
+                            <div
+                              key={v.payload_id}
+                              className="text-xs rounded-lg px-3 py-1.5 flex items-center gap-2"
+                              style={{
+                                background: selGroup.hue + "18",
+                                border: `1px solid ${selGroup.hue}33`,
+                              }}
+                            >
+                              <CalendarDays
+                                className="h-3 w-3 shrink-0"
+                                style={{ color: selGroup.hue }}
+                              />
+                              <span className="text-foreground/80">
+                                {formatDate(v.created_at)}
                               </span>
-                            )}
-                          </div>
-                        ))}
+                              {hasVisitDiagnosis && (
+                                <span className="text-muted-foreground/50 ml-auto text-[10px]">
+                                  has AI diagnosis
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
                       </>
                     ) : (
                       <p className="text-xs text-muted-foreground/60">
@@ -1001,7 +1095,7 @@ function DiagnosisOverviewChart({
   );
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Component Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Component
 
 export default function PatientHistory({
   patient,
@@ -1009,15 +1103,21 @@ export default function PatientHistory({
   historySummary,
   labHistory,
   isLoading = false,
+  onDeleteHistoryEntry,
+  deletingPayloadId = null,
 }: PatientHistoryProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedLabId, setExpandedLabId] = useState<string | null>(null);
+  const [selectedOraModes, setSelectedOraModes] = useState<Record<string, OraMode>>({});
   const [activeTab, setActiveTab] = useState<TabKey>("timeline");
 
   const toggleExpand = (id: string) =>
     setExpandedId((prev) => (prev === id ? null : id));
   const toggleLabExpand = (id: string) =>
     setExpandedLabId((prev) => (prev === id ? null : id));
+  const selectOraMode = (payloadId: string, mode: OraMode) => {
+    setSelectedOraModes((prev) => ({ ...prev, [payloadId]: mode }));
+  };
 
   const lastVisit = diagnosisHistory[0]?.created_at ?? labHistory[0]?.testDate;
   const totalConditions = historySummary?.top_conditions?.length ?? 0;
@@ -1054,7 +1154,7 @@ export default function PatientHistory({
 
   return (
     <div className="space-y-6">
-      {/* Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Patient Hero Card Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
+      {/* Patient Hero Card */}
       <Card className="glass border-border/30 rounded-4xl overflow-hidden">
         <CardContent className="p-0">
           {/* Top accent stripe */}
@@ -1110,7 +1210,7 @@ export default function PatientHistory({
                 <div className="w-px bg-border/20 self-stretch" />
                 <div className="text-center">
                   <p className="text-2xl font-black">
-                    {totalConditions || "Ã¢â‚¬â€"}
+                    {totalConditions || "-"}
                   </p>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
                     Conditions
@@ -1119,7 +1219,7 @@ export default function PatientHistory({
                 <div className="w-px bg-border/20 self-stretch" />
                 <div className="text-center">
                   <p className="text-sm font-black text-foreground/80">
-                    {lastVisit ? formatDateShort(lastVisit) : "Ã¢â‚¬â€"}
+                    {lastVisit ? formatDateShort(lastVisit) : "-"}
                   </p>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
                     Last Visit
@@ -1131,7 +1231,7 @@ export default function PatientHistory({
         </CardContent>
       </Card>
 
-      {/* Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Tabs Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
+      {/* Tabs */}
       <div className="flex gap-1.5 p-1 bg-muted/10 border border-border/20 rounded-2xl w-fit">
         {tabs.map((tab) => (
           <button
@@ -1158,7 +1258,7 @@ export default function PatientHistory({
         ))}
       </div>
 
-      {/* Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Tab: Visit Timeline Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
+      {/* Tab section */}
       {activeTab === "timeline" &&
         (isLoading ? (
           <div className="flex items-center justify-center h-40">
@@ -1187,11 +1287,34 @@ export default function PatientHistory({
             <div className="space-y-4 pl-16">
               {diagnosisHistory.map((record, idx) => {
                 const isExpanded = expandedId === record.payload_id;
+                const isDeleting = deletingPayloadId === record.payload_id;
                 const ecgFields = extractEcgFields(record.ecg_json);
                 const labFields = extractLabFields(record.labs_json);
-                const diagnosisSections = parseDiagnosisOutput(
-                  record.refined_output ?? "",
+                const resolvedOra = resolveOraContent(record);
+                const selectedMode =
+                  selectedOraModes[record.payload_id] ?? resolvedOra.defaultMode;
+                const selectedOutput =
+                  resolvedOra.outputs[selectedMode] ||
+                  resolvedOra.outputs.seasoned ||
+                  resolvedOra.outputs.newbie ||
+                  "";
+                const selectedDisclaimer =
+                  resolvedOra.disclaimers[selectedMode] ||
+                  resolvedOra.disclaimers.seasoned ||
+                  resolvedOra.disclaimers.newbie ||
+                  "";
+                const hasDualModeOutput = Boolean(
+                  resolvedOra.outputs.newbie && resolvedOra.outputs.seasoned,
                 );
+                const availableModeLabel = hasDualModeOutput
+                  ? "newbie + seasoned"
+                  : resolvedOra.outputs.seasoned
+                    ? "seasoned"
+                    : resolvedOra.outputs.newbie
+                      ? "newbie"
+                      : null;
+                const diagnosisSections = parseDiagnosisOutput(selectedOutput);
+                const hasDiagnosisOutput = Boolean(selectedOutput.trim());
                 const structuredSymptoms = extractStructuredSymptoms(
                   record.symptoms_json,
                 );
@@ -1217,90 +1340,120 @@ export default function PatientHistory({
                     >
                       <CardContent className="p-0">
                         {/* Header row */}
-                        <button
-                          onClick={() => toggleExpand(record.payload_id)}
-                          className="w-full flex items-start gap-4 p-5 text-left hover:bg-white/2 transition-colors"
-                        >
-                          <div
-                            className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
-                              isCompleted
-                                ? "bg-emerald-500/10"
-                                : "bg-amber-500/10"
-                            }`}
+                        <div className="flex items-start gap-3 p-5">
+                          <button
+                            onClick={() => toggleExpand(record.payload_id)}
+                            className="flex-1 min-w-0 flex items-start gap-4 text-left hover:bg-white/2 transition-colors rounded-xl p-1 -m-1"
                           >
-                            {isCompleted ? (
-                              <CircleCheck className="h-5 w-5 text-emerald-400" />
-                            ) : (
-                              <CircleAlert className="h-5 w-5 text-amber-400" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                              <span className="text-sm font-bold">
-                                {formatDate(record.created_at)}
-                              </span>
-                              <Badge
-                                className={
-                                  isCompleted
-                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[9px]"
-                                    : "bg-amber-500/10 text-amber-400 border-amber-500/20 text-[9px]"
-                                }
-                              >
-                                {record.status || "unknown"}
-                              </Badge>
-                              {record.experience_level && (
-                                <Badge variant="outline" className="text-[9px]">
-                                  {record.experience_level}
+                            <div
+                              className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                                isCompleted
+                                  ? "bg-emerald-500/10"
+                                  : "bg-amber-500/10"
+                              }`}
+                            >
+                              {isCompleted ? (
+                                <CircleCheck className="h-5 w-5 text-emerald-400" />
+                              ) : (
+                                <CircleAlert className="h-5 w-5 text-amber-400" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                                <span className="text-sm font-bold">
+                                  {formatDate(record.created_at)}
+                                </span>
+                                <Badge
+                                  className={
+                                    isCompleted
+                                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[9px]"
+                                      : "bg-amber-500/10 text-amber-400 border-amber-500/20 text-[9px]"
+                                  }
+                                >
+                                  {record.status || "unknown"}
                                 </Badge>
-                              )}
-                              <span className="text-[10px] text-muted-foreground/50 font-mono">
-                                Visit #{diagnosisHistory.length - idx}
-                              </span>
-                              {(record.doctor_name || record.doctor_id) && (
-                                <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/70 bg-white/4 border border-border/20 rounded-full px-2 py-0.5">
-                                  <Stethoscope className="h-2.5 w-2.5 shrink-0" />
-                                  {record.doctor_name ?? record.doctor_id}
+                                {record.experience_level && (
+                                  <Badge variant="outline" className="text-[9px]">
+                                    {record.experience_level}
+                                  </Badge>
+                                )}
+                                {availableModeLabel && (
+                                  <Badge variant="outline" className="text-[9px]">
+                                    {availableModeLabel}
+                                  </Badge>
+                                )}
+                                <span className="text-[10px] text-muted-foreground/50 font-mono">
+                                  Visit #{diagnosisHistory.length - idx}
                                 </span>
+                                {(record.doctor_name || record.doctor_id) && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/70 bg-white/4 border border-border/20 rounded-full px-2 py-0.5">
+                                    <Stethoscope className="h-2.5 w-2.5 shrink-0" />
+                                    {record.doctor_name ?? record.doctor_id}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground leading-relaxed">
+                                {extractSymptomsSummary(record.symptoms_json)}
+                              </p>
+                              {/* Data chips */}
+                              <div className="flex gap-1.5 mt-2.5 flex-wrap">
+                                {record.symptoms_json && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] bg-blue-500/8 border border-blue-500/15 text-blue-400 rounded-full px-2 py-0.5">
+                                    <FileText className="h-2.5 w-2.5" /> Symptoms
+                                  </span>
+                                )}
+                                {record.ecg_json && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] bg-violet-500/8 border border-violet-500/15 text-violet-400 rounded-full px-2 py-0.5">
+                                    <Activity className="h-2.5 w-2.5" /> ECG
+                                  </span>
+                                )}
+                                {record.labs_json && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] bg-cyan-500/8 border border-cyan-500/15 text-cyan-400 rounded-full px-2 py-0.5">
+                                    <Microscope className="h-2.5 w-2.5" /> Labs
+                                  </span>
+                                )}
+                                {hasDiagnosisOutput && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] bg-primary/8 border border-primary/15 text-primary rounded-full px-2 py-0.5">
+                                    <BrainCircuit className="h-2.5 w-2.5" /> AI
+                                    Diagnosis
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div
+                              className={`p-1.5 rounded-lg transition-colors shrink-0 mt-0.5 ${isExpanded ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}
+                            >
+                              {isExpanded ? (
+                                <ChevronUp className="h-4 w-4" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4" />
                               )}
                             </div>
-                            <p className="text-xs text-muted-foreground leading-relaxed">
-                              {extractSymptomsSummary(record.symptoms_json)}
-                            </p>
-                            {/* Data chips */}
-                            <div className="flex gap-1.5 mt-2.5 flex-wrap">
-                              {record.symptoms_json && (
-                                <span className="inline-flex items-center gap-1 text-[9px] bg-blue-500/8 border border-blue-500/15 text-blue-400 rounded-full px-2 py-0.5">
-                                  <FileText className="h-2.5 w-2.5" /> Symptoms
-                                </span>
+                          </button>
+
+                          {onDeleteHistoryEntry && (
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!window.confirm("Delete this history entry? This will remove linked KRA/ORA records.")) {
+                                  return;
+                                }
+                                await onDeleteHistoryEntry(record.payload_id);
+                              }}
+                              disabled={isDeleting}
+                              className="h-9 w-9 shrink-0 rounded-lg border border-rose-500/25 text-rose-400 hover:bg-rose-500/10 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center"
+                              title="Delete history entry"
+                              aria-label="Delete history entry"
+                            >
+                              {isDeleting ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
                               )}
-                              {record.ecg_json && (
-                                <span className="inline-flex items-center gap-1 text-[9px] bg-violet-500/8 border border-violet-500/15 text-violet-400 rounded-full px-2 py-0.5">
-                                  <Activity className="h-2.5 w-2.5" /> ECG
-                                </span>
-                              )}
-                              {record.labs_json && (
-                                <span className="inline-flex items-center gap-1 text-[9px] bg-cyan-500/8 border border-cyan-500/15 text-cyan-400 rounded-full px-2 py-0.5">
-                                  <Microscope className="h-2.5 w-2.5" /> Labs
-                                </span>
-                              )}
-                              {record.refined_output && (
-                                <span className="inline-flex items-center gap-1 text-[9px] bg-primary/8 border border-primary/15 text-primary rounded-full px-2 py-0.5">
-                                  <BrainCircuit className="h-2.5 w-2.5" /> AI
-                                  Diagnosis
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div
-                            className={`p-1.5 rounded-lg transition-colors shrink-0 mt-0.5 ${isExpanded ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}
-                          >
-                            {isExpanded ? (
-                              <ChevronUp className="h-4 w-4" />
-                            ) : (
-                              <ChevronDown className="h-4 w-4" />
-                            )}
-                          </div>
-                        </button>
+                            </button>
+                          )}
+                        </div>
 
                         {/* Expanded detail panel */}
                         {isExpanded && (
@@ -1504,8 +1657,47 @@ export default function PatientHistory({
                                   </span>
                                 </div>
 
-                                {record.refined_output ? (
+                                {hasDiagnosisOutput ? (
                                   <div className="space-y-3">
+                                    {hasDualModeOutput && (
+                                      <div className="rounded-xl border border-border/15 p-2 bg-white/2">
+                                        <div className="inline-flex rounded-lg border border-border/20 overflow-hidden">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              selectOraMode(
+                                                record.payload_id,
+                                                "seasoned",
+                                              )
+                                            }
+                                            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-colors ${
+                                              selectedMode === "seasoned"
+                                                ? "bg-primary text-primary-foreground"
+                                                : "text-muted-foreground hover:bg-white/5"
+                                            }`}
+                                          >
+                                            Seasoned
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              selectOraMode(
+                                                record.payload_id,
+                                                "newbie",
+                                              )
+                                            }
+                                            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-colors ${
+                                              selectedMode === "newbie"
+                                                ? "bg-primary text-primary-foreground"
+                                                : "text-muted-foreground hover:bg-white/5"
+                                            }`}
+                                          >
+                                            Newbie
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+
                                     {diagnosisSections.length > 0 ? (
                                       diagnosisSections.map((section, i) => (
                                         <div
@@ -1519,7 +1711,7 @@ export default function PatientHistory({
                                             </span>
                                           </div>
 
-                                          {/* Markdown table â†’ HTML table */}
+                                          {/* Markdown table -> HTML table */}
                                           {section.isTable ? (
                                             (() => {
                                               const { headers, rows } =
@@ -1694,16 +1886,16 @@ export default function PatientHistory({
                                     ) : (
                                       <div className="rounded-xl border border-border/15 p-4">
                                         <pre className="text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap font-sans">
-                                          {record.refined_output}
+                                          {selectedOutput}
                                         </pre>
                                       </div>
                                     )}
 
-                                    {record.disclaimer && (
+                                    {selectedDisclaimer && (
                                       <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/5 border border-amber-500/15">
                                         <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
                                         <p className="text-[10px] text-amber-400/80 leading-relaxed">
-                                          {record.disclaimer}
+                                          {selectedDisclaimer}
                                         </p>
                                       </div>
                                     )}
@@ -1728,7 +1920,7 @@ export default function PatientHistory({
           </div>
         ))}
 
-      {/* Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Tab: Lab History Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
+      {/* Tab section */}
       {activeTab === "labs" &&
         (labHistory.length === 0 ? (
           <Card className="glass border-border/20 border-dashed rounded-4xl">
@@ -1879,7 +2071,7 @@ export default function PatientHistory({
           </div>
         ))}
 
-      {/*  Tab: AI Summary  */}
+      {/* Tab section */}
       {activeTab === "summary" &&
         (() => {
           const summarySections = parseDiagnosisOutput(
@@ -2173,7 +2365,7 @@ export default function PatientHistory({
           );
         })()}
 
-      {/* â”€â”€â”€ Tab: Overview Map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* Tab section */}
       {activeTab === "overview" && (
         <Card className="glass border-border/20 rounded-3xl overflow-hidden">
           <CardContent className="p-6 space-y-4">

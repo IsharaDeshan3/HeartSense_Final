@@ -1,8 +1,5 @@
 """
-backend/processing/schemas.py
-
 Pydantic request models for the analysis pipeline.
-
 These schemas are used by:
   - PipelineService.run()
   - WorkflowService (via internal AnalyzeRequest construction)
@@ -19,6 +16,9 @@ from pydantic import BaseModel, Field
 #  Sub-models                                                            #
 # --------------------------------------------------------------------- #
 
+# These models define the payload shape that routes/workflow.py accepts and
+# that workflow_service.py converts into the normalized pipeline inputs.
+
 class SymptomsPayload(BaseModel):
     """Free-text patient presentation plus structured demographic fields."""
 
@@ -33,7 +33,6 @@ class SymptomsPayload(BaseModel):
 class ECGPayload(BaseModel):
     """
     Structured ECG findings.
-
     Set status='skipped' when no ECG was performed — all other fields
     are optional in that case.
     """
@@ -59,7 +58,6 @@ class ECGPayload(BaseModel):
 class LabsPayload(BaseModel):
     """
     Structured laboratory results.
-
     Set status='skipped' when no labs were drawn.
     """
 
@@ -119,6 +117,9 @@ class AnalyzeRequest(BaseModel):
     Passed directly into PipelineService.run() and
     WorkflowService._run_analysis_pipeline().
     """
+
+    # The request mirrors the frontend session form, with optional ECG/labs so
+    # the pipeline can skip those steps without changing the contract.
 
     symptoms: SymptomsPayload
     ecg: Optional[ECGPayload] = None

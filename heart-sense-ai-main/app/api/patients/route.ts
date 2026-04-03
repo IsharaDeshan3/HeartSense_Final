@@ -26,9 +26,9 @@ export async function GET() {
     }
 
     return NextResponse.json(patients);
-  } catch (error: any) {
+  } catch (error: unknown) {
     return NextResponse.json(
-      { message: "Error fetching patients", error: error.message },
+      { message: "Error fetching patients", error: (error as Error).message },
       { status: 500 }
     );
   }
@@ -81,10 +81,10 @@ export async function POST(req: Request) {
       { message: "Patient registered successfully", patient },
       { status: 201 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Patient Registration Error:", error);
     return NextResponse.json(
-      { message: "Server error during patient registration", error: error.message },
+      { message: "Server error during patient registration", error: (error as Error).message },
       { status: 500 }
     );
   }

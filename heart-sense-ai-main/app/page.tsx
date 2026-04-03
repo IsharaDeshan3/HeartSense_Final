@@ -139,7 +139,7 @@ export default function Home() {
                     {[
                       { icon: <Globe className="text-primary w-8 h-8" />, title: "Low-Resource Language Support", text: "Optimized NLP pipelines for the Sinhala context to avoid loss of vital symptomatic nuances." },
                       { icon: <Database className="text-accent w-8 h-8" />, title: "FAISS Indexed Evidence", text: "Retrieval from a proprietary corpus of rare-case research for conditions like Uhl anomaly." },
-                      { icon: <Network className="text-primary w-8 h-8" />, title: "Distributed Orchestration", text: "Orchestrated via LangChain with high-performance reasoning agents on HuggingFace Spaces." }
+                      { icon: <Network className="text-primary w-8 h-8" />, title: "Distributed Orchestration", text: "Orchestrated through local inference workers and retrieval pipelines." }
                     ].map((item, i) => (
                       <div key={i} className="flex gap-8 group">
                         <div className="shrink-0 h-16 w-16 glass rounded-2xl flex-center border-primary/10 shadow-xl group-hover:scale-110 transition-transform">

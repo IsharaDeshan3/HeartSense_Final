@@ -17,6 +17,7 @@ import { DashboardHeader } from "@/components/ui/DashboardHeader";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+
 export default function DoctorPatientsPage() {
     const router = useRouter();
     const [patients, setPatients] = useState<any[]>([]);
@@ -24,23 +25,33 @@ export default function DoctorPatientsPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+    const [currentUser, setCurrentUser] = useState<any>(null);
 
-    const fetchPatients = async () => {
+    const fetchData = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch("/api/doctor/patients");
-            if (res.ok) {
-                setPatients(await res.json());
+            const [profRes, patRes] = await Promise.all([
+                fetch("/api/auth/me"),
+                fetch("/api/doctor/patients")
+            ]);
+
+            if (profRes.ok) {
+                const prof = await profRes.json();
+                setCurrentUser(prof);
+            }
+
+            if (patRes.ok) {
+                setPatients(await patRes.json());
             }
         } catch {
-            console.error("Failed to fetch patients");
+            console.error("Failed to fetch data");
         } finally {
             setIsLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchPatients();
+        fetchData();
     }, []);
 
     const handleDeletePatient = async (patientDbId: string, patientName: string) => {
@@ -74,6 +85,7 @@ export default function DoctorPatientsPage() {
             <DashboardHeader
                 title="My Patients"
                 icon={<Users className="h-8 w-8" />}
+                doctorName={currentUser?.fullName ?? ""}
             />
 
             <div className="p-12 flex-1 overflow-y-auto space-y-8">

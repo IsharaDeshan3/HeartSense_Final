@@ -41,19 +41,18 @@ def _get_textbook_retriever() -> FAISSRetriever:
     global _textbook_retriever
     if _textbook_retriever is None:
         _textbook_retriever = FAISSRetriever()
-        logger.info(
+        logger.debug(
             "Textbook FAISS index loaded: %d vectors",
             _textbook_retriever.index.ntotal,
         )
     return _textbook_retriever
-
 
 def _get_rare_retriever() -> RareCaseRetriever:
     global _rare_retriever
     if _rare_retriever is None:
         try:
             _rare_retriever = RareCaseRetriever()
-            logger.info(
+            logger.debug(
                 "Rare-case FAISS index loaded: %d vectors",
                 _rare_retriever.index.ntotal,
             )
@@ -61,7 +60,6 @@ def _get_rare_retriever() -> RareCaseRetriever:
             logger.error("Failed to load rare-case FAISS index: %s", exc)
             raise
     return _rare_retriever
-
 
 # -------------------------------------------------------------------------- #
 #  Search service                                                             #
@@ -76,6 +74,9 @@ class SearchService:
     -------
     tuple of (context_str, quality_dict, RareCaseAlert)
     """
+
+    # WorkflowService calls this class to build retrieval context for KRA and
+    # to decide whether a rare-case search should be added to the prompt.
 
     def __init__(self) -> None:
         self._vector_builder = UnifiedVectorBuilder()
@@ -122,6 +123,8 @@ class SearchService:
         sex: Optional[str] = None,
         chief_complaint: Optional[str] = None,
     ) -> Tuple[Any, str, Dict[str, Any]]:
+        # This is the main retrieval path used by workflow_service.py before
+        # KRA is called; it produces the baseline context and quality metrics.
         """Run textbook retrieval only and return the reusable patient vector."""
         patient_vector = self.build_patient_vector(
             symptoms_text=symptoms_text,
@@ -202,7 +205,12 @@ class SearchService:
         lab_values: Optional[Dict[str, float]] = None,
         common_condition: str = "",
     ) -> Tuple[str, Dict[str, Any], RareCaseAlert]:
+        
+        # When the uncertainty gate opens, this adds rare-case evidence and a
+        # structured alert that WorkflowService persists with the session.
+        
         """Run rare-case retrieval and alert generation only."""
+        
         rare_retriever = _get_rare_retriever()
         rare_results = rare_retriever.search(
             patient_vector.rare_query,
@@ -261,6 +269,8 @@ class SearchService:
         sex: Optional[str] = None,
         chief_complaint: Optional[str] = None,
     ) -> Tuple[str, Dict[str, Any], RareCaseAlert]:
+        # Convenience wrapper used by callers that want both textbook and rare
+        # retrieval in one call instead of orchestrating the gate themselves.
         """
         Dual-index search with anomaly detection and rare-case flagging.
 
@@ -337,6 +347,8 @@ class SearchService:
         top_k: int = 5,
         include_rare: bool = True,
     ) -> Tuple[str, Dict[str, Any], RareCaseAlert]:
+        # Converts the API request shape into retrieval inputs so the same
+        # search logic can be reused from both HTTP routes and pipelines.
         """Build a unified vector from a full AnalyzeRequest and search."""
         ecg_findings: List[str] = []
         lab_findings: List[str] = []
@@ -380,6 +392,8 @@ class SearchService:
     # ------------------------------------------------------------------ #
 
     def is_ready(self) -> bool:
+        # The workflow health endpoint uses this to report whether retrieval is
+        # ready before the frontend starts a session.
         """Return True if both FAISS indexes are loaded."""
         try:
             t = _get_textbook_retriever()

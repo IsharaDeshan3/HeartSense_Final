@@ -1,20 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
-  Users,
   Activity,
-  LogOut,
-  Search,
-  Plus,
   FlaskConical,
   Menu,
+  X,
   Syringe,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const navItems = [
   {
@@ -23,8 +18,6 @@ const navItems = [
     icon: Syringe,
     exact: true,
   },
-  { href: "/dashboard/doctor/new-case", label: "New Case", icon: Plus },
-  { href: "/dashboard/doctor/patients", label: "My Patients", icon: Users },
   {
     href: "/dashboard/doctor/diagnostics",
     label: "ECG Analysis",
@@ -35,7 +28,6 @@ const navItems = [
     label: "Lab Analysis",
     icon: FlaskConical,
   },
-  { href: "/dashboard/doctor/search", label: "Find Patient", icon: Search },
 ];
 
 export default function DoctorLayout({
@@ -43,19 +35,13 @@ export default function DoctorLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const pathname = usePathname();
-  const router = useRouter();
+  const isWorkspaceRoute = pathname.startsWith("/dashboard/doctor/workspace");
+  const [isCollapsed, setIsCollapsed] = useState(isWorkspaceRoute);
 
-  const handleLogout = async () => {
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-      router.push("/");
-      toast.success("Logged out successfully");
-    } catch {
-      toast.error("Logout failed");
-    }
-  };
+  useEffect(() => {
+    setIsCollapsed(isWorkspaceRoute);
+  }, [isWorkspaceRoute]);
 
   const isActive = (href: string, exact?: boolean) =>
     exact ? pathname === href : pathname.startsWith(href);
@@ -66,24 +52,35 @@ export default function DoctorLayout({
 
   return (
     <div className="h-screen bg-background text-foreground flex overflow-hidden font-sans">
+      {isCollapsed && (
+        <button
+          onClick={toggleNavbar}
+          className="hidden lg:flex fixed top-4 left-4 z-50 h-10 w-10 items-center justify-center rounded-full border border-border/40 bg-background/80 text-primary shadow-lg backdrop-blur-xl hover:bg-background"
+          aria-label="Show navigation"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+      )}
+
       {/* Sidebar */}
       <aside
-        className={`border-r border-border/40 glass hidden lg:flex flex-col relative z-20 shrink-0 ${
-          isCollapsed ? "w-20" : "w-72"
+        className={`border-r border-border/40 glass hidden lg:flex flex-col relative z-20 shrink-0 overflow-hidden transition-all duration-300 ${
+          isCollapsed
+            ? "w-0 opacity-0 pointer-events-none border-r-0"
+            : "w-72 opacity-100"
         }`}
       >
-        <div className="p-6 flex items-center gap-4">
+        <div className="p-6 flex items-center justify-between gap-4">
+          <span className="font-black tracking-tighter text-xl text-gradient">
+            HEARTSENSE AI
+          </span>
           <button
             onClick={toggleNavbar}
             className="h-8 w-8 rounded-full bg-primary/10 flex-center text-primary"
+            aria-label="Hide navigation"
           >
-            <Menu className="h-5 w-5" />
+            <X className="h-5 w-5" />
           </button>
-          {!isCollapsed && (
-            <span className="font-black tracking-tighter text-xl text-gradient">
-              HEARTSENSE AI
-            </span>
-          )}
         </div>
 
         <nav className="flex-1 px-6 space-y-2 mt-2">
@@ -100,29 +97,16 @@ export default function DoctorLayout({
                 }`}
               >
                 <item.icon className="h-5 w-5" />
-                {!isCollapsed && item.label}
+                  {item.label}
               </Link>
             );
           })}
         </nav>
 
-        <div className="p-6 border-t border-border/20">
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-4 text-muted-foreground hover:text-destructive rounded-2xl h-12 font-bold"
-            onClick={handleLogout}
-          >
-            <LogOut className="h-5 w-5" />
-            {!isCollapsed && "Sign Out"}
-          </Button>
-        </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col relative overflow-y-auto bg-background">
-        {/* Background Gradients */}
-        <div className="absolute top-[-10%] right-[-10%] w-[800px] h-[800px] bg-primary/10 rounded-full blur-[180px] -z-10 animate-pulse" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-accent/5 rounded-full blur-[150px] -z-10" />
         {children}
       </main>
     </div>

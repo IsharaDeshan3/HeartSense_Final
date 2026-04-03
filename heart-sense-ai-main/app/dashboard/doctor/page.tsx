@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useDeferredValue } from "react";
+import dynamic from "next/dynamic";
 import {
   Dna,
   Users,
@@ -15,18 +16,48 @@ import {
   Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { DashboardHeader } from "@/components/ui/DashboardHeader";
-import { VerificationPortal } from "@/components/ui/VerificationPortal";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+
+const VerificationPortal = dynamic(
+  () => import("@/components/ui/VerificationPortal").then((mod) => mod.VerificationPortal),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="rounded-[2.5rem] border border-border/30 bg-card/70 p-10 animate-pulse">
+        <div className="h-8 w-80 rounded-full bg-muted/20 mb-4" />
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="h-48 rounded-[2rem] bg-muted/10" />
+          <div className="h-48 rounded-[2rem] bg-muted/10" />
+        </div>
+      </div>
+    ),
+  },
+);
 
 export default function DoctorDashboard() {
   const router = useRouter();
   const [patients, setPatients] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [registryQuery, setRegistryQuery] = useState("");
+  const deferredRegistryQuery = useDeferredValue(registryQuery);
+
+  const filteredPatients = useMemo(() => {
+    const query = deferredRegistryQuery.toLowerCase().trim();
+    if (!query) return patients;
+
+    return patients.filter((patient) => {
+      return (
+        patient.fullName?.toLowerCase().includes(query) ||
+        patient.patientId?.toLowerCase().includes(query)
+      );
+    });
+  }, [patients, deferredRegistryQuery]);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -59,9 +90,7 @@ export default function DoctorDashboard() {
     <>
       <DashboardHeader
         title="Clinical Workspace"
-        badge="Quantum Connection"
-        stats={{ label: "Authenticated Clinician", value: "SLMC SECURED SESSION" }}
-        icon={<Stethoscope className="h-8 w-8" />}
+        doctorName={currentUser?.fullName ?? ""}
       />
 
       <div className="p-12 flex-1 overflow-y-auto space-y-12">
@@ -127,11 +156,32 @@ export default function DoctorDashboard() {
                   </Button>
                 </div>
 
+                <div className="glass border border-border/30 rounded-[2.5rem] p-6 space-y-4">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.3em] text-muted-foreground">Search Registry</p>
+                      <p className="text-sm text-muted-foreground mt-1">Find patients by name or patient ID.</p>
+                    </div>
+                    <div className="text-xs font-black uppercase tracking-[0.2em] text-primary">
+                      {filteredPatients.length} result{filteredPatients.length === 1 ? "" : "s"}
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input
+                      value={registryQuery}
+                      onChange={(event) => setRegistryQuery(event.target.value)}
+                      placeholder="Search by patient name or ID"
+                      className="h-14 rounded-2xl pl-12 bg-background/60 border-border/40"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-4">
                   {isLoading ? (
                     <div className="h-40 glass animate-pulse rounded-[3rem]"></div>
-                  ) : patients.length > 0 ? (
-                    patients.slice(0, 5).map(patient => (
+                  ) : filteredPatients.length > 0 ? (
+                    filteredPatients.slice(0, 5).map(patient => (
                       <div
                         key={patient._id}
                         className="glass border-border/30 p-8 rounded-[2.5rem] flex items-center justify-between hover:border-primary/40 hover:shadow-2xl transition-all cursor-pointer group"
@@ -160,7 +210,9 @@ export default function DoctorDashboard() {
                   ) : (
                     <div className="py-20 text-center glass rounded-[4rem] border-dashed border-primary/20 futuristic-glow shadow-primary/5">
                       <Users className="h-16 w-16 text-primary/20 mx-auto mb-6" />
-                      <p className="text-muted-foreground text-lg font-black uppercase tracking-widest italic opacity-40">No patients assigned yet</p>
+                      <p className="text-muted-foreground text-lg font-black uppercase tracking-widest italic opacity-40">
+                        {registryQuery ? "No matching patients found" : "No patients assigned yet"}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -186,19 +238,10 @@ export default function DoctorDashboard() {
 
                 <Card className="glass border-border/50 rounded-[3rem] overflow-hidden shadow-2xl p-2 futuristic-glow">
                   <CardHeader className="bg-primary/5 pb-8 border-b border-border/30 pt-10 px-10">
-                    <CardTitle className="text-xs font-black uppercase tracking-[0.4em] text-primary">Neural Health Metrics</CardTitle>
+                    <CardTitle className="text-xs font-black uppercase tracking-[0.4em] text-primary">Clinical Actions</CardTitle>
                   </CardHeader>
-                  <CardContent className="pt-10 px-10 pb-12 space-y-6">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-muted-foreground font-black uppercase tracking-widest">Vector Sync</span>
-                      <span className="text-primary font-black">100.0%</span>
-                    </div>
-                    <div className="h-3 w-full bg-primary/10 rounded-full overflow-hidden border border-primary/5">
-                      <div className="h-full w-full bg-primary shadow-[0_0_20px_var(--color-primary)]"></div>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed font-semibold italic opacity-80">
-                      HeartSense intelligence nodes are operational across all research clusters.
-                    </p>
+                  <CardContent className="pt-10 px-10 pb-12 space-y-6 text-sm text-muted-foreground font-medium leading-relaxed">
+                    <p>Use the registry search to locate patients quickly, or open the patient search workspace for access-request workflows.</p>
                   </CardContent>
                 </Card>
               </div>

@@ -24,6 +24,9 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 logger = logging.getLogger(__name__)
 
+# WorkflowService uses this module for the persisted handoff points between
+# retrieval, KRA, ORA, and patient-history cleanup.
+
 
 # --------------------------------------------------------------------- #
 #  PostgREST helper                                                      #
@@ -31,10 +34,11 @@ logger = logging.getLogger(__name__)
 
 _base_url: Optional[str] = None
 _headers: Optional[Dict[str, str]] = None
+_session: Optional[requests.Session] = None
 
 
 def _init():
-    global _base_url, _headers
+    global _base_url, _headers, _session
     if _base_url is not None:
         return
     url = os.getenv("SUPABASE_URL")
@@ -51,13 +55,30 @@ def _init():
         "Content-Type": "application/json",
         "Prefer": "return=representation",
     }
+    # Use a pooled session for all Supabase HTTP calls — avoids TCP/TLS
+    # handshake overhead on every request, which was a major latency source.
+    _session = requests.Session()
+    _session.headers.update(_headers)
+    adapter = requests.adapters.HTTPAdapter(
+        pool_connections=4,
+        pool_maxsize=8,
+        max_retries=requests.adapters.Retry(
+            total=2,
+            connect=0,
+            read=0,
+            backoff_factor=0.3,
+            status_forcelist=[502, 503, 504],
+        ),
+    )
+    _session.mount("https://", adapter)
+    _session.mount("http://", adapter)
 
 
 def _post(table: str, row: Dict[str, Any]) -> Dict[str, Any]:
     """Insert a row and return the inserted data."""
     _init()
     url = f"{_base_url}/rest/v1/{table}"
-    resp = requests.post(url, headers=_headers, json=row, timeout=30)
+    resp = _session.post(url, json=row, timeout=20)
     if resp.status_code >= 400:
         detail = resp.text[:500]
         # Detect missing-column errors and provide actionable guidance
@@ -84,7 +105,7 @@ def _patch(table: str, values: Dict[str, Any], eq_col: str, eq_val: str) -> None
     """Update rows matching a filter."""
     _init()
     url = f"{_base_url}/rest/v1/{table}?{eq_col}=eq.{eq_val}"
-    resp = requests.patch(url, headers=_headers, json=values, timeout=30)
+    resp = _session.patch(url, json=values, timeout=15)
     resp.raise_for_status()
 
 
@@ -92,17 +113,13 @@ def _get(table: str, query_params: str, single: bool = False) -> Any:
     """Select rows with optional PostgREST query string."""
     _init()
     url = f"{_base_url}/rest/v1/{table}?{query_params}"
-    resp = requests.get(url, headers=_headers, timeout=30)
+    resp = _session.get(url, timeout=15)
     resp.raise_for_status()
     data = resp.json()
     if single:
         return data[0] if data else None
     return data
 
-
-# --------------------------------------------------------------------- #
-#  analysis_payloads                                                      #
-# --------------------------------------------------------------------- #
 
 def check_existing_payload(session_id: str) -> Optional[str]:
     """
@@ -142,6 +159,8 @@ def save_analysis_payload(
     Returns:
         (row_id, public_url)
     """
+    # Step 3 of the workflow stores the raw inputs and retrieval context so
+    # KRA and later history views can link back to the exact source payload.
     row = {
         "session_id": session_id,
         "symptoms_json": symptoms,
@@ -186,6 +205,8 @@ def save_kra_output(
     Returns:
         (row_id, public_url) pointing to the new kra_outputs row.
     """
+    # Step 4 stores the KRA output before ORA refines it, which makes the
+    # raw reasoning available for audits and downstream history queries.
     if isinstance(kra_result, str):
         kra_output_dict: Dict[str, Any] = {}
         raw_text: Optional[str] = kra_result
@@ -236,6 +257,7 @@ def save_ora_output(
     Returns:
         (row_id, public_url) of the inserted row.
     """
+    # Step 5 is the final persistence point for the clinician-facing output.
     row = {
         "session_id": session_id,
         "kra_output_id": kra_output_id,
@@ -283,15 +305,35 @@ def _history_record_rank(record: Dict[str, Any]) -> tuple[int, int, int, int]:
     )
 
 
+def _normalize_experience_level(value: Any) -> str:
+    level = str(value or "").strip().lower()
+    if level in {"newbie", "junior"}:
+        return "newbie"
+    if level in {"seasoned", "expert"}:
+        return "seasoned"
+    return ""
+
+
 def _dedupe_history_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     deduped: List[Dict[str, Any]] = []
     payload_index: Dict[str, int] = {}
+    ora_outputs_by_payload: Dict[str, Dict[str, str]] = {}
+    ora_disclaimers_by_payload: Dict[str, Dict[str, str]] = {}
 
     for record in records:
         payload_id = str(record.get("payload_id") or "").strip()
         if not payload_id:
             deduped.append(record)
             continue
+
+        mode = _normalize_experience_level(record.get("experience_level"))
+        refined_output = str(record.get("refined_output") or "").strip()
+        disclaimer = str(record.get("disclaimer") or "").strip()
+
+        if mode and refined_output:
+            ora_outputs_by_payload.setdefault(payload_id, {})[mode] = refined_output
+        if mode and disclaimer:
+            ora_disclaimers_by_payload.setdefault(payload_id, {})[mode] = disclaimer
 
         existing_index = payload_index.get(payload_id)
         if existing_index is None:
@@ -302,21 +344,36 @@ def _dedupe_history_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any
         if _history_record_rank(record) > _history_record_rank(deduped[existing_index]):
             deduped[existing_index] = record
 
+    for record in deduped:
+        payload_id = str(record.get("payload_id") or "").strip()
+        if not payload_id:
+            continue
+
+        outputs = ora_outputs_by_payload.get(payload_id)
+        disclaimers = ora_disclaimers_by_payload.get(payload_id)
+        if outputs:
+            record["ora_outputs"] = outputs
+        if disclaimers:
+            record["ora_disclaimers"] = disclaimers
+
     return deduped
 
 
-def get_patient_diagnosis_history(patient_id: str) -> list:
+def _get_patient_diagnosis_history_with_status(
+    patient_id: str,
+) -> Tuple[List[Dict[str, Any]], str]:
     """
     Fetch all past diagnoses for a patient from the diagnosis_history view.
 
-    Returns a list of dicts with payload, KRA, and ORA data, newest first.
-    Each record is enriched with `doctor_name` looked up from the profiles table.
+    Returns (records, status) where status is "ok" or "unreachable".
     """
+    # This feeds the history bundle that WorkflowService injects back into the
+    # KRA prompt when a patient has prior diagnosis records.
     try:
         _init()
         records = _get(
             "diagnosis_history",
-            f"patient_id=eq.{patient_id}&order=created_at.desc"
+            f"patient_id=eq.{patient_id}&order=created_at.desc",
         )
         records = _dedupe_history_records(records)
 
@@ -337,12 +394,17 @@ def get_patient_diagnosis_history(patient_id: str) -> list:
             did = record.get("doctor_id")
             record["doctor_name"] = doctor_map.get(did) if did else None
 
-        return records
+        return records, "ok"
     except Exception as exc:
         logger.warning(
             "get_patient_diagnosis_history(%s) failed: %s", patient_id, exc
         )
-        return []
+        return [], "unreachable"
+
+
+def get_patient_diagnosis_history(patient_id: str) -> list:
+    records, _ = _get_patient_diagnosis_history_with_status(patient_id)
+    return records
 
 
 def _extract_top_diagnoses(records: List[Dict[str, Any]]) -> List[str]:
@@ -374,7 +436,10 @@ def _extract_lab_abnormalities(records: List[Dict[str, Any]]) -> List[str]:
     return abnormalities
 
 
-def build_patient_history_summary(patient_id: str) -> Dict[str, Any]:
+def build_patient_history_summary(
+    patient_id: str,
+    records: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     """
     Build a clinically-compressed longitudinal summary for KRA reasoning.
 
@@ -382,7 +447,9 @@ def build_patient_history_summary(patient_id: str) -> Dict[str, Any]:
     Supabase the canonical reasoning source for prior AI diagnoses and lab
     findings.
     """
-    records = get_patient_diagnosis_history(patient_id)
+    # WorkflowService passes this compressed summary to KRA so the model sees
+    # a concise longitudinal view without loading every prior row.
+    records = records if records is not None else get_patient_diagnosis_history(patient_id)
     if not records:
         return {
             "patient_id": patient_id,
@@ -441,17 +508,19 @@ def build_patient_history_summary(patient_id: str) -> Dict[str, Any]:
 
 def get_patient_history_bundle(patient_id: str) -> Dict[str, Any]:
     """Return full history records plus the clinically-compressed summary."""
-    records = get_patient_diagnosis_history(patient_id)
-    summary = build_patient_history_summary(patient_id)
+    records, status = _get_patient_diagnosis_history_with_status(patient_id)
+    summary = build_patient_history_summary(patient_id, records)
     return {
         "patient_id": patient_id,
         "summary": summary,
         "records": records,
+        "supabase_status": status,
     }
 
 
 def delete_history_record(payload_id: str) -> Dict[str, Any]:
     """Delete one history entry and its dependent KRA/ORA rows."""
+    # Cleanup mirrors the workflow session delete path in backend/routes/workflow.py.
     _init()
 
     deleted: Dict[str, int] = {
@@ -479,7 +548,7 @@ def delete_history_record(payload_id: str) -> Dict[str, Any]:
             continue
         try:
             url = f"{_base_url}/rest/v1/ora_outputs?kra_output_id=eq.{kra_id}"
-            resp = requests.delete(url, headers=_headers, timeout=30)
+            resp = _session.delete(url, timeout=15)
             if resp.status_code >= 400:
                 resp.raise_for_status()
             deleted["ora_outputs"] += len(resp.json()) if resp.text.strip() else 0
@@ -488,7 +557,7 @@ def delete_history_record(payload_id: str) -> Dict[str, Any]:
 
     try:
         url = f"{_base_url}/rest/v1/kra_outputs?payload_id=eq.{payload_id}"
-        resp = requests.delete(url, headers=_headers, timeout=30)
+        resp = _session.delete(url, timeout=15)
         if resp.status_code >= 400:
             resp.raise_for_status()
         deleted["kra_outputs"] += len(resp.json()) if resp.text.strip() else 0
@@ -497,7 +566,7 @@ def delete_history_record(payload_id: str) -> Dict[str, Any]:
 
     try:
         url = f"{_base_url}/rest/v1/analysis_payloads?id=eq.{payload_id}"
-        resp = requests.delete(url, headers=_headers, timeout=30)
+        resp = _session.delete(url, timeout=15)
         if resp.status_code >= 400:
             resp.raise_for_status()
         deleted["analysis_payloads"] += len(resp.json()) if resp.text.strip() else 0
@@ -549,7 +618,20 @@ def verify_schema() -> Dict[str, Any]:
             "migration_hint": "..."  (only when ok=False)
         }
     """
-    _init()
+    try:
+        _init()
+    except Exception as exc:
+        logger.warning("Supabase schema validation unavailable: %s", exc)
+        return {
+            "ok": False,
+            "tables": {},
+            "supabase_status": "unreachable",
+            "error": str(exc),
+            "migration_hint": (
+                "Supabase is unreachable or not configured. Set SUPABASE_URL and "
+                "SUPABASE_SERVICE_KEY, then retry schema check."
+            ),
+        }
 
     expected: Dict[str, list[str]] = {
         "analysis_payloads": [
@@ -641,7 +723,7 @@ def delete_patient_data(patient_id: str) -> Dict[str, Any]:
             # Delete ora_outputs first (FK dependency)
             try:
                 url = f"{_base_url}/rest/v1/ora_outputs?session_id=eq.{sid}"
-                resp = requests.delete(url, headers=_headers, timeout=30)
+                resp = _session.delete(url, timeout=15)
                 if resp.status_code < 400:
                     count = len(resp.json()) if resp.text.strip() else 0
                     deleted["ora_outputs"] += count
@@ -651,7 +733,7 @@ def delete_patient_data(patient_id: str) -> Dict[str, Any]:
             # Delete kra_outputs
             try:
                 url = f"{_base_url}/rest/v1/kra_outputs?session_id=eq.{sid}"
-                resp = requests.delete(url, headers=_headers, timeout=30)
+                resp = _session.delete(url, timeout=15)
                 if resp.status_code < 400:
                     count = len(resp.json()) if resp.text.strip() else 0
                     deleted["kra_outputs"] += count
@@ -661,7 +743,7 @@ def delete_patient_data(patient_id: str) -> Dict[str, Any]:
             # Delete analysis_payloads
             try:
                 url = f"{_base_url}/rest/v1/analysis_payloads?session_id=eq.{sid}"
-                resp = requests.delete(url, headers=_headers, timeout=30)
+                resp = _session.delete(url, timeout=15)
                 if resp.status_code < 400:
                     count = len(resp.json()) if resp.text.strip() else 0
                     deleted["analysis_payloads"] += count

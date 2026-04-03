@@ -15,6 +15,7 @@ interface DashboardHeaderProps {
     label: string;
     value: string;
   };
+  doctorName?: string;
   icon?: ReactNode;
   children?: ReactNode;
 }
@@ -24,6 +25,7 @@ export function DashboardHeader({
   badge,
   badgeVariant = "primary",
   stats,
+  doctorName,
   icon,
   children
 }: DashboardHeaderProps) {
@@ -56,9 +58,22 @@ export function DashboardHeader({
       </div>
 
       <div className="flex items-center gap-4">
-        {children}
+        <ThemeToggle />
 
-        {/* Logout Button — red with glow on hover */}
+        {doctorName ? (
+          <div className="text-right hidden sm:block">
+            <p className="text-xs font-black text-primary tracking-[0.2em] uppercase mb-1">Doctor</p>
+            <p className="text-[11px] text-muted-foreground font-bold">{doctorName}</p>
+          </div>
+        ) : (
+          stats && (
+            <div className="text-right hidden sm:block">
+              <p className="text-xs font-black text-primary tracking-[0.2em] uppercase mb-1">{stats.label}</p>
+              <p className="text-[11px] text-muted-foreground font-bold">{stats.value}</p>
+            </div>
+          )
+        )}
+
         <Button
           variant="ghost"
           size="icon"
@@ -71,14 +86,8 @@ export function DashboardHeader({
           <span className="sr-only">Sign Out</span>
         </Button>
 
-        <ThemeToggle />
+        {children}
 
-        {stats && (
-          <div className="text-right hidden sm:block">
-            <p className="text-xs font-black text-primary tracking-[0.2em] uppercase mb-1">{stats.label}</p>
-            <p className="text-[11px] text-muted-foreground font-bold">{stats.value}</p>
-          </div>
-        )}
         {icon && (
           <div className="h-14 w-14 rounded-2xl bg-primary/10 border border-primary/30 flex-center text-primary futuristic-glow shrink-0">
             {icon}
