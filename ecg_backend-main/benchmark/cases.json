@@ -1,0 +1,85 @@
+{
+  "metadata": {
+    "name": "ecg_backend_benchmark_seed",
+    "version": "v1",
+    "description": "Offline deterministic benchmark cases for schema and QC checks"
+  },
+  "cases": [
+    {
+      "id": "schema_valid_minimal",
+      "type": "schema",
+      "input": {
+        "rhythm_analysis": {
+          "heart_rate": 72,
+          "rhythm_type": "Sinus Rhythm",
+          "regularity": "regular"
+        },
+        "abnormalities": {
+          "abnormalities": ["No significant abnormalities detected"],
+          "severity": "normal",
+          "affected_leads": []
+        },
+        "diagnosis": {
+          "primary_diagnosis": "Normal ECG",
+          "differential_diagnoses": [],
+          "recommendations": [],
+          "urgency": "routine"
+        }
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "schema_invalid_urgency",
+      "type": "schema",
+      "input": {
+        "rhythm_analysis": {
+          "heart_rate": 110,
+          "rhythm_type": "Sinus Tachycardia",
+          "regularity": "regular"
+        },
+        "abnormalities": {
+          "abnormalities": ["ST Elevation"],
+          "severity": "severe",
+          "affected_leads": ["II", "III", "aVF"]
+        },
+        "diagnosis": {
+          "primary_diagnosis": "Inferior STEMI",
+          "differential_diagnoses": [],
+          "recommendations": [],
+          "urgency": "immediate"
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "qc_high_quality",
+      "type": "qc",
+      "input": {
+        "mode": "high_quality_grid",
+        "width": 1200,
+        "height": 600
+      },
+      "expect": {
+        "min_score": 0.6,
+        "allowed_grades": ["high", "moderate"]
+      }
+    },
+    {
+      "id": "qc_low_quality_blank",
+      "type": "qc",
+      "input": {
+        "mode": "blank",
+        "width": 1200,
+        "height": 600
+      },
+      "expect": {
+        "max_score": 0.4,
+        "required_grade": "low"
+      }
+    }
+  ]
+}

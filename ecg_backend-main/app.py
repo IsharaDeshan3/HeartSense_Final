@@ -44,6 +44,359 @@ except ImportError:
     print("google-generativeai not installed. Run: pip install google-generativeai")
 
 
+GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+MAX_ECG_IMAGE_BYTES = int(os.getenv("MAX_ECG_IMAGE_BYTES", "5242880"))
+MAX_ECG_SEGMENTS = int(os.getenv("MAX_ECG_SEGMENTS", "24"))
+MIN_QC_SCORE_FOR_ANALYSIS = float(os.getenv("MIN_QC_SCORE_FOR_ANALYSIS", "0.20"))
+
+PIPELINE_VERSION = "ecg_backend_r1"
+PROMPT_VERSION = "panoramic_v2"
+PREPROCESSING_VERSION = "digitize_v1"
+
+ALLOWED_SEVERITIES = {"normal", "mild", "moderate", "severe", "critical"}
+ALLOWED_URGENCIES = {"routine", "urgent", "emergent"}
+ALLOWED_REGULARITY = {"regular", "irregular", "regularly_irregular"}
+
+
+def _utc_now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _build_session_step_trace(analysis, quality_control, provenance, segments_count):
+    """Build an ordered technical trace that can be surfaced in admin tooling."""
+    qc_status = quality_control.get("status", "unknown") if isinstance(quality_control, dict) else "unknown"
+    deterministic_metrics = analysis.get("deterministic_metrics", []) if isinstance(analysis, dict) else []
+
+    steps = [
+        {
+            "id": "ingestion",
+            "label": "Request Ingestion",
+            "status": "success",
+            "timestamp_utc": _utc_now_iso(),
+            "output": {
+                "segments_count": segments_count,
+                "patient_context_present": bool((analysis or {}).get("patient_context")),
+            },
+        },
+        {
+            "id": "quality_control",
+            "label": "Segment Quality Control",
+            "status": "warning" if qc_status == "caution" else ("failed" if qc_status == "reject" else "success"),
+            "timestamp_utc": _utc_now_iso(),
+            "output": quality_control,
+        },
+        {
+            "id": "deterministic_extraction",
+            "label": "Deterministic Signal Metrics",
+            "status": "success",
+            "timestamp_utc": _utc_now_iso(),
+            "output": {
+                "metrics_count": len(deterministic_metrics) if isinstance(deterministic_metrics, list) else 0,
+                "deterministic_metrics": deterministic_metrics,
+            },
+        },
+        {
+            "id": "model_inference",
+            "label": "Model Inference + Schema Validation",
+            "status": "success",
+            "timestamp_utc": _utc_now_iso(),
+            "output": {
+                "model_name": provenance.get("model_name") if isinstance(provenance, dict) else None,
+                "schema_valid": True,
+                "diagnosis": (analysis or {}).get("diagnosis", {}),
+            },
+        },
+        {
+            "id": "persistence",
+            "label": "Persistence + Provenance",
+            "status": "success",
+            "timestamp_utc": _utc_now_iso(),
+            "output": {
+                "pipeline_version": provenance.get("pipeline_version") if isinstance(provenance, dict) else None,
+                "prompt_version": provenance.get("prompt_version") if isinstance(provenance, dict) else None,
+                "preprocessing_version": provenance.get("preprocessing_version") if isinstance(provenance, dict) else None,
+                "generated_at_utc": provenance.get("generated_at_utc") if isinstance(provenance, dict) else None,
+            },
+        },
+    ]
+
+    return steps
+
+
+def _project_analysis_for_doctor(analysis):
+    """Remove deep technical fields from doctor-facing payloads."""
+    if not isinstance(analysis, dict):
+        return {}
+
+    projected = {
+        "rhythm_analysis": analysis.get("rhythm_analysis", {}),
+        "abnormalities": analysis.get("abnormalities", {}),
+        "diagnosis": analysis.get("diagnosis", {}),
+        "full_interpretation": analysis.get("full_interpretation"),
+        "source": analysis.get("source"),
+        "segments_processed": analysis.get("segments_processed"),
+    }
+
+    qc = analysis.get("quality_control", {}) if isinstance(analysis.get("quality_control"), dict) else {}
+    projected["quality_indicator"] = {
+        "overall_score": qc.get("overall_score"),
+        "overall_grade": qc.get("overall_grade"),
+        "status": qc.get("status"),
+    }
+
+    provenance = analysis.get("provenance", {}) if isinstance(analysis.get("provenance"), dict) else {}
+    projected["traceability"] = {
+        "pipeline_version": provenance.get("pipeline_version"),
+        "model_name": provenance.get("model_name"),
+    }
+
+    return projected
+
+
+def _project_record(record, projection):
+    """Return doctor-safe or admin-rich record representation."""
+    if projection == "doctor":
+        return {
+            "_id": str(record.get("_id")),
+            "patient_id": record.get("patient_id"),
+            "session_id": record.get("session_id"),
+            "finding_summary": record.get("finding_summary", {}),
+            "analysis": _project_analysis_for_doctor(record.get("analysis", {})),
+            "created_at": record.get("created_at").isoformat() if record.get("created_at") else None,
+        }
+
+    projected = dict(record)
+    projected["_id"] = str(projected.get("_id"))
+    if projected.get("created_at"):
+        projected["created_at"] = projected["created_at"].isoformat()
+    return projected
+
+
+def _strip_data_url_prefix(b64_text):
+    """Return bare base64 data regardless of optional data URL prefix."""
+    if not isinstance(b64_text, str):
+        raise ValueError("Image payload must be a base64 string")
+    return b64_text.split(",", 1)[1] if "," in b64_text else b64_text
+
+
+def _decode_base64_image(b64_text):
+    """Decode and bound-check image payloads to prevent malformed/oversized inputs."""
+    raw_b64 = _strip_data_url_prefix(b64_text).strip()
+    if not raw_b64:
+        raise ValueError("Empty base64 image payload")
+
+    try:
+        image_bytes = base64.b64decode(raw_b64, validate=True)
+    except Exception as exc:
+        raise ValueError(f"Invalid base64 image payload: {exc}") from exc
+
+    if len(image_bytes) > MAX_ECG_IMAGE_BYTES:
+        raise ValueError(
+            f"Image exceeds max size ({MAX_ECG_IMAGE_BYTES} bytes). "
+            "Set MAX_ECG_IMAGE_BYTES env var to adjust."
+        )
+
+    return raw_b64, image_bytes
+
+
+def _normalize_leads_mapping(leads_mapping, image_count):
+    """Normalize leads payload into list[list[str]] with one entry per segment."""
+    if leads_mapping is None:
+        leads_mapping = []
+
+    if not isinstance(leads_mapping, list):
+        raise ValueError("'leads' must be a list")
+
+    normalized = []
+    for entry in leads_mapping:
+        if entry is None:
+            normalized.append([])
+            continue
+        if not isinstance(entry, list):
+            raise ValueError("Each leads segment must be a list of lead names")
+        if not all(isinstance(lead, str) for lead in entry):
+            raise ValueError("Each lead name must be a string")
+        normalized.append(entry)
+
+    if len(normalized) < image_count:
+        normalized.extend([[] for _ in range(image_count - len(normalized))])
+
+    return normalized[:image_count]
+
+
+def _parse_and_validate_gemini_json(response_text):
+    """Parse model output and enforce required schema keys/types."""
+    if not isinstance(response_text, str) or not response_text.strip():
+        raise ValueError("Empty Gemini response")
+
+    start = response_text.find("{")
+    end = response_text.rfind("}")
+    if start < 0 or end < 0 or end <= start:
+        raise ValueError("Gemini response did not contain a JSON object")
+
+    try:
+        parsed = json.loads(response_text[start:end + 1])
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Gemini returned invalid JSON: {exc}") from exc
+
+    if not isinstance(parsed, dict):
+        raise ValueError("Gemini JSON root must be an object")
+
+    _validate_analysis_schema(parsed)
+    return parsed
+
+
+def _validate_analysis_schema(result):
+    """Research-grade output contract validation for analysis payloads."""
+    required_top = ["rhythm_analysis", "abnormalities", "diagnosis"]
+    for key in required_top:
+        if key not in result or not isinstance(result[key], dict):
+            raise ValueError(f"Missing or invalid top-level field: '{key}'")
+
+    rhythm = result["rhythm_analysis"]
+    heart_rate = rhythm.get("heart_rate")
+    if not isinstance(heart_rate, (int, float)):
+        raise ValueError("'rhythm_analysis.heart_rate' must be numeric")
+    if not isinstance(rhythm.get("rhythm_type"), str) or not rhythm.get("rhythm_type").strip():
+        raise ValueError("'rhythm_analysis.rhythm_type' must be a non-empty string")
+    regularity = rhythm.get("regularity")
+    if regularity not in ALLOWED_REGULARITY:
+        raise ValueError(f"'rhythm_analysis.regularity' must be one of {sorted(ALLOWED_REGULARITY)}")
+
+    abnormalities = result["abnormalities"]
+    if not isinstance(abnormalities.get("abnormalities"), list):
+        raise ValueError("'abnormalities.abnormalities' must be a list")
+    if not all(isinstance(v, str) for v in abnormalities.get("abnormalities", [])):
+        raise ValueError("'abnormalities.abnormalities' values must be strings")
+    severity = abnormalities.get("severity")
+    if severity not in ALLOWED_SEVERITIES:
+        raise ValueError(f"'abnormalities.severity' must be one of {sorted(ALLOWED_SEVERITIES)}")
+    if not isinstance(abnormalities.get("affected_leads"), list):
+        raise ValueError("'abnormalities.affected_leads' must be a list")
+
+    diagnosis = result["diagnosis"]
+    if not isinstance(diagnosis.get("primary_diagnosis"), str) or not diagnosis.get("primary_diagnosis").strip():
+        raise ValueError("'diagnosis.primary_diagnosis' must be a non-empty string")
+    for key in ["differential_diagnoses", "recommendations"]:
+        if not isinstance(diagnosis.get(key), list):
+            raise ValueError(f"'diagnosis.{key}' must be a list")
+        if not all(isinstance(v, str) for v in diagnosis.get(key, [])):
+            raise ValueError(f"'diagnosis.{key}' values must be strings")
+    urgency = diagnosis.get("urgency")
+    if urgency not in ALLOWED_URGENCIES:
+        raise ValueError(f"'diagnosis.urgency' must be one of {sorted(ALLOWED_URGENCIES)}")
+
+
+def _evaluate_segment_quality(gray_arr, width, height, segment_id):
+    """Compute simple deterministic ECG image QC metrics for one segment."""
+    gray = gray_arr.astype(np.float32)
+
+    mean_intensity = float(np.mean(gray))
+    std_intensity = float(np.std(gray))
+    p5, p95 = np.percentile(gray, [5, 95])
+    dynamic_range = float(p95 - p5)
+
+    black_ratio = float(np.mean(gray <= 10.0))
+    white_ratio = float(np.mean(gray >= 245.0))
+    saturation_ratio = black_ratio + white_ratio
+
+    edge_x = np.abs(np.diff(gray, axis=1)).mean() if gray.shape[1] > 1 else 0.0
+    edge_y = np.abs(np.diff(gray, axis=0)).mean() if gray.shape[0] > 1 else 0.0
+    edge_strength = float((edge_x + edge_y) / 2.0)
+
+    score = 1.0
+    issues = []
+
+    if std_intensity < 12.0:
+        score -= 0.25
+        issues.append("low_contrast")
+    if dynamic_range < 45.0:
+        score -= 0.20
+        issues.append("narrow_dynamic_range")
+    if saturation_ratio > 0.35:
+        score -= 0.20
+        issues.append("pixel_saturation")
+    if edge_strength < 3.0:
+        score -= 0.20
+        issues.append("low_detail")
+    if width < 250 or height < 120:
+        score -= 0.15
+        issues.append("low_resolution")
+    if mean_intensity < 15.0 or mean_intensity > 245.0:
+        score -= 0.30
+        issues.append("mostly_blank")
+
+    score = max(0.0, min(1.0, score))
+    if score >= 0.8:
+        grade = "high"
+    elif score >= 0.55:
+        grade = "moderate"
+    else:
+        grade = "low"
+
+    return {
+        "segment_id": segment_id,
+        "dimensions": {"width": int(width), "height": int(height)},
+        "metrics": {
+            "mean_intensity": round(mean_intensity, 3),
+            "std_intensity": round(std_intensity, 3),
+            "dynamic_range_p95_p5": round(dynamic_range, 3),
+            "saturation_ratio": round(saturation_ratio, 4),
+            "edge_strength": round(edge_strength, 4),
+        },
+        "issues": issues,
+        "quality_score": round(score, 4),
+        "quality_grade": grade,
+    }
+
+
+def _build_quality_report(segment_quality):
+    """Aggregate segment-level QC into a single report."""
+    if not segment_quality:
+        return {
+            "overall_score": 0.0,
+            "overall_grade": "low",
+            "status": "reject",
+            "min_segment_score": 0.0,
+            "segments": [],
+            "issues": ["no_segments"],
+        }
+
+    scores = [s["quality_score"] for s in segment_quality]
+    overall_score = float(np.mean(scores))
+    min_score = float(np.min(scores))
+
+    issue_set = set()
+    for segment in segment_quality:
+        issue_set.update(segment.get("issues", []))
+
+    if overall_score >= 0.8 and min_score >= 0.55:
+        overall_grade = "high"
+    elif overall_score >= 0.55 and min_score >= 0.35:
+        overall_grade = "moderate"
+    else:
+        overall_grade = "low"
+
+    if overall_score < MIN_QC_SCORE_FOR_ANALYSIS:
+        status = "reject"
+    elif overall_grade == "low":
+        status = "caution"
+    else:
+        status = "ok"
+
+    return {
+        "overall_score": round(overall_score, 4),
+        "overall_grade": overall_grade,
+        "status": status,
+        "min_segment_score": round(min_score, 4),
+        "segments": segment_quality,
+        "issues": sorted(issue_set),
+        "thresholds": {
+            "min_qc_score_for_analysis": MIN_QC_SCORE_FOR_ANALYSIS,
+        },
+    }
+
+
 def get_gemini_client():
     """Initialize Gemini client"""
     if not GEMINI_AVAILABLE:
@@ -54,98 +407,14 @@ def get_gemini_client():
         return None
 
     genai.configure(api_key=api_key)
-    # Use the correct model name for the free tier
-    return genai.GenerativeModel('gemini-2.5-flash')  # Free tier model
+    return genai.GenerativeModel(GEMINI_MODEL_NAME)
 
 
 def parse_gemini_response(response_text):
     """
-    Parse Gemini's text response into structured format
+    Parse and validate Gemini response into structured format.
     """
-    try:
-        # Try to extract JSON if Gemini returns it
-        if '{' in response_text and '}' in response_text:
-            # Find JSON blocks
-            start = response_text.find('{')
-            end = response_text.rfind('}') + 1
-            json_str = response_text[start:end]
-            return json.loads(json_str)
-    except:
-        pass
-
-    # If no JSON, parse from text (fallback)
-    lines = response_text.split('\n')
-
-    # Initialize default structure
-    result = {
-        "rhythm_analysis": {
-            "heart_rate": 75,
-            "rhythm_type": "Sinus Rhythm",
-            "regularity": "regular"
-        },
-        "abnormalities": {
-            "abnormalities": [],
-            "severity": "normal",
-            "affected_leads": []
-        },
-        "diagnosis": {
-            "primary_diagnosis": "Pending detailed analysis",
-            "differential_diagnoses": [],
-            "recommendations": [],
-            "urgency": "routine"
-        },
-        "full_interpretation": response_text,
-        "source": "gemini"
-    }
-
-    # Simple text parsing
-    text_lower = response_text.lower()
-
-    # Extract heart rate
-    import re
-    hr_match = re.search(r'(\d{2,3})\s*(bpm|beats)', text_lower)
-    if hr_match:
-        result["rhythm_analysis"]["heart_rate"] = int(hr_match.group(1))
-
-    # Detect rhythm type
-    if 'tachycardia' in text_lower:
-        result["rhythm_analysis"]["rhythm_type"] = "Sinus Tachycardia"
-    elif 'bradycardia' in text_lower:
-        result["rhythm_analysis"]["rhythm_type"] = "Sinus Bradycardia"
-    elif 'fibrillation' in text_lower:
-        result["rhythm_analysis"]["rhythm_type"] = "Atrial Fibrillation"
-        result["rhythm_analysis"]["regularity"] = "irregular"
-    elif 'flutter' in text_lower:
-        result["rhythm_analysis"]["rhythm_type"] = "Atrial Flutter"
-
-    # Detect severity
-    if any(word in text_lower for word in ['critical', 'severe', 'emergency', 'stemi', 'acute mi']):
-        result["abnormalities"]["severity"] = "severe"
-        result["diagnosis"]["urgency"] = "emergent"
-    elif any(word in text_lower for word in ['moderate', 'significant']):
-        result["abnormalities"]["severity"] = "moderate"
-        result["diagnosis"]["urgency"] = "urgent"
-    elif any(word in text_lower for word in ['mild', 'minor']):
-        result["abnormalities"]["severity"] = "mild"
-
-    # Extract abnormalities (look for common ECG findings)
-    abnormality_keywords = [
-        'st elevation', 'st depression', 'q wave', 't wave inversion',
-        'qt prolongation', 'bundle branch block', 'lvh', 'rvh',
-        'ischemia', 'infarction', 'pericarditis'
-    ]
-
-    for keyword in abnormality_keywords:
-        if keyword in text_lower:
-            result["abnormalities"]["abnormalities"].append(keyword.title())
-
-    if not result["abnormalities"]["abnormalities"]:
-        if result["abnormalities"]["severity"] == "normal":
-            result["abnormalities"]["abnormalities"] = ["No significant abnormalities detected"]
-        else:
-            result["abnormalities"]["abnormalities"] = ["See detailed interpretation below"]
-
-    return result
+    return _parse_and_validate_gemini_json(response_text)
 
 
 def analyze_ecg_with_gemini(base64_images, patient_context="", leads_mapping=None):
@@ -163,6 +432,16 @@ def analyze_ecg_with_gemini(base64_images, patient_context="", leads_mapping=Non
     model = get_gemini_client()
     if not model:
         raise Exception("Gemini not available")
+
+    if not isinstance(base64_images, list) or not base64_images:
+        raise ValueError("base64_images must be a non-empty list")
+    if len(base64_images) > MAX_ECG_SEGMENTS:
+        raise ValueError(
+            f"Too many ECG image segments ({len(base64_images)}). "
+            f"Maximum allowed is {MAX_ECG_SEGMENTS}."
+        )
+
+    leads_mapping = _normalize_leads_mapping(leads_mapping, len(base64_images))
 
     # Create comprehensive prompt for Panoramic ECG
     prompt = """You are an expert cardiologist analyzing a sequential series of ECG image segments (Panoramic ECG).
@@ -219,26 +498,51 @@ Important guidelines:
         content_parts = [prompt]
         
         all_features = []
+        segment_quality = []
         
         for i, b64 in enumerate(base64_images):
-            # Decode image
-            image_data = base64.b64decode(b64)
+            # Decode image from validated base64 payload
+            _, image_data = _decode_base64_image(b64)
             img = Image.open(BytesIO(image_data))
+            img.load()
+
+            width, height = img.size
+            gray_image = img.convert('L')
+            gray_array = np.array(gray_image)
+
+            qc = _evaluate_segment_quality(gray_array, width, height, segment_id=i + 1)
+            qc["assigned_leads"] = leads_mapping[i]
+            segment_quality.append(qc)
+
             content_parts.append(img)
             
             # Simplified deterministic signal extraction for EACH segment
-            gray_image = img.convert('L')
-            projected_signal = np.mean(np.array(gray_image), axis=1)
+            projected_signal = np.mean(gray_array, axis=1)
             filtered_signal = apply_filters(projected_signal)
             features = extract_features(filtered_signal)
             features["segment_id"] = i + 1
             all_features.append(features)
+
+        quality_report = _build_quality_report(segment_quality)
+        if quality_report["status"] == "reject":
+            raise ValueError(
+                "ECG quality too low for reliable analysis. "
+                f"overall_score={quality_report['overall_score']}"
+            )
 
         # Enhance prompt with segment-specific findings
         prompt_update = "\n--- Deterministic Signal Scan Results ---"
         for feat in all_features:
             if feat.get("status") == "success":
                 prompt_update += f"\nSegment {feat['segment_id']}: {feat['heart_rate_avg']:.1f} BPM, {feat['peak_count']} R-peaks detected."
+
+        prompt_update += "\n--- Image Quality Summary ---"
+        prompt_update += (
+            f"\nOverall quality: {quality_report['overall_grade']} "
+            f"(score={quality_report['overall_score']})."
+        )
+        if quality_report.get("issues"):
+            prompt_update += f"\nQuality issues: {', '.join(quality_report['issues'])}."
         
         content_parts[0] = prompt + prompt_update
 
@@ -252,6 +556,14 @@ Important guidelines:
         results["source"] = "gemini-panoramic"
         results["segments_processed"] = len(base64_images)
         results["deterministic_metrics"] = all_features
+        results["quality_control"] = quality_report
+        results["provenance"] = {
+            "pipeline_version": PIPELINE_VERSION,
+            "model_name": GEMINI_MODEL_NAME,
+            "prompt_version": PROMPT_VERSION,
+            "preprocessing_version": PREPROCESSING_VERSION,
+            "generated_at_utc": _utc_now_iso(),
+        }
         
         return results
 
@@ -272,7 +584,7 @@ def health_check():
         "service": "ECG Interpreter Gemini API",
         "version": "1.0.0",
         "ai_provider": "Google Gemini",
-        "model": "gemini-1.5-flash-latest",
+        "model": GEMINI_MODEL_NAME,
         "gemini_available": model is not None,
         "free_tier": True
     })
@@ -307,15 +619,22 @@ def analyze_ecg():
             base64_images = [data.get('image')]
             leads_mapping = [[]]
 
+        if not isinstance(base64_images, list):
+            return jsonify({"error": "'images' must be a list of base64 strings"}), 400
+
         if not base64_images:
             return jsonify({"error": "No images provided"}), 400
 
-        # Pre-process base64 strings
+        if len(base64_images) > MAX_ECG_SEGMENTS:
+            return jsonify({"error": f"Too many images. Maximum is {MAX_ECG_SEGMENTS}"}), 400
+
+        leads_mapping = _normalize_leads_mapping(leads_mapping, len(base64_images))
+
+        # Pre-process and validate base64 strings
         processed_images = []
         for b64 in base64_images:
-            if ',' in b64:
-                b64 = b64.split(',')[1]
-            processed_images.append(b64)
+            cleaned_b64, _ = _decode_base64_image(b64)
+            processed_images.append(cleaned_b64)
 
         # Perform analysis with Gemini
         print(f"Starting Panoramic ECG analysis with {len(processed_images)} segments...")
@@ -326,6 +645,9 @@ def analyze_ecg():
         print(f"   Heart Rate: {results.get('rhythm_analysis', {}).get('heart_rate', 'N/A')} bpm")
 
         return jsonify(results), 200
+
+    except ValueError as e:
+        return jsonify({"error": "Invalid request", "message": str(e)}), 400
 
     except Exception as e:
         print(f" Error during analysis: {str(e)}")
@@ -363,13 +685,16 @@ def analyze_ecg_file():
         file_bytes = file.read()
         base64_image = base64.b64encode(file_bytes).decode('utf-8')
 
-        # Perform analysis
+        # Perform analysis (single-image path normalized to multi-segment API)
         print(f"Starting ECG analysis for file: {file.filename}")
-        results = analyze_ecg_with_gemini(base64_image, patient_context)
+        results = analyze_ecg_with_gemini([base64_image], patient_context, leads_mapping=[[]])
         print("Analysis complete!")
 
         # Return results
         return jsonify(results), 200
+
+    except ValueError as e:
+        return jsonify({"error": "Invalid request", "message": str(e)}), 400
 
     except Exception as e:
         print(f" Error during analysis: {str(e)}")
@@ -462,17 +787,21 @@ def get_signal_data():
         base64_images = data.get('images', [])
         leads_mapping = data.get('leads', [])
 
+        if not isinstance(base64_images, list):
+            return jsonify({"error": "'images' must be a list of base64 strings"}), 400
+
         if not base64_images:
             return jsonify({"error": "No images provided"}), 400
+
+        if len(base64_images) > MAX_ECG_SEGMENTS:
+            return jsonify({"error": f"Too many images. Maximum is {MAX_ECG_SEGMENTS}"}), 400
+
+        leads_mapping = _normalize_leads_mapping(leads_mapping, len(base64_images))
 
         segments = []
         seg_counter = 0
         for i, b64 in enumerate(base64_images):
-            # Strip data-URL prefix if present
-            if ',' in b64:
-                b64 = b64.split(',')[1]
-
-            image_data = base64.b64decode(b64)
+            _, image_data = _decode_base64_image(b64)
             img = Image.open(BytesIO(image_data))
             assigned_leads = leads_mapping[i] if i < len(leads_mapping) else []
 
@@ -505,6 +834,9 @@ def get_signal_data():
                 seg_counter += 1
 
         return jsonify({"segments": segments}), 200
+
+    except ValueError as e:
+        return jsonify({"error": "Invalid request", "message": str(e)}), 400
 
     except Exception as e:
         print(f"Signal data error: {str(e)}")
@@ -605,6 +937,16 @@ ECG ANALYSIS DATA:
                         "primary_diagnosis": ecg_analysis.get('diagnosis', {}).get('primary_diagnosis'),
                         "severity": ecg_analysis.get('abnormalities', {}).get('severity'),
                     },
+                    "analysis_provenance": {
+                        "pipeline_version": ecg_analysis.get('provenance', {}).get('pipeline_version'),
+                        "model_name": ecg_analysis.get('provenance', {}).get('model_name'),
+                        "prompt_version": ecg_analysis.get('provenance', {}).get('prompt_version'),
+                        "generated_at_utc": ecg_analysis.get('provenance', {}).get('generated_at_utc'),
+                    },
+                    "trace_step": {
+                        "id": "chat_interaction",
+                        "timestamp_utc": _utc_now_iso(),
+                    },
                     "created_at": datetime.now(timezone.utc),
                 }
                 mongo_db.ecg_conversations.insert_one(conversation_doc)
@@ -650,6 +992,23 @@ def save_ecg_record():
             return jsonify({"error": "patient_id is required"}), 400
 
         analysis = data.get('analysis', {})
+        if not isinstance(analysis, dict):
+            return jsonify({"error": "analysis must be an object"}), 400
+
+        provenance = data.get('provenance') or analysis.get('provenance', {})
+        if not isinstance(provenance, dict):
+            provenance = {}
+
+        quality_control = data.get('quality_control') or analysis.get('quality_control', {})
+        if not isinstance(quality_control, dict):
+            quality_control = {}
+
+        steps_trace = _build_session_step_trace(
+            analysis=analysis,
+            quality_control=quality_control,
+            provenance=provenance,
+            segments_count=data.get('segments_count', 0),
+        )
 
         # Build ECG finding summary for patient history
         finding_summary = {
@@ -669,6 +1028,16 @@ def save_ecg_record():
             "session_id": data.get('session_id'),
             "analysis": analysis,
             "finding_summary": finding_summary,
+            "quality_control": quality_control,
+            "provenance": {
+                "pipeline_version": provenance.get("pipeline_version", PIPELINE_VERSION),
+                "model_name": provenance.get("model_name", GEMINI_MODEL_NAME),
+                "prompt_version": provenance.get("prompt_version", PROMPT_VERSION),
+                "preprocessing_version": provenance.get("preprocessing_version", PREPROCESSING_VERSION),
+                "generated_at_utc": provenance.get("generated_at_utc"),
+                "saved_at_utc": _utc_now_iso(),
+            },
+            "session_technical_trace": steps_trace,
             "patient_context": data.get('patient_context', ''),
             "segments_count": data.get('segments_count', 0),
             "doctor_notes": data.get('doctor_notes', ''),
@@ -685,6 +1054,16 @@ def save_ecg_record():
                        f"{finding_summary.get('heart_rate', 'N/A')} BPM - "
                        f"{finding_summary.get('severity', 'N/A')} severity",
             "data": finding_summary,
+            "quality": {
+                "overall_score": quality_control.get("overall_score"),
+                "overall_grade": quality_control.get("overall_grade"),
+                "status": quality_control.get("status"),
+            },
+            "provenance": {
+                "pipeline_version": provenance.get("pipeline_version", PIPELINE_VERSION),
+                "model_name": provenance.get("model_name", GEMINI_MODEL_NAME),
+                "prompt_version": provenance.get("prompt_version", PROMPT_VERSION),
+            },
             "source": "ecg_analysis",
             "created_at": datetime.now(timezone.utc),
         }
@@ -711,6 +1090,10 @@ def get_ecg_records(patient_id):
         return jsonify({"error": "Database not available"}), 503
 
     try:
+        projection = request.args.get("projection", "doctor").lower()
+        if projection not in {"doctor", "admin"}:
+            return jsonify({"error": "projection must be 'doctor' or 'admin'"}), 400
+
         records = list(
             mongo_db.ecg_records.find(
                 {"patient_id": patient_id},
@@ -718,12 +1101,9 @@ def get_ecg_records(patient_id):
             ).sort("created_at", -1).limit(50)
         )
 
-        for r in records:
-            r["_id"] = str(r["_id"])
-            if r.get("created_at"):
-                r["created_at"] = r["created_at"].isoformat()
+        projected_records = [_project_record(r, projection=projection) for r in records]
 
-        return jsonify({"patient_id": patient_id, "records": records}), 200
+        return jsonify({"patient_id": patient_id, "projection": projection, "records": projected_records}), 200
 
     except Exception as e:
         print(f"ECG records fetch error: {str(e)}")
@@ -755,6 +1135,86 @@ def get_ecg_conversations(patient_id):
     except Exception as e:
         print(f"ECG conversations fetch error: {str(e)}")
         return jsonify({"error": "Failed to fetch conversations", "message": str(e)}), 500
+
+
+@app.route('/api/ecg/sessions', methods=['GET'])
+def list_ecg_sessions():
+    """List ECG sessions across patients for admin monitoring."""
+    if not MONGO_AVAILABLE or mongo_db is None:
+        return jsonify({"error": "Database not available"}), 503
+
+    try:
+        projection = request.args.get("projection", "admin").lower()
+        if projection not in {"doctor", "admin"}:
+            return jsonify({"error": "projection must be 'doctor' or 'admin'"}), 400
+
+        limit = int(request.args.get("limit", "100"))
+        limit = max(1, min(limit, 300))
+
+        records = list(
+            mongo_db.ecg_records.find({}).sort("created_at", -1).limit(limit)
+        )
+
+        session_rows = []
+        for record in records:
+            projected = _project_record(record, projection=projection)
+            session_rows.append(
+                {
+                    "record_id": projected.get("_id"),
+                    "session_id": projected.get("session_id"),
+                    "patient_id": projected.get("patient_id"),
+                    "created_at": projected.get("created_at"),
+                    "finding_summary": projected.get("finding_summary", {}),
+                    "quality": (record.get("quality_control") or {}).get("overall_grade"),
+                    "status": (record.get("quality_control") or {}).get("status"),
+                    "projection": projection,
+                }
+            )
+
+        return jsonify({"projection": projection, "sessions": session_rows}), 200
+
+    except Exception as e:
+        print(f"ECG sessions list error: {str(e)}")
+        return jsonify({"error": "Failed to list ECG sessions", "message": str(e)}), 500
+
+
+@app.route('/api/ecg/sessions/<session_id>', methods=['GET'])
+def get_ecg_session_detail(session_id):
+    """Return full per-session technical details for admin or projected doctor view."""
+    if not MONGO_AVAILABLE or mongo_db is None:
+        return jsonify({"error": "Database not available"}), 503
+
+    try:
+        projection = request.args.get("projection", "admin").lower()
+        if projection not in {"doctor", "admin"}:
+            return jsonify({"error": "projection must be 'doctor' or 'admin'"}), 400
+
+        record = mongo_db.ecg_records.find_one({"session_id": session_id})
+        if not record:
+            return jsonify({"error": "Session not found"}), 404
+
+        projected = _project_record(record, projection=projection)
+
+        if projection == "admin":
+            chat_count = mongo_db.ecg_conversations.count_documents({"session_id": session_id})
+            trace = projected.get("session_technical_trace", [])
+            trace = list(trace) if isinstance(trace, list) else []
+            trace.append(
+                {
+                    "id": "chat_interactions",
+                    "label": "Chat Interactions",
+                    "status": "success",
+                    "timestamp_utc": _utc_now_iso(),
+                    "output": {"conversation_events": chat_count},
+                }
+            )
+            projected["session_technical_trace"] = trace
+
+        return jsonify({"projection": projection, "session": projected}), 200
+
+    except Exception as e:
+        print(f"ECG session detail error: {str(e)}")
+        return jsonify({"error": "Failed to fetch ECG session", "message": str(e)}), 500
 
 
 # Error handlers
@@ -797,7 +1257,7 @@ if __name__ == '__main__':
         exit(1)
 
     print(" Gemini API Key: Configured")
-    print(" Model: gemini-1.5-flash-latest (FREE)")
+    print(f" Model: {GEMINI_MODEL_NAME}")
     print(" Server starting on http://localhost:5000")
     print(" Health check: http://localhost:5000/health")
     print(" Analysis endpoint: http://localhost:5000/api/analyze")
