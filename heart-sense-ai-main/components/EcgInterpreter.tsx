@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EcgAnalysisResult } from "./EcgAnalysisResult";
 import { EcgVisualizationHub } from "./EcgVisualizationHub";
-import { EcgResearchPanel } from "./EcgResearchPanel";
 import type { SignalData } from "@/lib/ecg-types";
 import { toast } from "sonner";
 import {
@@ -582,9 +581,6 @@ export default function EcgInterpreter({
 
       {/* ── RESEARCH VISUALIZATION HUB ─────────────────────────────────── */}
       {signalData && <EcgVisualizationHub data={signalData} />}
-
-      {/* ── RESEARCH TOOLS ─────────────────────────────────────────────── */}
-      {signalData && <EcgResearchPanel data={signalData} />}
 
       {/* Download footer */}
       <div className="flex justify-center pt-4">

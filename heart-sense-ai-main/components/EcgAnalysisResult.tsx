@@ -43,6 +43,24 @@ export interface EcgAnalysisData {
   full_interpretation?: string;
   source?: string;
   model?: string;
+  quality_indicator?: {
+    overall_score?: number;
+    overall_grade?: string;
+    status?: string;
+  };
+  quality_control?: {
+    overall_score?: number;
+    overall_grade?: string;
+    status?: string;
+  };
+  traceability?: {
+    pipeline_version?: string;
+    model_name?: string;
+  };
+  provenance?: {
+    pipeline_version?: string;
+    model_name?: string;
+  };
   deterministic_metrics?:
     | {
         heart_rate_avg?: number;
@@ -87,6 +105,8 @@ export function EcgAnalysisResult({
   onActiveViewSegmentChange,
 }: EcgAnalysisResultProps) {
   const { rhythm_analysis, abnormalities, diagnosis } = analysis;
+  const qualityView = analysis.quality_indicator || analysis.quality_control;
+  const traceability = analysis.traceability || analysis.provenance;
 
   // Zoom state for ECG image viewer
   const [zoom, setZoom] = useState(1);
@@ -171,6 +191,25 @@ export function EcgAnalysisResult({
                     {getUrgencyIcon(diagnosis.urgency)}
                     {diagnosis.urgency}
                   </Badge>
+                  {qualityView?.overall_grade && (
+                    <Badge
+                      variant="outline"
+                      className="px-3 py-0.5 rounded-full font-bold uppercase text-[9px] tracking-widest border-primary/20 text-primary"
+                    >
+                      QC {qualityView.overall_grade}
+                      {qualityView.overall_score !== undefined &&
+                        qualityView.overall_score !== null &&
+                        ` (${qualityView.overall_score})`}
+                    </Badge>
+                  )}
+                  {traceability?.model_name && (
+                    <Badge
+                      variant="outline"
+                      className="px-3 py-0.5 rounded-full font-bold uppercase text-[9px] tracking-widest border-white/15 text-muted-foreground"
+                    >
+                      Trace {traceability.model_name}
+                    </Badge>
+                  )}
                 </div>
               </div>
             </div>

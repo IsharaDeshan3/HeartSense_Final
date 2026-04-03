@@ -1,0 +1,74 @@
+{
+  "run_at_utc": "2026-04-03T09:05:25.874146+00:00",
+  "benchmark": {
+    "name": "ecg_backend_benchmark_seed",
+    "version": "v1",
+    "description": "Offline deterministic benchmark cases for schema and QC checks"
+  },
+  "summary": {
+    "total_cases": 4,
+    "passed": 4,
+    "failed": 0,
+    "pass_rate": 1.0
+  },
+  "results": [
+    {
+      "id": "schema_valid_minimal",
+      "type": "schema",
+      "passed": true,
+      "details": {
+        "is_valid": true,
+        "expected_valid": true
+      }
+    },
+    {
+      "id": "schema_invalid_urgency",
+      "type": "schema",
+      "passed": true,
+      "details": {
+        "is_valid": false,
+        "expected_valid": false,
+        "error": "'diagnosis.urgency' must be one of ['emergent', 'routine', 'urgent']"
+      }
+    },
+    {
+      "id": "qc_high_quality",
+      "type": "qc",
+      "passed": true,
+      "details": {
+        "score": 0.8,
+        "grade": "high",
+        "issues": [
+          "narrow_dynamic_range"
+        ],
+        "expect": {
+          "min_score": 0.6,
+          "allowed_grades": [
+            "high",
+            "moderate"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qc_low_quality_blank",
+      "type": "qc",
+      "passed": true,
+      "details": {
+        "score": 0.0,
+        "grade": "low",
+        "issues": [
+          "low_contrast",
+          "narrow_dynamic_range",
+          "pixel_saturation",
+          "low_detail",
+          "mostly_blank"
+        ],
+        "expect": {
+          "max_score": 0.4,
+          "required_grade": "low"
+        }
+      }
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Users,
@@ -9,20 +10,67 @@ import {
   LogOut,
   HeartPulse,
   Unlock,
+  Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 const navItems = [
-  { href: "/dashboard/admin", label: "Overview", icon: LayoutDashboard, exact: true },
+  {
+    href: "/dashboard/admin",
+    label: "Overview",
+    icon: LayoutDashboard,
+    exact: true,
+  },
+  {
+    href: "/dashboard/admin/ecg-sessions",
+    label: "ECG Technical Sessions",
+    icon: Activity,
+  },
   { href: "/dashboard/admin/patients", label: "Registry", icon: Users },
-  { href: "/dashboard/admin/staff", label: "Staff Management", icon: ShieldCheck },
-  { href: "/dashboard/admin/access-requests", label: "Access Authorizations", icon: Unlock },
+  {
+    href: "/dashboard/admin/staff",
+    label: "Staff Management",
+    icon: ShieldCheck,
+  },
+  {
+    href: "/dashboard/admin/access-requests",
+    label: "Access Authorizations",
+    icon: Unlock,
+  },
 ];
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const pathname = usePathname();
   const router = useRouter();
+  const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    const ensureAdmin = async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (!res.ok) {
+          router.push("/");
+          return;
+        }
+        const data = await res.json();
+        if (data?.role !== "admin") {
+          toast.error("Admin access required");
+          router.push("/");
+          return;
+        }
+        setAuthChecked(true);
+      } catch {
+        router.push("/");
+      }
+    };
+
+    ensureAdmin();
+  }, [router]);
 
   const handleLogout = async () => {
     try {
@@ -37,6 +85,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const isActive = (href: string, exact?: boolean) =>
     exact ? pathname === href : pathname.startsWith(href);
 
+  if (!authChecked) {
+    return (
+      <div className="h-screen bg-background text-muted-foreground flex items-center justify-center text-sm">
+        Verifying admin access...
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen bg-background text-foreground flex overflow-hidden font-sans">
       {/* Sidebar */}
@@ -45,7 +101,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="h-12 w-12 rounded-[1.25rem] bg-primary/10 flex-center text-primary futuristic-glow">
             <HeartPulse className="h-7 w-7" />
           </div>
-          <span className="font-black tracking-tighter text-xl text-gradient">HEARTSENSE ADMIN</span>
+          <span className="font-black tracking-tighter text-xl text-gradient">
+            HEARTSENSE ADMIN
+          </span>
         </div>
 
         <nav className="flex-1 px-6 space-y-2 mt-2">
@@ -55,10 +113,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-4 px-6 py-3 rounded-2xl font-bold transition-all ${active
+                className={`flex items-center gap-4 px-6 py-3 rounded-2xl font-bold transition-all ${
+                  active
                     ? "bg-primary/10 text-primary font-black shadow-sm"
                     : "hover:bg-primary/5 text-muted-foreground hover:text-foreground"
-                  }`}
+                }`}
               >
                 <item.icon className="h-5 w-5" />
                 {item.label}
