@@ -74,11 +74,11 @@ def _init():
     _session.mount("http://", adapter)
 
 
-def _post(table: str, row: Dict[str, Any]) -> Dict[str, Any]:
+def _post(table: str, row: Dict[str, Any], timeout: int = 20) -> Dict[str, Any]:
     """Insert a row and return the inserted data."""
     _init()
     url = f"{_base_url}/rest/v1/{table}"
-    resp = _session.post(url, json=row, timeout=20)
+    resp = _session.post(url, json=row, timeout=timeout)
     if resp.status_code >= 400:
         detail = resp.text[:500]
         # Detect missing-column errors and provide actionable guidance
@@ -101,12 +101,23 @@ def _post(table: str, row: Dict[str, Any]) -> Dict[str, Any]:
     return data[0]
 
 
-def _patch(table: str, values: Dict[str, Any], eq_col: str, eq_val: str) -> None:
+def _patch(
+    table: str,
+    values: Dict[str, Any],
+    eq_col: str,
+    eq_val: str,
+    timeout: int = 15,
+) -> None:
     """Update rows matching a filter."""
     _init()
     url = f"{_base_url}/rest/v1/{table}?{eq_col}=eq.{eq_val}"
-    resp = _session.patch(url, json=values, timeout=15)
+    resp = _session.patch(url, json=values, timeout=timeout)
     resp.raise_for_status()
+
+
+def update_analysis_payload(payload_id: str, values: Dict[str, Any], timeout: int = 30) -> None:
+    """Patch an analysis_payloads row by ID (best-effort enrichment)."""
+    _patch("analysis_payloads", values, "id", payload_id, timeout=timeout)
 
 
 def _get(table: str, query_params: str, single: bool = False) -> Any:
@@ -174,7 +185,7 @@ def save_analysis_payload(
     if patient_id:
         row["patient_id"] = patient_id
 
-    inserted = _post("analysis_payloads", row)
+    inserted = _post("analysis_payloads", row, timeout=60)
     row_id: str = str(inserted["id"])
     _init()
     public_url = f"{_base_url}/rest/v1/analysis_payloads?id=eq.{row_id}"
@@ -224,7 +235,9 @@ def save_kra_output(
     if patient_id:
         row["patient_id"] = patient_id
 
-    inserted = _post("kra_outputs", row)
+    # Supabase can be slow under load; use a longer timeout to avoid losing
+    # downstream ORA linkage (which depends on this row existing).
+    inserted = _post("kra_outputs", row, timeout=60)
     row_id: str = str(inserted["id"])
     _init()
     public_url = f"{_base_url}/rest/v1/kra_outputs?id=eq.{row_id}"
@@ -258,18 +271,37 @@ def save_ora_output(
         (row_id, public_url) of the inserted row.
     """
     # Step 5 is the final persistence point for the clinician-facing output.
+    normalized_status = str(status or "").strip().lower()
+    if normalized_status not in {"success", "partial", "failed"}:
+        if "fallback" in normalized_status:
+            normalized_status = "partial"
+        else:
+            normalized_status = "success"
+
     row = {
         "session_id": session_id,
         "kra_output_id": kra_output_id,
         "experience_level": experience_level,
         "refined_output": refined_output,
         "disclaimer": disclaimer,
-        "status": status,
+        "status": normalized_status,
     }
     if patient_id:
         row["patient_id"] = patient_id
 
-    inserted = _post("ora_outputs", row)
+    # ORA outputs can be large, and Supabase may occasionally respond slowly.
+    # A short timeout here leads to missing diagnosis history in the UI.
+    try:
+        inserted = _post("ora_outputs", row, timeout=60)
+    except requests.exceptions.Timeout as exc:
+        # One immediate retry keeps the pipeline resilient without masking
+        # persistent errors (constraint failures, schema issues, etc.).
+        logger.warning(
+            "Supabase INSERT into 'ora_outputs' timed out (kra_output_id=%s, level=%s). Retrying once...",
+            kra_output_id,
+            experience_level,
+        )
+        inserted = _post("ora_outputs", row, timeout=60)
     row_id: str = str(inserted["id"])
     _init()
     public_url = f"{_base_url}/rest/v1/ora_outputs?id=eq.{row_id}"
@@ -356,6 +388,18 @@ def _dedupe_history_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any
         if disclaimers:
             record["ora_disclaimers"] = disclaimers
 
+        # Fallback: if ORA rows are missing (or view join is incomplete),
+        # allow ORA outputs persisted inside the payload JSON to drive the UI.
+        # This is written by WorkflowService as a best-effort enrichment.
+        quality_json = record.get("quality_json")
+        if isinstance(quality_json, dict):
+            embedded_outputs = quality_json.get("ora_outputs")
+            embedded_disclaimers = quality_json.get("ora_disclaimers")
+            if not record.get("ora_outputs") and isinstance(embedded_outputs, dict):
+                record["ora_outputs"] = embedded_outputs
+            if not record.get("ora_disclaimers") and isinstance(embedded_disclaimers, dict):
+                record["ora_disclaimers"] = embedded_disclaimers
+
     return deduped
 
 
@@ -393,6 +437,15 @@ def _get_patient_diagnosis_history_with_status(
         for record in records:
             did = record.get("doctor_id")
             record["doctor_name"] = doctor_map.get(did) if did else None
+
+            # Frontend expects a single `status` field.
+            if not record.get("status"):
+                record["status"] = (
+                    record.get("payload_status")
+                    or record.get("ora_status")
+                    or record.get("kra_status")
+                    or ""
+                )
 
         return records, "ok"
     except Exception as exc:

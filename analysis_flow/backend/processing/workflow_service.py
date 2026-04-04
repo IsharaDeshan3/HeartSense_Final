@@ -17,6 +17,7 @@ from backend.processing.supabase_payload import (
     save_analysis_payload,
     save_kra_output,
     save_ora_output,
+    update_analysis_payload,
     update_payload_status,
 )
 from backend.processing.workflow_state import WorkflowState
@@ -105,7 +106,7 @@ class WorkflowService:
             "kra_provider": "huggingface_api",
             "ora_provider": "gemini_api",
             "kra_api_url_configured": bool(os.getenv("KRA_API_URL", "").strip()),
-            "gemini_model": "gemini-1.5-pro",
+            "gemini_model": os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip(),
             "gemini_api_key_configured": bool(os.getenv("GEMINI_API_KEY", "").strip()),
         }
         return {
@@ -376,6 +377,41 @@ class WorkflowService:
                 "error": str(exc),
             }
 
+    @staticmethod
+    def _compact_history_bundle_for_payload(
+        history_bundle: dict[str, Any],
+        max_recent_records: int = 5,
+    ) -> dict[str, Any]:
+        """Reduce history payload size before storing in analysis_payloads."""
+        if not isinstance(history_bundle, dict):
+            return {"summary": {}, "record_count": 0, "recent_records": []}
+
+        records = history_bundle.get("records")
+        if not isinstance(records, list):
+            records = []
+
+        compact_records: list[dict[str, Any]] = []
+        for record in records[:max_recent_records]:
+            if not isinstance(record, dict):
+                continue
+            compact_records.append(
+                {
+                    "payload_id": record.get("payload_id"),
+                    "session_id": record.get("session_id"),
+                    "created_at": record.get("created_at"),
+                    "status": record.get("status"),
+                    "experience_level": record.get("experience_level"),
+                }
+            )
+
+        return {
+            "patient_id": history_bundle.get("patient_id"),
+            "supabase_status": history_bundle.get("supabase_status"),
+            "summary": history_bundle.get("summary") or {},
+            "record_count": len(records),
+            "recent_records": compact_records,
+        }
+
     def _save_kra_history_entry(
         self,
         *,
@@ -629,6 +665,7 @@ class WorkflowService:
             started_at = time.time()
             # Wait for history to be available from the shared ref
             hb = history_bundle_ref[0] if history_bundle_ref else {"patient_id": patient_id, "summary": {}, "records": []}
+            compact_history = self._compact_history_bundle_for_payload(hb)
             result = self._save_payload_snapshot(
                 session_id=session_id,
                 symptoms_json=symptoms_json,
@@ -636,7 +673,7 @@ class WorkflowService:
                 labs_json=labs_json,
                 context_text=context_text,
                 quality=quality,
-                history_json=hb,
+                history_json=compact_history,
                 patient_id=patient_id,
             )
             result["duration_ms"] = int((time.time() - started_at) * 1000)
@@ -780,6 +817,14 @@ class WorkflowService:
         def run_kra_persist() -> dict[str, Any]:
             """Worker: persist KRA output while ORA refinement executes in parallel."""
             started_at = time.time()
+            if not supabase_available:
+                return {
+                    "kra_id": str(uuid.uuid4()),
+                    "kra_url": None,
+                    "supabase_available": False,
+                    "error": "PAYLOAD_SAVE_UNAVAILABLE",
+                    "duration_ms": int((time.time() - started_at) * 1000),
+                }
             result = self._save_kra_history_entry(
                 session_id=session_id,
                 payload_id=payload_id,
@@ -924,6 +969,26 @@ class WorkflowService:
             ora_outputs[level_key] = str(ora_result.get("refined_output") or "")
             ora_disclaimers[level_key] = str(ora_result.get("disclaimer") or "")
 
+        # Best-effort: persist ORA outputs onto the payload row as well.
+        # This keeps history usable even if the separate ora_outputs inserts
+        # intermittently fail (network timeouts, transient Supabase issues).
+        if payload_url:
+            try:
+                enriched_quality = dict(quality or {})
+                enriched_quality["ora_outputs"] = dict(ora_outputs)
+                enriched_quality["ora_disclaimers"] = dict(ora_disclaimers)
+                update_analysis_payload(
+                    payload_id,
+                    {"quality_json": enriched_quality},
+                    timeout=60,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to enrich analysis_payloads.quality_json with ORA outputs for payload %s: %s",
+                    payload_id,
+                    exc,
+                )
+
         selected_ora_result = ora_runs[selected_key]["ora_result"]
         ora_ms = int(ora_runs[selected_key].get("duration_ms") or 0)
         supabase_available = supabase_available and bool(kra_save_result.get("supabase_available"))
@@ -974,6 +1039,14 @@ class WorkflowService:
         ora_save_started = time.time()
         ora_save_results: dict[str, dict[str, Any]] = {}
         for level_key, payload in ora_runs.items():
+            if not supabase_available:
+                ora_save_results[level_key] = {
+                    "ora_id": str(uuid.uuid4()),
+                    "ora_url": None,
+                    "supabase_available": False,
+                    "error": "PAYLOAD_SAVE_UNAVAILABLE",
+                }
+                continue
             try:
                 ora_save_results[level_key] = self._save_ora_history_entry(
                     session_id=session_id,

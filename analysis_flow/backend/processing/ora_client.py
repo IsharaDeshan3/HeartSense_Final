@@ -35,6 +35,8 @@ _PROMPT_LEAK_LINE_RE = re.compile(
     r"(?im)^\s*(RULES:?|INTERNAL AUTHORING CONSTRAINTS(?:\s*\(.*\))?:?|═══ INPUT DATA ═══|PATIENT PRESENTATION:|KRA INPUT OBJECT:|KRA OUTPUT OBJECT:|KRA ANALYSIS:|═══ TASK ═══)\s*$"
 )
 
+_CONTEXT_REFERENCE_RE = re.compile(r"^\[(\d+)\]\s+source=(\w+)\s+score=([0-9.]+)(.*)$")
+
 
 def _strip_prompt_scaffold(text: str) -> str:
     """Trim trailing leaked prompt scaffolding if the model echoes it."""
@@ -125,6 +127,25 @@ def _to_text_list(value: Any, *, max_items: int = 6) -> list[str]:
     return out
 
 
+def _reference_lines_from_context(context_text: str, *, max_items: int = 6) -> list[str]:
+    references: list[str] = []
+    for line in (context_text or "").splitlines():
+        match = _CONTEXT_REFERENCE_RE.match(line.strip())
+        if not match:
+            continue
+        ref_num = match.group(1)
+        source = match.group(2)
+        score = match.group(3)
+        tail = match.group(4).strip().lstrip("|").strip()
+        label = f"[R{ref_num}] {source} | score={score}"
+        if tail:
+            label = f"{label} | {tail}"
+        references.append(label)
+        if len(references) >= max_items:
+            break
+    return references
+
+
 def _is_report_incomplete(text: str, level: str) -> bool:
     """Heuristic guard: detect short or structurally incomplete ORA reports."""
     cleaned = (text or "").strip()
@@ -142,6 +163,7 @@ def _is_report_incomplete(text: str, level: str) -> bool:
             "## 🔍 KEY FINDINGS",
             "## 📝 DIAGNOSTIC GAPS",
             "## 🧪 RECOMMENDED WORKUP",
+            "## 📚 REFERENCES",
         ]
         if level == "NEWBIE"
         else [
@@ -150,6 +172,7 @@ def _is_report_incomplete(text: str, level: str) -> bool:
             "### 🩺 DIFFERENTIAL DIAGNOSIS",
             "### 🔍 DIAGNOSTIC GAPS & LIMITATIONS",
             "### ⚡ RECOMMENDED WORKUP (PRIORITIZED)",
+            "### 📚 REFERENCES",
         ]
     )
     missing = [heading for heading in required_headings if heading not in cleaned]
@@ -169,6 +192,7 @@ def _build_fallback_report(*, level: str, kra_input: Dict[str, Any], kra_result:
     ecg = kra_input.get("ecg") if isinstance(kra_input.get("ecg"), dict) else {}
     labs = kra_input.get("labs") if isinstance(kra_input.get("labs"), dict) else {}
     history_summary = str(kra_input.get("history_summary_text") or "").strip()
+    references = _reference_lines_from_context(str(kra_input.get("context_text") or ""))
 
     evidence: list[str] = []
     if symptoms_text.strip():
@@ -254,6 +278,10 @@ def _build_fallback_report(*, level: str, kra_input: Dict[str, Any], kra_result:
                 "## 🧪 RECOMMENDED WORKUP",
                 "---",
                 *workup_lines,
+                "",
+                "## 📚 REFERENCES",
+                "---",
+                *([f"- {ref}" for ref in references] if references else ["*No supporting references were available in the prompt context.*"]),
             ]
         )
 
@@ -300,6 +328,10 @@ def _build_fallback_report(*, level: str, kra_input: Dict[str, Any], kra_result:
             "| Priority | Investigation | Diagnostic Target |",
             "| :--- | :--- | :--- |",
             *workup_rows,
+            "",
+            "### 📚 REFERENCES",
+            "---",
+            *([f"- {ref}" for ref in references] if references else ["*No supporting references were available in the prompt context.*"]),
         ]
     )
 
@@ -311,7 +343,7 @@ class ORAClient:
         self._api_keys = self._load_api_keys()
         self._key_index = 0
         self._key_lock = threading.Lock()
-        self._model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
+        self._model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
         self._api_base = os.getenv("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
 
         try:

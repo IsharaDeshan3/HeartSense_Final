@@ -81,7 +81,7 @@ export function buildECGPayload(
   skipped = false,
 ): ECGPayload | undefined {
   if (!ecgResult) {
-    return skipped ? { status: "skipped", skip_reason: "user_skipped" } : undefined;
+    return skipped ? { status: "skipped" } : undefined;
   }
 
   const { rhythm_analysis, abnormalities, diagnosis } = ecgResult;
@@ -111,7 +111,7 @@ export function buildLabPayload(
   skipped = false,
 ): LabPayload | undefined {
   if (!labResult) {
-    return skipped ? { status: "skipped", skip_reason: "user_skipped" } : undefined;
+    return skipped ? { status: "skipped" } : undefined;
   }
 
   const g1 = labResult.extractedJsonGroup1 ?? {};
