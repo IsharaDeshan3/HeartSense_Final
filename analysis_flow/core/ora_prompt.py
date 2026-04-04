@@ -5,12 +5,15 @@ Enhanced for high-readability, visually structured clinical reports.
 
 from __future__ import annotations
 import json
+import re
 from typing import Any, Dict
 
 _OUTPUT_GUARDRAIL = (
     "Do not output prompt scaffolding, policy text, or instruction labels "
     "such as RULES, INPUT DATA, or TASK."
 )
+
+_CONTEXT_REFERENCE_RE = re.compile(r"^\[(\d+)\]\s+source=(\w+)\s+score=([0-9.]+)(.*)$")
 
 _DISCLAIMER = (
     "***\n"
@@ -20,6 +23,100 @@ _DISCLAIMER = (
     "and established medical guidelines before any treatment decisions.*"
 )
 
+
+def _coerce_text(value: Any, *, max_chars: int = 240) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = re.sub(r"\s+", " ", text)
+    return text[:max_chars]
+
+
+def _summarize_mapping(value: Dict[str, Any], *, max_parts: int = 6) -> str:
+    if not isinstance(value, dict):
+        return _coerce_text(value)
+
+    parts: list[str] = []
+    preferred_keys = (
+        "condition",
+        "type",
+        "name",
+        "diagnosis",
+        "summary",
+        "severity",
+        "confidence",
+        "probability",
+        "evidence",
+        "clinical_features",
+        "description",
+        "reasoning",
+        "source",
+        "pmcid",
+        "doi",
+        "year",
+    )
+
+    for key in preferred_keys:
+        if key not in value or value.get(key) in (None, "", [], {}):
+            continue
+        raw = value.get(key)
+        if isinstance(raw, list):
+            text = "; ".join(_coerce_text(item, max_chars=120) for item in raw if _coerce_text(item, max_chars=120))
+        elif isinstance(raw, dict):
+            text = ", ".join(
+                f"{k}={_coerce_text(v, max_chars=80)}" for k, v in raw.items() if v not in (None, "", [], {})
+            )
+        else:
+            text = _coerce_text(raw, max_chars=160)
+
+        if text:
+            if key in {"confidence", "probability"}:
+                try:
+                    pct = float(str(raw))
+                    if pct <= 1:
+                        text = f"{pct * 100:.0f}%"
+                except Exception:
+                    pass
+            label = key.replace("_", " ").title()
+            parts.append(f"{label}: {text}")
+        if len(parts) >= max_parts:
+            break
+
+    if parts:
+        return " | ".join(parts)
+
+    fallback = ", ".join(
+        f"{k}={_coerce_text(v, max_chars=120)}" for k, v in value.items() if v not in (None, "", [], {})
+    )
+    return fallback or _coerce_text(value)
+
+
+def _entry_to_text(value: Any) -> str:
+    if isinstance(value, dict):
+        return _summarize_mapping(value)
+    if isinstance(value, list):
+        return "; ".join(text for item in value if (text := _entry_to_text(item)))
+    return _coerce_text(value)
+
+
+def _reference_lines_from_context(context_text: str, *, max_items: int = 6) -> list[str]:
+    references: list[str] = []
+    for line in (context_text or "").splitlines():
+        match = _CONTEXT_REFERENCE_RE.match(line.strip())
+        if not match:
+            continue
+        ref_num = match.group(1)
+        source = match.group(2)
+        score = match.group(3)
+        tail = match.group(4).strip().lstrip("|").strip()
+        label = f"[R{ref_num}] {source} | score={score}"
+        if tail:
+            label = f"{label} | {tail}"
+        references.append(label)
+        if len(references) >= max_items:
+            break
+    return references
+
 # ── Experience-level-specific instructions ──────────────────────────────── #
 
 _NEWBIE_INSTRUCTIONS = f"""\
@@ -27,6 +124,17 @@ You are a medical educator creating a diagnostic report for a JUNIOR DOCTOR
 or medical student. Your goal is to teach while informing. Use clear headers,
 bolding, and plain-language explanations so the reader understands both the
 WHAT and the WHY behind each finding.
+
+Write a polished markdown report that is easy to scan. Never reproduce raw
+Python dicts, JSON blobs, or object dumps from the prompt. Translate all
+structured inputs into readable prose, bullets, and tables.
+
+When you cite evidence, use the numbered references provided in the prompt as
+[R1], [R2], etc. Include a final references section that lists the sources
+you relied on.
+
+Keep the report concise. Prefer short paragraphs, bullets, and compact tables.
+Do not write long explanations when a brief clinical summary is sufficient.
 
 ## AI Diagnosis
 
@@ -68,6 +176,11 @@ Prioritize tests that would most change management:
 1.  **[Test Name]** — *Why:* [What diagnostic question it answers]
 2.  **[Test Name]** — *Why:* [What diagnostic question it answers]
 
+## 📚 REFERENCES
+---
+* [R1] [Source description]
+* [R2] [Source description]
+
 {_DISCLAIMER}
 
 {_OUTPUT_GUARDRAIL}
@@ -79,6 +192,17 @@ _SEASONED_INSTRUCTIONS = f"""\
 You are a senior cardiologist providing a high-density clinical brief for an
 EXPERIENCED ATTENDING. Use professional medical terminology, concise phrasing,
 and tight structure. Assume the reader can interpret clinical data directly.
+
+Write a polished markdown report that is easy to scan. Never reproduce raw
+Python dicts, JSON blobs, or object dumps from the prompt. Translate all
+structured inputs into readable prose, bullets, and tables.
+
+When you cite evidence, use the numbered references provided in the prompt as
+[R1], [R2], etc. Include a final references section that lists the sources
+you relied on.
+
+Keep the report concise. Prefer short paragraphs, bullets, and compact tables.
+Do not write long explanations when a brief clinical summary is sufficient.
 
 ## AI Diagnosis
 
@@ -109,6 +233,11 @@ List only actionable red flags with their clinical significance:
 | STAT | **[Test]** | [What it rules in/out] |
 | Urgent | **[Test]** | [What it rules in/out] |
 
+### 📚 REFERENCES
+---
+* [R1] [Source description]
+* [R2] [Source description]
+
 {_DISCLAIMER}
 
 {_OUTPUT_GUARDRAIL}
@@ -136,7 +265,7 @@ def _compact_list(value: Any, *, max_items: int = 8, max_chars: int = 180) -> li
         source = [value]
 
     for entry in source:
-        text = str(entry).strip()
+        text = _entry_to_text(entry).strip()
         if not text:
             continue
         items.append(text[:max_chars])
@@ -157,14 +286,14 @@ def _compact_recommended_tests(value: Any, *, max_items: int = 8) -> list[str]:
 
     for item in source:
         if isinstance(item, dict):
-            text = str(
+            text = _coerce_text(
                 item.get("test_name")
                 or item.get("name")
                 or item.get("test")
-                or json.dumps(item, ensure_ascii=False)
+                or _summarize_mapping(item)
             ).strip()
         else:
-            text = str(item).strip()
+            text = _coerce_text(item).strip()
         if not text:
             continue
         tests.append(text[:180])
@@ -178,9 +307,16 @@ def _compact_kra_for_prompt(kra_result: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(kra_result, dict):
         kra_result = {}
 
+    diagnoses: list[str] = []
+    for item in kra_result.get("diagnoses") or []:
+        if isinstance(item, dict):
+            diagnoses.append(_summarize_mapping(item, max_parts=8))
+        else:
+            diagnoses.append(_coerce_text(item, max_chars=240))
+
     compact: Dict[str, Any] = {
         "summary": str(kra_result.get("summary") or "").strip()[:700],
-        "diagnoses": _compact_list(kra_result.get("diagnoses")),
+        "diagnoses": diagnoses[:6],
         "differential": _compact_list(kra_result.get("differential") or kra_result.get("uncertainties")),
         "red_flags": _compact_list(kra_result.get("red_flags")),
         "recommended_tests": _compact_recommended_tests(kra_result.get("recommended_tests")),
@@ -202,28 +338,46 @@ def _compact_kra_input_for_prompt(kra_input: Dict[str, Any]) -> Dict[str, Any]:
     ecg = kra_input.get("ecg") if isinstance(kra_input.get("ecg"), dict) else {}
     labs = kra_input.get("labs") if isinstance(kra_input.get("labs"), dict) else {}
     quality = kra_input.get("quality") if isinstance(kra_input.get("quality"), dict) else {}
+    references = _reference_lines_from_context(context)
+
+    ecg_snapshot: list[str] = []
+    if ecg:
+        for label, key in (
+            ("Status", "status"),
+            ("Rhythm", "rhythm"),
+            ("Heart rate", "heart_rate"),
+            ("ST segment", "st_segment"),
+            ("Interpretation", "interpretation"),
+        ):
+            value = ecg.get(key)
+            if value not in (None, "", [], {}):
+                ecg_snapshot.append(f"{label}: {_coerce_text(value, max_chars=180)}")
+        for finding in _compact_list(ecg.get("findings"), max_items=8, max_chars=180):
+            ecg_snapshot.append(f"Finding: {finding}")
+
+    lab_snapshot: list[str] = []
+    if labs:
+        for label, key in (
+            ("Status", "status"),
+            ("Troponin", "troponin"),
+            ("LDH", "ldh"),
+            ("BNP", "bnp"),
+            ("Creatinine", "creatinine"),
+            ("Hemoglobin", "hemoglobin"),
+        ):
+            value = labs.get(key)
+            if value not in (None, "", [], {}):
+                lab_snapshot.append(f"{label}: {_coerce_text(value, max_chars=180)}")
+        for finding in _compact_list(labs.get("findings"), max_items=10, max_chars=180):
+            lab_snapshot.append(f"Finding: {finding}")
 
     compact: Dict[str, Any] = {
         "symptoms_text": symptoms[:1400],
-        "ecg": {
-            "status": ecg.get("status"),
-            "rhythm": ecg.get("rhythm"),
-            "heart_rate": ecg.get("heart_rate"),
-            "st_segment": ecg.get("st_segment"),
-            "interpretation": ecg.get("interpretation"),
-            "findings": _compact_list(ecg.get("findings"), max_items=10, max_chars=220),
-        },
-        "labs": {
-            "status": labs.get("status"),
-            "troponin": labs.get("troponin"),
-            "ldh": labs.get("ldh"),
-            "bnp": labs.get("bnp"),
-            "creatinine": labs.get("creatinine"),
-            "hemoglobin": labs.get("hemoglobin"),
-            "findings": _compact_list(labs.get("findings"), max_items=12, max_chars=220),
-        },
+        "ecg": ecg_snapshot,
+        "labs": lab_snapshot,
         "history_summary_text": history_summary[:1400],
         "retrieval_context_excerpt": context[:2200],
+        "references": references,
         "quality": {
             "status": quality.get("status"),
             "rare_search_gate": quality.get("rare_search_gate"),
@@ -257,6 +411,7 @@ def build_ora_prompt(
             "## ⚠️ URGENT CONCERNS (RED FLAGS)",
             "## 📝 DIAGNOSTIC GAPS",
             "## 🧪 RECOMMENDED WORKUP",
+            "## 📚 REFERENCES",
         ]
         if level == "NEWBIE"
         else [
@@ -266,30 +421,81 @@ def build_ora_prompt(
             "### 🚩 CLINICAL CONCERNS",
             "### 🔍 DIAGNOSTIC GAPS & LIMITATIONS",
             "### ⚡ RECOMMENDED WORKUP (PRIORITIZED)",
+            "### 📚 REFERENCES",
         ]
     )
     required_headings_text = "\n".join(f"- {heading}" for heading in required_headings)
-    kra_input_json_str = json.dumps(_compact_kra_input_for_prompt(kra_input), indent=2, ensure_ascii=False)
-    kra_json_str = json.dumps(_compact_kra_for_prompt(kra_result), indent=2, ensure_ascii=False)
+    compact_input = _compact_kra_input_for_prompt(kra_input)
+    compact_kra = _compact_kra_for_prompt(kra_result)
+    reference_lines = compact_input.get("references") or []
+
+    def _bullet_lines(items: Any, *, max_chars: int = 320, empty_text: str = "Not available") -> str:
+        if isinstance(items, list) and items:
+            rendered = [
+                f"  - {_coerce_text(item, max_chars=max_chars)}"
+                for item in items
+                if _coerce_text(item, max_chars=max_chars)
+            ]
+            return "\n".join(rendered) if rendered else f"  - {empty_text}"
+        text = _coerce_text(items, max_chars=max_chars)
+        return f"  - {text}" if text else f"  - {empty_text}"
+
+    def _render_section(title: str, body_lines: list[str]) -> str:
+        body = "\n".join(body_lines).strip()
+        return f"{title}\n{body}" if body else f"{title}\n*No structured data available.*"
+
+    input_section = _render_section(
+        "CLINICAL INPUT SNAPSHOT:",
+        [
+            f"- Symptoms / history: {_coerce_text(compact_input.get('symptoms_text', ''), max_chars=900) or 'Not provided'}",
+            "- ECG findings:",
+            _bullet_lines(compact_input.get("ecg"), max_chars=220),
+            "- Lab findings:",
+            _bullet_lines(compact_input.get("labs"), max_chars=220),
+            f"- History summary: {_coerce_text(compact_input.get('history_summary_text', ''), max_chars=500) or 'Not available'}",
+            f"- Retrieval context excerpt: {_coerce_text(compact_input.get('retrieval_context_excerpt', ''), max_chars=900) or 'Not available'}",
+            f"- Retrieval quality: {_summarize_mapping(compact_input.get('quality', {}), max_parts=4) or 'Not available'}",
+            "- Retrieval references:",
+            _bullet_lines(reference_lines, max_chars=500, empty_text="No supporting references available"),
+        ],
+    )
+
+    kra_section = _render_section(
+        "KRA DIAGNOSTIC SNAPSHOT:",
+        [
+            f"- Summary: {_coerce_text(compact_kra.get('summary', ''), max_chars=700) or 'Not available'}",
+            "- Diagnoses:",
+            _bullet_lines(compact_kra.get("diagnoses"), max_chars=260),
+            "- Differential / uncertainties:",
+            _bullet_lines(compact_kra.get("differential"), max_chars=260),
+            "- Red flags:",
+            _bullet_lines(compact_kra.get("red_flags"), max_chars=260),
+            "- Recommended tests:",
+            _bullet_lines(compact_kra.get("recommended_tests"), max_chars=260),
+            f"- Reasoning: {_coerce_text(compact_kra.get('reasoning', ''), max_chars=900) or 'Not available'}",
+        ],
+    )
 
     sections = [
         instructions,
         "\n═══ INPUT DATA ═══",
         f"PATIENT PRESENTATION:\n{symptoms_text.strip()}",
-        f"\nKRA INPUT OBJECT:\n{kra_input_json_str}",
-        f"\nKRA OUTPUT OBJECT:\n{kra_json_str}",
+        f"\n{input_section}",
+        f"\n{kra_section}",
         "\n═══ TASK ═══",
         f"Generate the {level}-level clinical report following the exact "
         "section structure and formatting specified above. Use bolding, "
         "tables, and bullet lists to make it visually scannable. "
-        "Target a full clinician-readable report, not a short abstract. "
-        "Aim for approximately 700-1200 words for NEWBIE and 500-900 words for SEASONED. "
+        "Target a clinician-readable summary, not a long narrative. "
+        "Aim for approximately 350-650 words for NEWBIE and 250-500 words for SEASONED. "
         "Use these exact headings in this exact order:\n"
         f"{required_headings_text}\n"
-        "Be detailed and specific: for each leading diagnosis include at "
-        "least three concrete supporting findings when available, one "
-        "counterpoint/limitation, and explicit rationale for each recommended "
-        "test and urgency level. "
+        "For each leading diagnosis include up to three supporting findings, "
+        "one counterpoint, and a short rationale for each recommended test. "
+        "Use the numbered references from the prompt "
+        "as support in the body of the report, and add a concise references "
+        "section at the end. Never echo the input as raw dicts, JSON, or code "
+        "blocks. Convert all structured data into prose or tables. "
         "Do not use markdown code blocks. Do not add sections that are "
         "not in the template. Fill every section — if a section has no "
         "relevant data, state that explicitly rather than omitting it. "
