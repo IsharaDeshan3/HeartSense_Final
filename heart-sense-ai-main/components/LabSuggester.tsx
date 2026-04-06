@@ -850,30 +850,33 @@ export default function LabSuggester({
 
           {/* Action buttons */}
           <div className="flex items-center gap-2">
-            {patientId && (
-              <Button
-                onClick={analyzeReportsOneClick}
-                disabled={
-                  oneClickRunning || sessions.some((s) => s.analyzing)
-                }
-                size="sm"
-                className="h-9 px-4 rounded-xl font-black uppercase tracking-wider text-xs bg-primary text-primary-foreground"
-              >
-                {oneClickRunning ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                    {orchestrationCurrentStep
-                      ? ORCHESTRATION_STEP_LABELS[orchestrationCurrentStep]
-                      : "Running All..."}
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-                    Analyze Reports
-                  </>
-                )}
-              </Button>
-            )}
+            <Button
+              onClick={analyzeReportsOneClick}
+              disabled={
+                !patientId || oneClickRunning || sessions.some((s) => s.analyzing)
+              }
+              size="sm"
+              title={
+                patientId
+                  ? undefined
+                  : "Patient context is required for one-click orchestration"
+              }
+              className="h-9 px-4 rounded-xl font-black uppercase tracking-wider text-xs bg-primary text-primary-foreground"
+            >
+              {oneClickRunning ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                  {orchestrationCurrentStep
+                    ? ORCHESTRATION_STEP_LABELS[orchestrationCurrentStep]
+                    : "Running All..."}
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                  Analyze Reports
+                </>
+              )}
+            </Button>
             {completedSessions.length >= 2 && (
               <Button
                 onClick={runMultiAnalysis}
