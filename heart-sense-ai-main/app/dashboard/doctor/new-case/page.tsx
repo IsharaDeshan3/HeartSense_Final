@@ -86,7 +86,7 @@ export default function NewCasePage() {
                 description: `Patient ${patientId} has been added and assigned to you.`,
             });
             // Navigate directly to the workspace for the new patient
-            router.push(`/dashboard/doctor/workspace/${data.patient._id}`);
+            router.push(`/dashboard/doctor/workspace/${data.patient._id}?new=1`);
         } catch (error: any) {
             toast.error("Registration Error", { description: error.message });
         } finally {

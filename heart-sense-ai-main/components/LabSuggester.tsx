@@ -31,7 +31,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { PatientService } from "@/services/PatientService";
+import {
+  LabOrchestratorService,
+  type OrchestratorStepKey,
+  type OrchestratorFinalResult,
+} from "@/services/LabOrchestratorService";
 import DiagnosticButtons from "./DiagnosticButtons";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -63,6 +67,8 @@ interface LabSession {
   error: string | null;
   label: string; // e.g. "Report 1", "Report 2"
   uploadDate: Date;
+  backendReportId?: string | null;
+  ocrJobId?: string | null;
 }
 
 interface TrendPoint {
@@ -86,6 +92,7 @@ interface PredictiveInsight {
 
 interface LabSuggesterProps {
   patientContext?: string;
+  patientName?: string;
   onAnalysisComplete?: (result: LabAnalysisResult) => void;
   initialResult?: LabAnalysisResult;
   patientId?: string;
@@ -96,194 +103,6 @@ interface LabSuggesterProps {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY ?? "";
-
-const PROMPT = `
-You are a medical document analysis AI designed to evaluate laboratory reports and identify possible cardiovascular (heart disease) risk factors.
-
-The system analyzes lab reports to:
-- extract medical values
-- compare values with reference ranges
-- highlight abnormal values
-- identify potential cardiovascular risk patterns
-- provide safe lifestyle advice
-- recommend only relevant cardiovascular-related future tests
-
-The system MUST follow strict medical safety rules.
-
---------------------------------
-IMPORTANT MEDICAL SAFETY RULES
---------------------------------
-
-- Abnormal lab values do NOT automatically require further testing.
-- The purpose of this system is ONLY to evaluate possible **cardiovascular risk**.
-- Never diagnose diseases.
-- Never claim a patient has heart disease.
-- Future test recommendations must ONLY be made if lab values suggest **possible cardiovascular risk**.
-- Ignore abnormalities unrelated to cardiovascular health.
-- Slight or clinically insignificant variations should be ignored.
-- Imaging tests (ECG, Echocardiogram, CT, MRI, Ultrasound) should ONLY be suggested if multiple cardiovascular risk indicators exist.
-- Lifestyle advice should only address **cardiovascular-related abnormal markers**.
-
---------------------------------
-STEP 1 – VALIDATION
---------------------------------
-
-Check whether the uploaded image is a medical report.
-
-If the image is NOT a medical document (lab report, blood test, diagnostic report), respond ONLY with:
-
-{
-  "isMedical": false,
-  "error": "The uploaded file is not a medical report"
-}
-
---------------------------------
-STEP 2 – DATA EXTRACTION
---------------------------------
-
-If the document IS a medical report, extract values if present.
-
-Group 1 (General Lab Data):
-
-{
-  "Age": number,
-  "Gender": "M" | "F",
-  "BMI": number,
-  "Chol": number,
-  "TG": number,
-  "HDL": number,
-  "LDL": number,
-  "Cr": number,
-  "BUN": number
-}
-
-Group 2 (Heart Disease Dataset Format):
-
-{
-  "age": number,
-  "sex": number,
-  "cp": number,
-  "trestbps": number,
-  "chol": number,
-  "fbs": number,
-  "restecg": number,
-  "thalach": number,
-  "exang": number,
-  "oldpeak": number,
-  "slope": number,
-  "ca": number,
-  "thal": number
-}
-
-If a value does not exist in the report, return null.
-
---------------------------------
-STEP 3 – LAB VALUE COMPARISON
---------------------------------
-
-For each extracted lab value:
-
-- show the actual value
-- show the typical normal reference range
-- determine status:
-
-Status values must be:
-"Normal"
-"High"
-"Low"
-
-Example format:
-
-{
-  "test": "LDL Cholesterol",
-  "actualValue": 160,
-  "normalRange": "<100 mg/dL",
-  "status": "High"
-}
-
---------------------------------
-STEP 4 – MEDICAL SUMMARY
---------------------------------
-
-Provide a short and clear summary of the report.
-
-Rules:
-
-- Mention whether most values are normal or abnormal.
-- Highlight important cardiovascular risk markers.
-- Focus on cholesterol, triglycerides, BMI, glucose markers.
-- Keep the explanation simple.
-- Do NOT provide a medical diagnosis.
-- Mention if the pattern suggests **possible future cardiovascular risk**.
-
---------------------------------
-STEP 5 – DAILY HEALTH ADVICE
---------------------------------
-
-Provide simple lifestyle actions to help balance abnormal cardiovascular markers.
-
-Rules:
-
-- Only include advice related to cardiovascular health.
-- Ignore abnormalities unrelated to heart health.
-- Keep each item short and practical.
-
-Format:
-
-"Action - Helps balance: Lab Value"
-
-Return these items inside the "dailyHealthAdvice" array.
-
---------------------------------
-STEP 6 – RECOMMENDED FUTURE TESTS
---------------------------------
-
-Evaluate whether current lab values indicate present or future cardiovascular risk.
-
-Rules:
-
-1. Only recommend tests if abnormal values are clearly related to cardiovascular health.
-2. If multiple risk markers are mildly abnormal together, treat this as a future cardiovascular risk pattern.
-3. Advanced imaging tests should only be suggested if several cardiovascular markers are clearly abnormal.
-4. If abnormalities exist but are NOT related to cardiovascular risk, return an empty array [].
-
-Format each recommendation as:
-"Test Name - Reason for recommendation"
-
---------------------------------
-STEP 7 – OUTPUT FORMAT
---------------------------------
-
-Respond ONLY in valid JSON.
-
-{
-  "isMedical": true,
-  "patientInfo": {
-    "age": number | null,
-    "gender": string | null
-  },
-  "labComparison": [
-    {
-      "test": string,
-      "actualValue": number | string,
-      "normalRange": string,
-      "status": "Normal" | "High" | "Low"
-    }
-  ],
-  "extractedJsonGroup1": {},
-  "extractedJsonGroup2": {},
-  "summary": string,
-  "dailyHealthAdvice": [
-    "string"
-  ],
-  "recommendedTests": [
-    "string"
-  ]
-}
-
-Return ONLY JSON.
-Do not include explanations outside JSON.
-`;
 
 const MULTI_ANALYSIS_PROMPT = (summaries: string) => `
 You are a medical AI that analyzes TRENDS across multiple lab reports over time.
@@ -360,6 +179,22 @@ const URGENCY_CONFIG = {
     bg: "bg-rose-400/10 border-rose-400/20",
     icon: "🔴",
   },
+};
+
+const ORCHESTRATION_STEP_ORDER: OrchestratorStepKey[] = [
+  "ocr_extraction",
+  "risk_models",
+  "save_lab_reports",
+  "create_lab_agent_job",
+  "run_lab_agent_analysis",
+];
+
+const ORCHESTRATION_STEP_LABELS: Record<OrchestratorStepKey, string> = {
+  ocr_extraction: "OCR + Report Extraction",
+  risk_models: "Diabetic + Heart Models",
+  save_lab_reports: "Persist Lab Reports",
+  create_lab_agent_job: "Create Lab-Agent Job",
+  run_lab_agent_analysis: "Run Job Analyze",
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -485,6 +320,7 @@ function TrendSparkline({ values }: { values: TrendPoint["values"] }) {
 
 export default function LabSuggester({
   patientContext,
+  patientName,
   onAnalysisComplete,
   initialResult,
   patientId,
@@ -497,11 +333,24 @@ export default function LabSuggester({
   const [imageZoomed, setImageZoomed] = useState(false);
   const [multiAnalyzing, setMultiAnalyzing] = useState(false);
   const [multiResult, setMultiResult] = useState<any>(null);
+  const [oneClickRunning, setOneClickRunning] = useState(false);
   const [activeTab, setActiveTab] = useState("comparison");
   const [diabeticAutoResult, setDiabeticAutoResult] = useState<any>(null);
   const [heartAutoResult, setHeartAutoResult] = useState<any>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [diagnosticRefresh, setDiagnosticRefresh] = useState(0);
+  const [orchestrationCurrentStep, setOrchestrationCurrentStep] =
+    useState<OrchestratorStepKey | null>(null);
+  const [orchestrationCompletedSteps, setOrchestrationCompletedSteps] =
+    useState<OrchestratorStepKey[]>([]);
+  const [orchestrationFailedStep, setOrchestrationFailedStep] =
+    useState<OrchestratorStepKey | null>(null);
+  const [orchestrationStatusText, setOrchestrationStatusText] = useState("");
+  const sessionsRef = useRef<LabSession[]>([]);
+
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
 
   // Load initialResult as first session
   useEffect(() => {
@@ -515,6 +364,8 @@ export default function LabSuggester({
       error: null,
       label: "History Record",
       uploadDate: new Date(),
+      backendReportId: null,
+      ocrJobId: null,
     };
     setSessions([ghost]);
     setActiveSessionId(ghost.id);
@@ -587,6 +438,8 @@ export default function LabSuggester({
       error: null,
       label: `Report ${sessions.length + i + 1}`,
       uploadDate: new Date(),
+      backendReportId: null,
+      ocrJobId: null,
     }));
 
     // Read previews
@@ -624,153 +477,188 @@ export default function LabSuggester({
     setMultiResult(null);
   };
 
-  // ── Single analysis ───────────────────────────────────────────────────────
+  const fileToBase64 = useCallback((file: File) => {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const raw = String(reader.result || "");
+        const payload = raw.includes(",") ? raw.split(",", 2)[1] : raw;
+        resolve(payload);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }, []);
 
-  const analyzeSession = async (sessionId: string) => {
-    const session = sessions.find((s) => s.id === sessionId);
-    if (!session || !session.file) return;
+  const applyOneClickResult = useCallback(
+    (finalResult: OrchestratorFinalResult) => {
+      const reportMap = new Map(finalResult.reports.map((report) => [report.id, report]));
 
-    setSessions((prev) =>
-      prev.map((s) =>
-        s.id === sessionId ? { ...s, analyzing: true, error: null } : s,
-      ),
-    );
-    toast.info(`Analyzing ${session.label}…`);
+      setSessions((prev) =>
+        prev.map((session) => {
+          const report = reportMap.get(session.id);
+          if (!report) return session;
+
+          const analyzed = report.analysis as LabAnalysisResult & {
+            error?: string;
+          };
+          return {
+            ...session,
+            analyzing: false,
+            error: analyzed.isMedical
+              ? null
+              : analyzed.error ?? "The uploaded file is not a medical report.",
+            result: analyzed.isMedical ? analyzed : session.result,
+            backendReportId: report.backendReportId ?? session.backendReportId ?? null,
+            ocrJobId: report.ocrJobId ?? session.ocrJobId ?? null,
+          };
+        }),
+      );
+
+      const completed = finalResult.reports
+        .map((report) => report.analysis as LabAnalysisResult)
+        .filter((analysis) => analysis.isMedical);
+
+      if (completed.length > 0) {
+        const latest = completed[completed.length - 1];
+
+        const labCompMap = new Map<string, LabComparisonItem>();
+        for (const result of completed) {
+          for (const item of result.labComparison ?? []) {
+            labCompMap.set(item.test, item);
+          }
+        }
+        const mergedLabComparison = Array.from(labCompMap.values());
+
+        const mergedGroup1 = completed.reduce(
+          (acc, result) => ({ ...acc, ...(result.extractedJsonGroup1 ?? {}) }),
+          {} as Record<string, unknown>,
+        );
+        const mergedGroup2 = completed.reduce(
+          (acc, result) => ({ ...acc, ...(result.extractedJsonGroup2 ?? {}) }),
+          {} as Record<string, unknown>,
+        );
+
+        onAnalysisComplete?.({
+          ...latest,
+          labComparison: mergedLabComparison,
+          extractedJsonGroup1: Object.keys(mergedGroup1).length
+            ? mergedGroup1
+            : latest.extractedJsonGroup1,
+          extractedJsonGroup2: Object.keys(mergedGroup2).length
+            ? mergedGroup2
+            : latest.extractedJsonGroup2,
+        });
+      }
+
+      const activeReport =
+        finalResult.reports.find((report) => report.id === activeSessionId) ??
+        finalResult.reports[0];
+      if (activeReport) {
+        setDiabeticAutoResult(activeReport.diabeticModelResult ?? null);
+        setHeartAutoResult(activeReport.heartModelResult ?? null);
+        onRiskResults?.(
+          activeReport.diabeticModelResult ?? null,
+          activeReport.heartModelResult ?? null,
+        );
+      }
+    },
+    [activeSessionId, onAnalysisComplete, onRiskResults],
+  );
+
+  const analyzeReportsOneClick = async () => {
+    if (!patientId) {
+      toast.error("Patient context is required for one-click orchestration.");
+      return;
+    }
+
+    const uploadSessions = sessionsRef.current.filter((session) => session.file instanceof File);
+    if (uploadSessions.length === 0) {
+      toast.error("Upload at least one lab report image before one-click analysis.");
+      return;
+    }
+
+    setOneClickRunning(true);
+    setOrchestrationFailedStep(null);
+    setOrchestrationCurrentStep(null);
+    setOrchestrationCompletedSteps([]);
+    setOrchestrationStatusText("Preparing reports for orchestration...");
 
     try {
-      const base64 = await new Promise<string>((res, rej) => {
-        const fr = new FileReader();
-        fr.onload = () => res((fr.result as string).split(",")[1]);
-        fr.onerror = rej;
-        fr.readAsDataURL(session.file);
-      });
+      const reports = await Promise.all(
+        uploadSessions.map(async (session) => ({
+          id: session.id,
+          label: session.label,
+          reportDate: session.uploadDate.toISOString().slice(0, 10),
+          fileName: session.file.name,
+          mimeType: session.file.type || "application/octet-stream",
+          contentBase64: await fileToBase64(session.file),
+        })),
+      );
 
-      const contextNote = patientContext
-        ? `Clinical context: ${patientContext}\n`
-        : "";
-
-      const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      const finalResult = await LabOrchestratorService.run(
         {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: contextNote + PROMPT },
-                  {
-                    inline_data: { mime_type: session.file.type, data: base64 },
-                  },
-                ],
-              },
-            ],
-          }),
+          patientId,
+          patientName,
+          reports,
+          options: {
+            minReportsForTrend: 2,
+            topK: 8,
+            force: true,
+            notes: "one_click_analyze_reports",
+          },
+        },
+        {
+          onStep: (event) => {
+            if (event.status === "running") {
+              setOrchestrationCurrentStep(event.step);
+              setOrchestrationStatusText(
+                event.message || `Running ${ORCHESTRATION_STEP_LABELS[event.step]}...`,
+              );
+              return;
+            }
+
+            setOrchestrationCompletedSteps((prev) =>
+              prev.includes(event.step) ? prev : [...prev, event.step],
+            );
+            setOrchestrationCurrentStep((prev) =>
+              prev === event.step ? null : prev,
+            );
+            setOrchestrationStatusText(
+              event.message || `${ORCHESTRATION_STEP_LABELS[event.step]} completed.`,
+            );
+          },
         },
       );
 
-      if (!geminiRes.ok) throw new Error(`Gemini error: ${geminiRes.status}`);
+      applyOneClickResult(finalResult);
+      setOrchestrationCompletedSteps(ORCHESTRATION_STEP_ORDER);
+      setOrchestrationCurrentStep(null);
+      setOrchestrationStatusText("One-click orchestration completed.");
 
-      const raw = await geminiRes.json();
-      const text = raw.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-      const cleaned = text
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
-      const parsed: LabAnalysisResult & { error?: string } =
-        JSON.parse(cleaned);
-
-      if (!parsed.isMedical) {
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === sessionId
-              ? {
-                  ...s,
-                  analyzing: false,
-                  error: parsed.error ?? "Not a valid medical lab report.",
-                }
-              : s,
-          ),
-        );
-        return;
+      const trendPatterns = Array.isArray(
+        finalResult.labAgent?.result?.trendPatterns,
+      )
+        ? finalResult.labAgent.result.trendPatterns
+        : [];
+      if (trendPatterns.length > 0) {
+        setActiveTab("trends");
       }
 
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === sessionId ? { ...s, analyzing: false, result: parsed } : s,
-        ),
+      const categoryLabel = String(
+        (finalResult.labAgent?.result?.patientCategory as Record<string, unknown> | undefined)
+          ?.label || "unknown",
+      ).toUpperCase();
+      toast.success(`Analyze Reports complete. Agent category: ${categoryLabel}`);
+    } catch (error: any) {
+      setOrchestrationCurrentStep(null);
+      setOrchestrationFailedStep(
+        orchestrationCurrentStep || ORCHESTRATION_STEP_ORDER[0],
       );
-
-      if (parsed.extractedJsonGroup1 && patientId)
-        PatientService.sendDiabeticData(parsed.extractedJsonGroup1, patientId);
-      if (parsed.extractedJsonGroup2 && patientId)
-        PatientService.sendHeartData(parsed.extractedJsonGroup2, patientId);
-
-      // Build a merged result across ALL completed sessions so the parent
-      // always receives the full longitudinal picture, not just this report.
-      const allCompleted = sessions
-        .filter((s) => s.result && s.id !== sessionId)
-        .map((s) => s.result!);
-      const allResults = [...allCompleted, parsed];
-
-      // Merge labComparison: dedup by test name, later reports win.
-      const labCompMap = new Map<string, LabComparisonItem>();
-      for (const r of allResults) {
-        for (const item of r.labComparison ?? []) {
-          labCompMap.set(item.test, item);
-        }
-      }
-      const mergedLabComparison = Array.from(labCompMap.values());
-
-      // Merge extractedJsonGroup1/2: later reports win per key.
-      const mergedGroup1 = allResults.reduce(
-        (acc, r) => ({ ...acc, ...(r.extractedJsonGroup1 ?? {}) }),
-        {} as Record<string, any>,
-      );
-      const mergedGroup2 = allResults.reduce(
-        (acc, r) => ({ ...acc, ...(r.extractedJsonGroup2 ?? {}) }),
-        {} as Record<string, any>,
-      );
-
-      onAnalysisComplete?.({
-        ...parsed,
-        labComparison: mergedLabComparison,
-        extractedJsonGroup1: Object.keys(mergedGroup1).length
-          ? mergedGroup1
-          : parsed.extractedJsonGroup1,
-        extractedJsonGroup2: Object.keys(mergedGroup2).length
-          ? mergedGroup2
-          : parsed.extractedJsonGroup2,
-      });
-      toast.success(`${session.label} analyzed`);
-    } catch (e: any) {
-      console.error(e);
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === sessionId
-            ? {
-                ...s,
-                analyzing: false,
-                error:
-                  "Analysis failed. Ensure the image is clear and try again.",
-              }
-            : s,
-        ),
-      );
-      toast.error(`Analysis failed for ${session.label}`);
-    }
-  };
-
-  // ── Analyze all pending ───────────────────────────────────────────────────
-
-  const analyzeAll = async () => {
-    const pending = sessions.filter((s) => !s.result && !s.analyzing && s.file);
-    if (pending.length === 0) {
-      toast.info("All reports are already analyzed.");
-      return;
-    }
-    for (const s of pending) {
-      await analyzeSession(s.id);
+      setOrchestrationStatusText(error?.message || "One-click orchestration failed");
+      toast.error(error?.message || "One-click orchestration failed");
+    } finally {
+      setOneClickRunning(false);
     }
   };
 
@@ -962,15 +850,28 @@ export default function LabSuggester({
 
           {/* Action buttons */}
           <div className="flex items-center gap-2">
-            {sessions.filter((s) => !s.result && !s.analyzing && s.file)
-              .length > 0 && (
+            {patientId && (
               <Button
-                onClick={analyzeAll}
+                onClick={analyzeReportsOneClick}
+                disabled={
+                  oneClickRunning || sessions.some((s) => s.analyzing)
+                }
                 size="sm"
-                className="h-9 px-4 rounded-xl font-black uppercase tracking-wider text-xs"
+                className="h-9 px-4 rounded-xl font-black uppercase tracking-wider text-xs bg-primary text-primary-foreground"
               >
-                <Microscope className="h-3.5 w-3.5 mr-1.5" />
-                Analyze All
+                {oneClickRunning ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                    {orchestrationCurrentStep
+                      ? ORCHESTRATION_STEP_LABELS[orchestrationCurrentStep]
+                      : "Running All..."}
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                    Analyze Reports
+                  </>
+                )}
               </Button>
             )}
             {completedSessions.length >= 2 && (
@@ -996,6 +897,88 @@ export default function LabSuggester({
           </div>
         </div>
       </div>
+
+      {(oneClickRunning ||
+        orchestrationCompletedSteps.length > 0 ||
+        orchestrationFailedStep) && (
+        <div className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-primary/70">
+              One-Click Orchestration Pipeline
+            </h4>
+            <span
+              className={`text-[10px] font-black uppercase tracking-widest ${
+                orchestrationFailedStep
+                  ? "text-rose-400"
+                  : oneClickRunning
+                  ? "text-primary"
+                  : "text-emerald-400"
+              }`}
+            >
+              {orchestrationFailedStep
+                ? "Failed"
+                : oneClickRunning
+                ? "Running"
+                : "Completed"}
+            </span>
+          </div>
+
+          {orchestrationStatusText && (
+            <p className="text-xs text-muted-foreground">{orchestrationStatusText}</p>
+          )}
+
+          <div className="space-y-2">
+            {ORCHESTRATION_STEP_ORDER.map((step) => {
+              const isCompleted = orchestrationCompletedSteps.includes(step);
+              const isRunning = orchestrationCurrentStep === step;
+              const isFailed = orchestrationFailedStep === step;
+
+              return (
+                <div key={step} className="flex items-center gap-3">
+                  <div className="w-5 flex justify-center">
+                    {isCompleted ? (
+                      <CheckCircle className="h-4 w-4 text-emerald-400" />
+                    ) : isRunning ? (
+                      <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                    ) : isFailed ? (
+                      <AlertCircle className="h-4 w-4 text-rose-400" />
+                    ) : (
+                      <div className="h-2 w-2 rounded-full bg-white/15" />
+                    )}
+                  </div>
+                  <span
+                    className={`text-xs transition-colors ${
+                      isCompleted
+                        ? "text-emerald-400/80"
+                        : isRunning
+                        ? "text-primary font-bold"
+                        : isFailed
+                        ? "text-rose-400"
+                        : "text-muted-foreground/50"
+                    }`}
+                  >
+                    {ORCHESTRATION_STEP_LABELS[step]}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-700 ease-out"
+              style={{
+                width: `${Math.max(
+                  5,
+                  (orchestrationCompletedSteps.length /
+                    ORCHESTRATION_STEP_ORDER.length) *
+                    100,
+                )}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ── Active session header ─────────────────────────────────────────── */}
       {activeSession && (
@@ -1065,18 +1048,6 @@ export default function LabSuggester({
                     )}
                   </button>
                 )}
-                {/* Analyze single button if not yet analyzed */}
-                {activeSession.file &&
-                  !activeSession.result &&
-                  !activeSession.analyzing && (
-                    <Button
-                      onClick={() => analyzeSession(activeSession.id)}
-                      size="sm"
-                      className="h-10 px-4 rounded-xl font-black uppercase tracking-wider text-xs"
-                    >
-                      <Microscope className="h-3.5 w-3.5 mr-1.5" /> Analyze
-                    </Button>
-                  )}
                 {activeSession.analyzing && (
                   <div className="flex items-center gap-2 text-xs text-primary font-black uppercase tracking-wider">
                     <Loader2 className="h-4 w-4 animate-spin" /> Analyzing…
@@ -1691,37 +1662,38 @@ export default function LabSuggester({
                 </div>
               </>
             ) : (
-              /* Not yet analyzed placeholder */
-              <div className="glass rounded-[3rem] border border-white/5 flex flex-col items-center justify-center p-16 text-center gap-6">
-                <div className="h-20 w-20 rounded-[1.5rem] bg-primary/10 flex items-center justify-center text-primary">
-                  <Microscope className="h-10 w-10" />
-                </div>
-                <div>
-                  <p className="font-black text-xl mb-2">
-                    {activeSession.label}
-                  </p>
-                  <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
-                    {activeSession.analyzing
-                      ? "Neural analysis in progress…"
-                      : activeSession.error
-                      ? activeSession.error
-                      : "Click Analyze to process this report."}
-                  </p>
-                </div>
-                {!activeSession.analyzing &&
-                  !activeSession.error &&
-                  activeSession.file && (
-                    <Button
-                      onClick={() => analyzeSession(activeSession.id)}
-                      className="h-14 px-10 rounded-2xl font-black uppercase tracking-widest text-sm"
-                    >
-                      <Microscope className="h-5 w-5 mr-2" /> Analyze This
-                      Report
-                    </Button>
+              <div className="glass rounded-[3rem] border border-white/5 overflow-hidden flex flex-col min-h-[24rem]">
+                <div className="px-8 py-5 border-b border-white/5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                      <FileText className="h-5 w-5" />
+                    </div>
+                    <span className="text-xs font-black uppercase tracking-widest text-muted-foreground">
+                      Analysis Pending
+                    </span>
+                  </div>
+                  {activeSession.analyzing && (
+                    <div className="flex items-center gap-2 text-xs text-primary font-black uppercase tracking-wider shrink-0">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Analyzing…
+                    </div>
                   )}
-                {activeSession.analyzing && (
-                  <div className="flex items-center gap-3 text-primary font-black uppercase tracking-widest text-sm">
-                    <Loader2 className="h-5 w-5 animate-spin" /> Synthesizing…
+                </div>
+
+                <div className="flex-1 flex items-center justify-center p-8 bg-black/20">
+                  <div className="text-center max-w-sm space-y-3">
+                    <BarChart2 className="h-14 w-14 text-muted-foreground/20 mx-auto" />
+                    <p className="text-sm text-muted-foreground/60 leading-relaxed">
+                      The uploaded report is shown in the left preview. Once analysis finishes, the extracted findings and recommendations will appear here.
+                    </p>
+                  </div>
+                </div>
+
+                {activeSession.error && (
+                  <div className="px-6 py-4 border-t border-white/5 flex items-center gap-3 bg-destructive/5">
+                    <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
+                    <p className="text-sm text-destructive">
+                      {activeSession.error}
+                    </p>
                   </div>
                 )}
               </div>

@@ -82,6 +82,44 @@ async def get_session(session_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     return session
 
+
+@router.get("/session/latest/{patient_id}")
+async def get_latest_session(patient_id: str, include_completed: bool = False) -> dict[str, Any]:
+    session = _store.get_latest_session_for_patient(
+        patient_id,
+        include_completed=include_completed,
+    )
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No session found")
+    return session
+
+
+@router.get("/patient/{patient_id}/sessions")
+async def list_patient_sessions(
+    patient_id: str,
+    include_completed: bool = True,
+    limit: int = 25,
+) -> dict[str, Any]:
+    sessions = _store.list_sessions_for_patient(
+        patient_id,
+        include_completed=include_completed,
+        limit=limit,
+    )
+    return {
+        "patient_id": patient_id,
+        "count": len(sessions),
+        "sessions": sessions,
+    }
+
+
+@router.delete("/patient/{patient_id}/sessions/active")
+async def delete_active_patient_sessions(patient_id: str) -> dict[str, Any]:
+    deleted = _store.delete_active_sessions_for_patient(patient_id)
+    return {
+        "status": "ok",
+        **deleted,
+    }
+
 @router.post("/session/{session_id}/extraction", response_model=StepSaveResponse)
 async def save_extraction(session_id: str, payload: ExtractionSaveRequest) -> StepSaveResponse:
     # Step 1 persists the extracted symptom payload before ECG/lab/analysis.

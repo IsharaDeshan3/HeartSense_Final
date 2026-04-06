@@ -18,6 +18,7 @@ import type {
   PatientDiagnosisRecord,
   PatientHistorySummary,
   PatientHistoryStatus,
+  WorkflowSession,
 } from "@/services/WorkflowService";
 
 interface PatientInfo {
@@ -37,6 +38,15 @@ interface LabHistoryEntry {
     normalRange: string;
     status: string;
   }>;
+}
+
+function mapWorkflowStateToResumeLabel(state: string) {
+  if (state === "EXTRACTION_DONE") return "Symptoms saved - continue at ECG";
+  if (state === "ECG_DONE") return "ECG saved - continue at Lab";
+  if (state === "LAB_DONE" || state === "ANALYSIS_RUNNING") {
+    return "Lab saved - continue at Analysis";
+  }
+  return "Continue diagnosis";
 }
   const PatientHistory = dynamic(() => import("@/components/PatientHistory"), {
     ssr: false,
@@ -65,7 +75,9 @@ export default function PatientHistoryPage() {
   const [historySummary, setHistorySummary] = useState<PatientHistorySummary | null>(null);
   const [labHistory, setLabHistory] = useState<LabHistoryEntry[]>([]);
   const [historyStatus, setHistoryStatus] = useState<PatientHistoryStatus | "unknown">("unknown");
+  const [inProgressSessions, setInProgressSessions] = useState<WorkflowSession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [deletingActiveSessions, setDeletingActiveSessions] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [deletingPayloadId, setDeletingPayloadId] = useState<string | null>(null);
@@ -90,10 +102,14 @@ export default function PatientHistoryPage() {
       setError(null);
 
       try {
-        const [patientRes, historyRes, labRes] = await Promise.allSettled([
+        const [patientRes, historyRes, labRes, sessionsRes] = await Promise.allSettled([
           fetch(`/api/doctor/patients/${encodeURIComponent(patientId)}`),
           WorkflowService.getPatientHistory(patientId),
           fetch(`/api/lab/patient-history?patient_id=${encodeURIComponent(patientId)}`),
+          WorkflowService.listPatientSessions(patientId, {
+            includeCompleted: false,
+            limit: 25,
+          }),
         ]);
 
         if (patientRes.status === "fulfilled") {
@@ -110,7 +126,10 @@ export default function PatientHistoryPage() {
         if (historyRes.status === "fulfilled") {
           setDiagnosisHistory(historyRes.value.records || []);
           setHistorySummary(historyRes.value.summary || null);
-          setHistoryStatus(historyRes.value.supabase_status ?? "ok");
+          const derivedStatus = historyRes.value.supabase_health?.connected
+            ? (historyRes.value.supabase_status ?? "ok")
+            : "unreachable";
+          setHistoryStatus(derivedStatus);
         } else {
           console.warn("Failed to fetch diagnosis history:", historyRes.reason);
           setDiagnosisHistory([]);
@@ -129,6 +148,18 @@ export default function PatientHistoryPage() {
           console.warn("Failed to fetch lab history:", labRes.reason);
           setLabHistory([]);
         }
+
+        if (sessionsRes.status === "fulfilled") {
+          const sessions = Array.isArray(sessionsRes.value.sessions)
+            ? sessionsRes.value.sessions
+            : [];
+          setInProgressSessions(
+            sessions.filter((session) => session.current_state !== "SESSION_CREATED"),
+          );
+        } else {
+          console.warn("Failed to fetch workflow sessions:", sessionsRes.reason);
+          setInProgressSessions([]);
+        }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Failed to load patient data";
         setError(msg);
@@ -142,7 +173,45 @@ export default function PatientHistoryPage() {
   }, [patientId]);
 
   const handleStartDiagnosis = () => {
-    router.push(`/dashboard/doctor/workspace/${patientId}`);
+    router.push(`/dashboard/doctor/workspace/${patientId}?new=1`);
+  };
+
+  const handleContinueDiagnosis = (sessionId: string) => {
+    router.push(
+      `/dashboard/doctor/workspace/${patientId}?resume_session_id=${encodeURIComponent(sessionId)}`,
+    );
+  };
+
+  const handleDeleteActiveSessions = async () => {
+    if (!patientId || deletingActiveSessions || inProgressSessions.length === 0) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${inProgressSessions.length} active session${inProgressSessions.length === 1 ? "" : "s"}? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingActiveSessions(true);
+    try {
+      const result = await WorkflowService.deleteActivePatientSessions(patientId);
+      toast.success(`Deleted ${result.deleted_count} active session${result.deleted_count === 1 ? "" : "s"}`);
+      setInProgressSessions([]);
+      if (historyStatus !== "unreachable") {
+        const refreshed = await WorkflowService.getPatientHistory(patientId);
+        setDiagnosisHistory(refreshed.records || []);
+        setHistorySummary(refreshed.summary || null);
+        const derivedStatus = refreshed.supabase_health?.connected
+          ? (refreshed.supabase_status ?? "ok")
+          : "unreachable";
+        setHistoryStatus(derivedStatus);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to delete active sessions";
+      toast.error(msg);
+    } finally {
+      setDeletingActiveSessions(false);
+    }
   };
 
   const handleDeleteHistoryEntry = async (payloadId: string) => {
@@ -217,6 +286,54 @@ export default function PatientHistoryPage() {
         )}
 
         {/* Content */}
+        {!isLoading && inProgressSessions.length > 0 && (
+          <div className="rounded-2xl border border-primary/20 bg-primary/[0.04] p-5 space-y-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <h3 className="text-sm font-black uppercase tracking-wider text-primary/80">
+                In-Progress Diagnoses
+              </h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-muted-foreground">
+                  {inProgressSessions.length} active session
+                  {inProgressSessions.length === 1 ? "" : "s"}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDeleteActiveSessions}
+                  disabled={deletingActiveSessions}
+                  className="h-8 rounded-lg border-rose-500/20 text-rose-400 hover:bg-rose-500/10"
+                >
+                  {deletingActiveSessions ? "Deleting..." : "Delete Active Sessions"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {inProgressSessions.map((session) => (
+                <div
+                  key={session.session_id}
+                  className="rounded-xl border border-white/10 bg-white/[0.02] p-3 flex items-center justify-between gap-3 flex-wrap"
+                >
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold">{mapWorkflowStateToResumeLabel(session.current_state)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      State: {session.current_state} - Updated: {new Date(session.updated_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => handleContinueDiagnosis(session.session_id)}
+                    size="sm"
+                    className="rounded-lg"
+                  >
+                    Continue
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="flex items-center justify-center h-80">
             <Loader2 className="h-12 w-12 animate-spin text-primary/40" />

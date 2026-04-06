@@ -15,7 +15,19 @@ export interface WorkflowSession {
   created_at: string;
   updated_at: string;
   correlation_id: string;
-  step_payloads?: Record<string, unknown>;
+  step_payloads?: Record<
+    string,
+    {
+      payload: Record<string, unknown>;
+      revision: number;
+      created_at: string;
+    }
+  >;
+}
+
+export interface SupabaseHealth {
+  connected: boolean;
+  status: "ok" | "unreachable";
 }
 
 export interface PatientDiagnosisRecord {
@@ -93,6 +105,25 @@ export const WorkflowService = {
     return res.json() as Promise<WorkflowSession>;
   },
 
+  async getLatestSession(patientId: string, includeCompleted = false) {
+    const res = await fetch(
+      `/api/workflow/session/latest/${encodeURIComponent(patientId)}?include_completed=${includeCompleted ? "true" : "false"}`,
+      {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      },
+    );
+
+    if (!res.ok) {
+      throw new Error(
+        await extractErrorMessage(res, "Failed to fetch latest workflow session"),
+      );
+    }
+
+    return res.json() as Promise<WorkflowSession>;
+  },
+
   async saveExtraction(
     sessionId: string,
     payload: {
@@ -131,6 +162,7 @@ export const WorkflowService = {
     return res.json() as Promise<{
       session_id: string;
       status: "COMPLETED" | "PARTIAL" | "FAILED";
+      supabase_available?: boolean;
       experience_level: string;
       supabase_payload_id?: string;
       supabase_kra_id?: string;
@@ -209,6 +241,7 @@ export const WorkflowService = {
     summary: PatientHistorySummary;
     records: PatientDiagnosisRecord[];
     supabase_status?: PatientHistoryStatus;
+    supabase_health?: SupabaseHealth;
   }> {
     const fallback = {
       patient_id: patientId,
@@ -222,6 +255,10 @@ export const WorkflowService = {
       },
       records: [],
       supabase_status: "unreachable" as PatientHistoryStatus,
+      supabase_health: {
+        connected: false,
+        status: "unreachable" as const,
+      },
     };
 
     try {
@@ -236,6 +273,60 @@ export const WorkflowService = {
       console.warn("[WorkflowService] getPatientHistory network fallback:", error);
       return fallback;
     }
+  },
+
+  async listPatientSessions(
+    patientId: string,
+    options?: {
+      includeCompleted?: boolean;
+      limit?: number;
+    },
+  ): Promise<{
+    patient_id: string;
+    count: number;
+    sessions: WorkflowSession[];
+  }> {
+    const includeCompleted = options?.includeCompleted ?? true;
+    const limit = options?.limit ?? 25;
+    const res = await fetch(
+      `/api/workflow/patient/${encodeURIComponent(patientId)}/sessions?include_completed=${includeCompleted ? "true" : "false"}&limit=${Math.max(1, Math.min(limit, 200))}`,
+      {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      },
+    );
+
+    if (!res.ok) {
+      throw new Error(
+        await extractErrorMessage(res, "Failed to fetch patient workflow sessions"),
+      );
+    }
+
+    return res.json();
+  },
+
+  async deleteActivePatientSessions(patientId: string): Promise<{
+    status: string;
+    patient_id: string;
+    deleted_count: number;
+    deleted_session_ids: string[];
+  }> {
+    const res = await fetch(
+      `/api/workflow/patient/${encodeURIComponent(patientId)}/sessions/active`,
+      {
+        method: "DELETE",
+        headers: { Accept: "application/json" },
+      },
+    );
+
+    if (!res.ok) {
+      throw new Error(
+        await extractErrorMessage(res, "Failed to delete active workflow sessions"),
+      );
+    }
+
+    return res.json();
   },
 
   async getPatientDiagnosisRecord(patientId: string, sessionId: string) {

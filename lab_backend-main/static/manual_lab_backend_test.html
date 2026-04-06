@@ -1,0 +1,1461 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab Backend Manual Console</title>
+  <style>
+    :root {
+      --bg: #071018;
+      --bg-2: #0c1720;
+      --panel: rgba(10, 18, 26, 0.88);
+      --panel-2: rgba(15, 26, 36, 0.92);
+      --line: rgba(200, 220, 230, 0.12);
+      --text: #ecf6fb;
+      --muted: #98acb8;
+      --soft: #bed0db;
+      --accent: #5ad3bf;
+      --accent-2: #f2b05e;
+      --accent-3: #ff7a7a;
+      --shadow: 0 25px 70px rgba(0, 0, 0, 0.35);
+      --radius: 24px;
+      --radius-lg: 32px;
+      --mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+      --sans: "Segoe UI", "Trebuchet MS", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      background:
+        radial-gradient(circle at top left, rgba(90, 211, 191, 0.15), transparent 32%),
+        radial-gradient(circle at top right, rgba(242, 176, 94, 0.16), transparent 28%),
+        linear-gradient(180deg, #041016 0%, var(--bg) 100%);
+    }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: var(--sans);
+      background:
+        radial-gradient(circle at 15% 15%, rgba(90, 211, 191, 0.14), transparent 18%),
+        radial-gradient(circle at 85% 10%, rgba(242, 176, 94, 0.15), transparent 18%),
+        linear-gradient(180deg, rgba(7, 16, 24, 0.92), rgba(7, 16, 24, 0.99));
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      border-radius: 999px;
+      pointer-events: none;
+      filter: blur(32px);
+      opacity: 0.35;
+      z-index: 0;
+    }
+
+    body::before {
+      width: 340px;
+      height: 340px;
+      left: -100px;
+      top: 120px;
+      background: rgba(90, 211, 191, 0.18);
+    }
+
+    body::after {
+      width: 420px;
+      height: 420px;
+      right: -140px;
+      bottom: -80px;
+      background: rgba(242, 176, 94, 0.15);
+    }
+
+    .shell {
+      position: relative;
+      z-index: 1;
+      width: min(1600px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+
+    .hero {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: 1.7fr 1fr;
+      align-items: stretch;
+      margin-bottom: 24px;
+    }
+
+    .hero-card,
+    .panel {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(13, 23, 32, 0.96), rgba(8, 15, 22, 0.96));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      border-radius: var(--radius-lg);
+    }
+
+    .hero-card {
+      padding: 28px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-card::after {
+      content: "";
+      position: absolute;
+      inset: auto -80px -120px auto;
+      width: 320px;
+      height: 320px;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(90, 211, 191, 0.22) 0%, rgba(90, 211, 191, 0) 70%);
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(90, 211, 191, 0.2);
+      background: rgba(90, 211, 191, 0.08);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3, h4 { margin: 0; }
+
+    h1 {
+      font-size: clamp(2.3rem, 4vw, 4.6rem);
+      line-height: 0.95;
+      margin-top: 16px;
+      letter-spacing: -0.05em;
+      text-wrap: balance;
+    }
+
+    .lede {
+      max-width: 920px;
+      color: var(--soft);
+      font-size: 1rem;
+      line-height: 1.7;
+      margin-top: 16px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .mini-card {
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .mini-card span {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .mini-card strong {
+      font-size: 14px;
+      line-height: 1.45;
+      color: var(--text);
+    }
+
+    .status-card {
+      padding: 22px;
+      display: grid;
+      align-content: space-between;
+      gap: 18px;
+    }
+
+    .status-card .status-lines {
+      display: grid;
+      gap: 12px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 999px;
+      padding: 8px 12px;
+      border: 1px solid rgba(90, 211, 191, 0.2);
+      background: rgba(90, 211, 191, 0.08);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .chip.warn {
+      border-color: rgba(242, 176, 94, 0.25);
+      background: rgba(242, 176, 94, 0.1);
+      color: var(--accent-2);
+    }
+
+    .chip.danger {
+      border-color: rgba(255, 122, 122, 0.25);
+      background: rgba(255, 122, 122, 0.1);
+      color: var(--accent-3);
+    }
+
+    .status-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .flow {
+      margin: 18px 0 28px;
+      padding: 18px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.025);
+      display: grid;
+      gap: 12px;
+    }
+
+    .flow-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .flow-head p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 900px;
+      line-height: 1.6;
+    }
+
+    .flow-steps {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .flow-step {
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .flow-step .num {
+      display: inline-flex;
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      align-items: center;
+      justify-content: center;
+      background: rgba(90, 211, 191, 0.12);
+      color: var(--accent);
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .flow-step h4 {
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .flow-step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .panel {
+      padding: 18px;
+    }
+
+    .section-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .section-grid.single {
+      grid-template-columns: 1fr;
+    }
+
+    .subpanel {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.025);
+      border-radius: 20px;
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .subpanel h3 {
+      font-size: 16px;
+      letter-spacing: -0.02em;
+    }
+
+    .subpanel p {
+      color: var(--muted);
+      margin: 0;
+      line-height: 1.55;
+      font-size: 13px;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+    }
+
+    .field.full { grid-column: 1 / -1; }
+
+    label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      border-radius: 16px;
+      border: 1px solid rgba(190, 208, 219, 0.14);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text);
+      padding: 13px 14px;
+      font: inherit;
+      outline: none;
+      transition: border-color 140ms ease, transform 140ms ease, background 140ms ease;
+    }
+
+    textarea {
+      min-height: 140px;
+      resize: vertical;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: rgba(90, 211, 191, 0.55);
+      background: rgba(255, 255, 255, 0.05);
+      transform: translateY(-1px);
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 16px;
+      padding: 12px 15px;
+      background: linear-gradient(180deg, rgba(90, 211, 191, 0.95), rgba(50, 180, 165, 0.95));
+      color: #051016;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: transform 140ms ease, opacity 140ms ease, box-shadow 140ms ease;
+      box-shadow: 0 16px 24px rgba(34, 142, 130, 0.22);
+    }
+
+    button:hover { transform: translateY(-1px); }
+    button:active { transform: translateY(0); opacity: 0.92; }
+
+    button.secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      border: 1px solid var(--line);
+      box-shadow: none;
+    }
+
+    button.warn {
+      background: linear-gradient(180deg, rgba(242, 176, 94, 0.96), rgba(212, 141, 52, 0.96));
+      color: #1c1206;
+    }
+
+    button.danger {
+      background: linear-gradient(180deg, rgba(255, 122, 122, 0.96), rgba(217, 87, 87, 0.96));
+      color: #240708;
+    }
+
+    .small {
+      padding: 10px 12px;
+      font-size: 12px;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .response-panel {
+      margin-top: 18px;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(90, 211, 191, 0.15);
+      background: linear-gradient(180deg, rgba(11, 20, 28, 0.95), rgba(6, 12, 18, 0.98));
+      padding: 18px;
+      min-height: 320px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .response-panel pre {
+      margin: 0;
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--line);
+      color: #dfeaf0;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow: auto;
+      min-height: 220px;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+    }
+
+    .table th, .table td {
+      text-align: left;
+      vertical-align: top;
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(190, 208, 219, 0.08);
+      font-size: 13px;
+    }
+
+    .table th {
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 11px;
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .inline-stack {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .stack-gap {
+      display: grid;
+      gap: 12px;
+    }
+
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 18px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .section-title p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      max-width: 950px;
+      line-height: 1.55;
+      font-size: 13px;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 1260px) {
+      .hero,
+      .section-grid,
+      .toolbar,
+      .hero-grid,
+      .flow-steps {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 880px) {
+      .shell { width: min(100% - 18px, 1600px); padding-top: 18px; }
+      .hero,
+      .section-grid,
+      .toolbar,
+      .hero-grid,
+      .flow-steps { grid-template-columns: 1fr; }
+      .panel, .hero-card, .status-card { padding: 16px; }
+      h1 { font-size: 2.2rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="hero">
+      <section class="hero-card">
+        <div class="eyebrow">Doctor-only manual console</div>
+        <h1>Lab Backend Manual Console</h1>
+        <p class="lede">
+          This page is a backend-served control surface for the full lab stack.
+          Use it to sign in as a doctor, inspect health and database status, manage
+          lab data, create chronological reports, test recommendations, and walk
+          through the lab-agent evidence, trend, and OCR flows without leaving the browser.
+        </p>
+
+        <div class="hero-grid">
+          <div class="mini-card">
+            <span>Base URL</span>
+            <strong id="baseUrlLabel">http://localhost:8000</strong>
+          </div>
+          <div class="mini-card">
+            <span>Auth State</span>
+            <strong id="authStateLabel">Not signed in</strong>
+          </div>
+          <div class="mini-card">
+            <span>Selected Patient</span>
+            <strong id="selectedPatientLabel">None</strong>
+          </div>
+          <div class="mini-card">
+            <span>Doctor Mode</span>
+            <strong>Enforced at auth and router level</strong>
+          </div>
+        </div>
+      </section>
+
+      <aside class="hero-card status-card">
+        <div class="status-lines">
+          <div class="chip">FastAPI + MongoDB + Gemini</div>
+          <div class="chip warn">Async OCR workers enabled</div>
+          <div class="chip danger">Patient access blocked</div>
+        </div>
+        <div>
+          <h3 style="font-size: 1.15rem; margin-bottom: 8px;">Manual workflow</h3>
+          <p class="muted" style="margin: 0;">
+            Start with a patient ID, seed the clinical collections,
+            then create a lab-agent job, ingest evidence, run analysis, and verify the OCR result.
+          </p>
+        </div>
+        <div class="status-row">
+          <button class="small secondary" type="button" id="btnCopyBase">Copy Base URL</button>
+          <button class="small secondary" type="button" id="btnCopyToken">Copy Token</button>
+          <button class="small secondary" type="button" id="btnLoadPatients">Load Patients</button>
+        </div>
+      </aside>
+    </div>
+
+    <section class="flow">
+      <div class="flow-head">
+        <div>
+          <div class="eyebrow">System flow</div>
+          <h2 style="font-size: 1.5rem; margin-top: 12px;">How the lab backend works</h2>
+        </div>
+        <p>
+          The backend now behaves like a doctor-only orchestration layer. The UI below is arranged to follow the same order the service uses internally.
+        </p>
+      </div>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <div class="num">1</div>
+          <h4>Authenticate doctor</h4>
+          <p>Use the frontend-managed session, then exercise the backend routes directly.</p>
+        </div>
+        <div class="flow-step">
+          <div class="num">2</div>
+          <h4>Load patient context</h4>
+          <p>Patients, diabetic data, heart data, reports, and histories are all keyed by the same patient ID.</p>
+        </div>
+        <div class="flow-step">
+          <div class="num">3</div>
+          <h4>Build the agent job</h4>
+          <p>The lab agent validates the patient and report IDs, then prepares a ready or awaiting-trend job.</p>
+        </div>
+        <div class="flow-step">
+          <div class="num">4</div>
+          <h4>Ingest evidence and analyze</h4>
+          <p>Trusted sources are chunked locally, Gemini is called with citation rules, and outputs are validated.</p>
+        </div>
+        <div class="flow-step">
+          <div class="num">5</div>
+          <h4>Run OCR and trends</h4>
+          <p>OCR happens in the background and trend analysis only becomes active once the report history is sufficient.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="toolbar panel">
+      <div class="field">
+        <label for="apiBaseUrl">API base URL</label>
+        <input id="apiBaseUrl" type="text" value="http://localhost:8000" />
+      </div>
+      <div class="field">
+        <label for="sharedToken">Session note</label>
+        <input id="sharedToken" type="text" placeholder="Optional local note" />
+      </div>
+      <div class="field">
+        <label for="sharedPatientId">Patient ID</label>
+        <input id="sharedPatientId" type="text" placeholder="Load from /api/patients or paste an ObjectId" />
+      </div>
+      <div class="field">
+        <label for="patientSelect">Loaded patients</label>
+        <select id="patientSelect">
+          <option value="">No patient loaded</option>
+        </select>
+      </div>
+    </section>
+
+    <main class="stack-gap">
+      <section class="panel">
+        <div class="section-title">
+          <div>
+            <div class="eyebrow">Backend status</div>
+            <h2 style="font-size: 1.4rem; margin-top: 10px;">Access, status, and system checks</h2>
+            <p>The backend no longer exposes a standalone auth flow. Use the frontend login, then exercise these routes directly.</p>
+          </div>
+        </div>
+        <div class="section-grid">
+          <div class="subpanel">
+            <h3>Session note</h3>
+            <p>This field is only for your own local note. It is not sent to the backend as an auth token.</p>
+            <div class="field-grid">
+              <div class="field"><label for="sharedToken">Session note</label><input id="sharedToken" type="text" placeholder="Optional local note" /></div>
+            </div>
+            <div class="button-row">
+              <button type="button" class="secondary" id="btnCopyToken">Copy note</button>
+              <button type="button" class="secondary" id="btnLoadPatients">Load Patients</button>
+            </div>
+          </div>
+
+          <div class="subpanel">
+            <h3>Backend checks</h3>
+            <p>Quick checks for the app root, health, and database connectivity.</p>
+            <div class="button-row">
+              <button type="button" class="secondary" id="btnRoot">GET /</button>
+              <button type="button" class="secondary" id="btnHealth">GET /health</button>
+              <button type="button" class="secondary" id="btnDbTest">GET /db/test</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <div>
+            <div class="eyebrow">Patient registry</div>
+            <h2 style="font-size: 1.4rem; margin-top: 10px;">Patients and profile lookups</h2>
+            <p>Use the current patient ID for all downstream forms. If the backend already contains patients, you can load them into the select box.</p>
+          </div>
+        </div>
+        <div class="section-grid single">
+          <div class="subpanel">
+            <h3>Patient list and current profile</h3>
+            <div class="button-row">
+              <button type="button" id="btnListPatients">GET /api/patients/</button>
+              <button type="button" class="secondary" id="btnCurrentPatient">GET /api/patients/me</button>
+            </div>
+            <p class="muted">Selecting a row from the loaded patient table will copy its ID into the shared patient field.</p>
+            <div id="patientsTableWrap"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <div>
+            <div class="eyebrow">Clinical modules</div>
+            <h2 style="font-size: 1.4rem; margin-top: 10px;">Diabetic, heart, history, reports, and recommendations</h2>
+            <p>These are the core clinical storage routes the current frontend uses through its lab proxy layer.</p>
+          </div>
+        </div>
+
+        <div class="section-grid">
+          <div class="subpanel">
+            <h3>Diabetic record</h3>
+            <textarea id="diabeticPayload">{
+  "patientId": "",
+  "Age": 44,
+  "BMI": 27.3,
+  "BUN": 13,
+  "Chol": 198,
+  "Cr": 0.9,
+  "Gender": "F",
+  "HDL": 42,
+  "LDL": 126,
+  "TG": 160
+}</textarea>
+            <div class="field-grid">
+              <div class="field"><label for="diabeticPatientId">Patient ID</label><input id="diabeticPatientId" type="text" placeholder="Uses shared patient ID by default" /></div>
+            </div>
+            <div class="button-row">
+              <button type="button" id="btnSaveDiabetic">POST /api/diabetic/</button>
+              <button type="button" class="secondary" id="btnGetDiabetic">GET /api/diabetic/patient/{id}</button>
+              <button type="button" class="danger" id="btnDeleteDiabetic">DELETE /api/diabetic/patient/{id}</button>
+            </div>
+          </div>
+
+          <div class="subpanel">
+            <h3>Heart record</h3>
+            <textarea id="heartPayload">{
+  "patientId": "",
+  "age": 44,
+  "ca": 0,
+  "chol": 240,
+  "cp": 2,
+  "exang": 0,
+  "fbs": 0,
+  "oldpeak": 1.2,
+  "restecg": 1,
+  "sex": 0,
+  "slope": 2,
+  "thal": 2,
+  "thalach": 150,
+  "trestbps": 118
+}</textarea>
+            <div class="button-row">
+              <button type="button" id="btnSaveHeart">POST /api/heart/</button>
+              <button type="button" class="secondary" id="btnGetHeart">GET /api/heart/patient/{id}</button>
+              <button type="button" class="danger" id="btnDeleteHeart">DELETE /api/heart/patient/{id}</button>
+            </div>
+          </div>
+
+          <div class="subpanel">
+            <h3>Patient history</h3>
+            <textarea id="historyPayload">{
+  "patientId": "",
+  "extractedJsonGroup1": { "notes": "initial history" },
+  "extractedJsonGroup2": {},
+  "isMedical": true,
+  "labComparison": [],
+  "patientInfo": { "age": 44 },
+  "recommendedTests": ["Troponin"],
+  "summary": "Detailed cardiac history note."
+}</textarea>
+            <div class="field-grid">
+              <div class="field"><label for="historyId">History ID</label><input id="historyId" type="text" placeholder="Returned after create" /></div>
+            </div>
+            <div class="button-row">
+              <button type="button" id="btnSaveHistory">POST /api/patient-history/</button>
+              <button type="button" class="secondary" id="btnListHistory">GET /api/patient-history/</button>
+              <button type="button" class="secondary" id="btnGetHistoryById">GET /api/patient-history/{id}</button>
+              <button type="button" class="secondary" id="btnGetHistoryByPatient">GET /api/patient-history/patient/{id}</button>
+            </div>
+          </div>
+
+          <div class="subpanel">
+            <h3>Lab reports</h3>
+            <textarea id="labReportPayload">{
+  "patientId": "",
+  "reportDate": "2026-04-05",
+  "reportLabel": "Visit A",
+  "extractedJsonGroup1": { "troponin": 2.1 },
+  "extractedJsonGroup2": {},
+  "labComparison": [
+    { "test": "Troponin", "actualValue": 2.1, "normalRange": "0.00-0.10", "status": "High" }
+  ],
+  "summary": "Acute cardiology review needed.",
+  "recommendedTests": ["Troponin", "ECG"],
+  "dailyHealthAdvice": ["Seek urgent review"],
+  "patientInfo": { "name": "Patient One" }
+}</textarea>
+            <div class="field-grid">
+              <div class="field"><label for="reportId">Report ID</label><input id="reportId" type="text" placeholder="Returned after create" /></div>
+            </div>
+            <div class="button-row">
+              <button type="button" id="btnSaveReport">POST /api/lab-reports/</button>
+              <button type="button" class="secondary" id="btnListReports">GET /api/lab-reports/patient/{id}</button>
+              <button type="button" class="danger" id="btnDeleteReport">DELETE /api/lab-reports/{id}</button>
+            </div>
+          </div>
+
+          <div class="subpanel">
+            <h3>Recommendations</h3>
+            <textarea id="recommendationPayload">{
+  "patient_id": "",
+  "recommendation": "Repeat cardiac biomarkers in 6 hours."
+}</textarea>
+            <div class="field-grid">
+              <div class="field"><label for="recommendationId">Recommendation ID</label><input id="recommendationId" type="text" placeholder="Returned after create" /></div>
+            </div>
+            <div class="button-row">
+              <button type="button" id="btnSaveRecommendation">POST /api/recommendations/</button>
+              <button type="button" class="secondary" id="btnListRecommendations">GET /api/recommendations/</button>
+              <button type="button" class="secondary" id="btnGetRecommendation">GET /api/recommendations/{id}</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <div>
+            <div class="eyebrow">Lab agent</div>
+            <h2 style="font-size: 1.4rem; margin-top: 10px;">Evidence, jobs, citation grounding, trends, and OCR</h2>
+            <p>This is the new architecture surface. It is where source ingestion, job creation, Gemini analysis, and OCR status polling are exercised.</p>
+          </div>
+        </div>
+
+        <div class="section-grid">
+          <div class="subpanel">
+            <h3>Architecture snapshot</h3>
+            <div class="button-row">
+              <button type="button" id="btnArchitecture">GET /api/lab-agent/architecture</button>
+            </div>
+          </div>
+
+          <div class="subpanel">
+            <h3>Evidence source</h3>
+            <textarea id="evidenceSourcePayload">{
+  "name": "Cardiology Evidence",
+  "url": "https://example.org/cardiology-guideline",
+  "sourceType": "guideline",
+  "authority": "Example Society",
+  "tags": ["cardiology", "guideline"],
+  "isActive": true
+}</textarea>
+            <div class="field-grid">
+              <div class="field"><label for="sourceId">Source ID</label><input id="sourceId" type="text" placeholder="Returned after create" /></div>
+            </div>
+            <div class="button-row">
+              <button type="button" id="btnSaveSource">POST /api/lab-agent/evidence-sources</button>
+              <button type="button" class="secondary" id="btnListSources">GET /api/lab-agent/evidence-sources</button>
+              <button type="button" class="warn" id="btnIngestSource">POST /api/lab-agent/evidence-sources/{id}/ingest</button>
+            </div>
+          </div>
+
+          <div class="subpanel">
+            <h3>Lab agent job</h3>
+            <textarea id="jobPayload">{
+  "patientId": "",
+  "reportIds": [],
+  "minReportsForTrend": 4,
+  "notes": "Run the full lab agent flow."
+}</textarea>
+            <div class="field-grid">
+              <div class="field"><label for="jobId">Job ID</label><input id="jobId" type="text" placeholder="Returned after create" /></div>
+              <div class="field"><label for="analysisEvidenceIds">Evidence source IDs</label><input id="analysisEvidenceIds" type="text" placeholder="Comma-separated IDs" /></div>
+            </div>
+            <div class="button-row">
+              <button type="button" id="btnSaveJob">POST /api/lab-agent/jobs</button>
+              <button type="button" class="secondary" id="btnListJobs">GET /api/lab-agent/jobs</button>
+              <button type="button" class="secondary" id="btnGetJob">GET /api/lab-agent/jobs/{id}</button>
+              <button type="button" class="warn" id="btnAnalyzeJob">POST /api/lab-agent/jobs/{id}/analyze</button>
+              <button type="button" class="secondary" id="btnGetJobResult">GET /api/lab-agent/jobs/{id}/result</button>
+            </div>
+          </div>
+
+          <div class="subpanel">
+            <h3>OCR job</h3>
+            <div class="field-grid">
+              <div class="field"><label for="ocrJobId">OCR job ID</label><input id="ocrJobId" type="text" placeholder="Returned after create" /></div>
+              <div class="field"><label for="ocrFileName">File name</label><input id="ocrFileName" type="text" value="scan.txt" /></div>
+              <div class="field"><label for="ocrMimeType">MIME type</label><input id="ocrMimeType" type="text" value="text/plain" /></div>
+              <div class="field"><label for="ocrFile">Choose file</label><input id="ocrFile" type="file" /></div>
+            </div>
+            <div class="field full">
+              <label for="ocrBase64">Base64 content</label>
+              <textarea id="ocrBase64" placeholder="Paste base64 content or use a file to auto-fill"></textarea>
+            </div>
+            <div class="button-row">
+              <button type="button" id="btnFillOcrBase64">Load file as base64</button>
+              <button type="button" id="btnSaveOcr">POST /api/lab-agent/ocr/jobs</button>
+              <button type="button" class="secondary" id="btnGetOcr">GET /api/lab-agent/ocr/jobs/{id}</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="response-panel">
+        <div class="section-title" style="margin-bottom: 0;">
+          <div>
+            <div class="eyebrow">Response console</div>
+            <h2 style="font-size: 1.35rem; margin-top: 10px;">Latest request and response</h2>
+            <p>Every action writes here so you can inspect the raw backend payloads and copy IDs into subsequent steps.</p>
+          </div>
+          <div class="inline-stack">
+            <button type="button" class="secondary small" id="btnClearLog">Clear</button>
+            <button type="button" class="secondary small" id="btnCopyLog">Copy JSON</button>
+          </div>
+        </div>
+        <pre id="responseLog">Ready. Sign in as a doctor and run the backend checks.</pre>
+      </section>
+
+      <p class="footer-note">
+        Manual testing note: some actions require an existing patient record in MongoDB. Use the patient list button to discover valid patient IDs, then feed the same ID into the shared patient field. The doctor-only policy is enforced by the backend, so patient signup and any non-doctor token should be rejected.
+      </p>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      baseUrl: localStorage.getItem("lab-manual-base-url") || "http://localhost:8000",
+      token: localStorage.getItem("lab-manual-token") || "",
+      patientId: localStorage.getItem("lab-manual-patient-id") || "",
+      lastJson: null,
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    function persistState() {
+      localStorage.setItem("lab-manual-base-url", state.baseUrl);
+      localStorage.setItem("lab-manual-token", state.token);
+      localStorage.setItem("lab-manual-patient-id", state.patientId);
+      $("apiBaseUrl").value = state.baseUrl;
+      $("sharedToken").value = state.token;
+      $("sharedPatientId").value = state.patientId;
+      $("baseUrlLabel").textContent = state.baseUrl;
+      $("authStateLabel").textContent = state.token ? "Token stored" : "Not signed in";
+      $("selectedPatientLabel").textContent = state.patientId || "None";
+    }
+
+    function writeLog(title, payload, status) {
+      const stamp = new Date().toISOString();
+      const next = {
+        title,
+        status,
+        at: stamp,
+        payload,
+      };
+      state.lastJson = next;
+      $("responseLog").textContent = JSON.stringify(next, null, 2);
+    }
+
+    function setError(title, error) {
+      writeLog(title, {
+        error: error instanceof Error ? error.message : String(error),
+      }, "error");
+    }
+
+    function cloneJson(value) {
+      return JSON.parse(JSON.stringify(value));
+    }
+
+    function sharedPatientId() {
+      const value = ($("sharedPatientId").value || "").trim();
+      state.patientId = value;
+      persistState();
+      return value;
+    }
+
+    function currentBaseUrl() {
+      const value = ($("apiBaseUrl").value || "").trim().replace(/\/$/, "");
+      state.baseUrl = value || "http://localhost:8000";
+      persistState();
+      return state.baseUrl;
+    }
+
+    function currentToken() {
+      const value = ($("sharedToken").value || "").trim();
+      state.token = value;
+      persistState();
+      return state.token;
+    }
+
+    function readJsonTextArea(id) {
+      const raw = ($(id).value || "").trim();
+      if (!raw) {
+        return {};
+      }
+      return JSON.parse(raw);
+    }
+
+    function applyPatient(value) {
+      const patientId = sharedPatientId();
+      const next = cloneJson(value);
+      if (patientId) {
+        if (Object.prototype.hasOwnProperty.call(next, "patientId")) next.patientId = patientId;
+        if (Object.prototype.hasOwnProperty.call(next, "patient_id")) next.patient_id = patientId;
+        if (Object.prototype.hasOwnProperty.call(next, "userId")) next.userId = patientId;
+        if (Object.prototype.hasOwnProperty.call(next, "user_id")) next.user_id = patientId;
+      }
+      return next;
+    }
+
+    async function readResponse(response) {
+      const contentType = response.headers.get("content-type") || "";
+      if (response.status === 204) {
+        return null;
+      }
+      const text = await response.text();
+      if (!text) {
+        return null;
+      }
+      if (contentType.includes("application/json")) {
+        try {
+          return JSON.parse(text);
+        } catch {
+          return text;
+        }
+      }
+      try {
+        return JSON.parse(text);
+      } catch {
+        return text;
+      }
+    }
+
+    async function request(path, options = {}) {
+      const baseUrl = currentBaseUrl();
+      const token = currentToken();
+      const method = options.method || "GET";
+      const headers = new Headers(options.headers || {});
+
+      if (options.body !== undefined && !headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json");
+      }
+
+      const response = await fetch(`${baseUrl}${path}`, {
+        method,
+        headers,
+        body: options.body,
+      });
+
+      const payload = await readResponse(response);
+      writeLog(`${method} ${path}`, payload, response.ok ? "ok" : "error");
+      return { response, payload };
+    }
+
+    function populatePatientsTable(patients) {
+      const wrap = $("patientsTableWrap");
+      if (!Array.isArray(patients) || patients.length === 0) {
+        wrap.innerHTML = '<p class="muted">No patients returned yet.</p>';
+        $("patientSelect").innerHTML = '<option value="">No patient loaded</option>';
+        return;
+      }
+
+      const rows = patients.map((patient) => {
+        const patientId = patient.id || patient._id || "";
+        const name = patient.name || "Unnamed";
+        const email = patient.email || "";
+        return `
+          <tr data-patient-id="${String(patientId).replace(/"/g, "&quot;")}">
+            <td>${name}</td>
+            <td>${email}</td>
+            <td><code>${patientId}</code></td>
+            <td><button type="button" class="secondary small pick-patient" data-patient-id="${String(patientId).replace(/"/g, "&quot;")}">Use</button></td>
+          </tr>
+        `;
+      }).join("");
+
+      wrap.innerHTML = `
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Patient ID</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+
+      const select = $("patientSelect");
+      select.innerHTML = '<option value="">Select a patient</option>' + patients.map((patient) => {
+        const patientId = patient.id || patient._id || "";
+        const label = `${patient.name || "Unnamed"} (${String(patientId).slice(0, 8)}...)`;
+        return `<option value="${String(patientId).replace(/"/g, '&quot;')}">${label}</option>`;
+      }).join("");
+
+      wrap.querySelectorAll(".pick-patient").forEach((button) => {
+        button.addEventListener("click", () => {
+          const patientId = button.getAttribute("data-patient-id") || "";
+          $("sharedPatientId").value = patientId;
+          state.patientId = patientId;
+          persistState();
+        });
+      });
+
+      select.addEventListener("change", () => {
+        if (!select.value) return;
+        $("sharedPatientId").value = select.value;
+        state.patientId = select.value;
+        persistState();
+      });
+    }
+
+    function fillFormsFromSharedPatient() {
+      const patientId = sharedPatientId();
+      const patientFields = ["diabeticPatientId", "heartPatientId", "historyPatientId", "labReportPatientId", "recommendationPatientId", "jobPatientId", "ocrPatientId"];
+      patientFields.forEach((id) => {
+        const el = $(id);
+        if (el) el.value = patientId;
+      });
+      const fallbackJsons = ["diabeticPayload", "heartPayload", "historyPayload", "labReportPayload", "recommendationPayload", "jobPayload"];
+      fallbackJsons.forEach((id) => {
+        const el = $(id);
+        if (!el) return;
+        try {
+          const obj = JSON.parse(el.value || "{}");
+          if (Object.prototype.hasOwnProperty.call(obj, "patientId") || Object.prototype.hasOwnProperty.call(obj, "patient_id") || Object.prototype.hasOwnProperty.call(obj, "userId") || Object.prototype.hasOwnProperty.call(obj, "user_id")) {
+            if (Object.prototype.hasOwnProperty.call(obj, "patientId")) obj.patientId = patientId;
+            if (Object.prototype.hasOwnProperty.call(obj, "patient_id")) obj.patient_id = patientId;
+            if (Object.prototype.hasOwnProperty.call(obj, "userId")) obj.userId = patientId;
+            if (Object.prototype.hasOwnProperty.call(obj, "user_id")) obj.user_id = patientId;
+            el.value = JSON.stringify(obj, null, 2);
+          }
+        } catch {
+          // Leave the editor untouched if the JSON has been manually edited into an invalid state.
+        }
+      });
+    }
+
+    async function loadPatients() {
+      const { payload } = await request("/api/patients/", { method: "GET" });
+      populatePatientsTable(Array.isArray(payload) ? payload : []);
+      return payload;
+    }
+
+    async function createJsonRequest(path, body, options = {}) {
+      const result = await request(path, {
+        method: options.method || "POST",
+        body: JSON.stringify(body),
+        auth: options.auth !== false,
+      });
+      if (result.response.ok && result.payload && typeof result.payload === "object") {
+        if (result.payload.access_token) {
+          $("sharedToken").value = result.payload.access_token;
+          state.token = result.payload.access_token;
+          persistState();
+        }
+      }
+      return result;
+    }
+
+    async function getSharedPatientUrlPath(basePath) {
+      const patientId = sharedPatientId();
+      if (!patientId) {
+        throw new Error("Set a patient ID first.");
+      }
+      return basePath.replace("{id}", encodeURIComponent(patientId));
+    }
+
+    function syncBaseInputs() {
+      state.baseUrl = ($("apiBaseUrl").value || "http://localhost:8000").trim().replace(/\/$/, "") || "http://localhost:8000";
+      state.token = ($("sharedToken").value || "").trim();
+      state.patientId = ($("sharedPatientId").value || "").trim();
+      persistState();
+      fillFormsFromSharedPatient();
+    }
+
+    function bind(id, handler) {
+      $(id).addEventListener("click", handler);
+    }
+
+    bind("btnRoot", async () => {
+      try { await request("/", { method: "GET", auth: false }); } catch (error) { setError("GET /", error); }
+    });
+    bind("btnHealth", async () => {
+      try { await request("/health", { method: "GET", auth: false }); } catch (error) { setError("GET /health", error); }
+    });
+    bind("btnDbTest", async () => {
+      try { await request("/db/test", { method: "GET", auth: false }); } catch (error) { setError("GET /db/test", error); }
+    });
+    bind("btnCopyBase", async () => {
+      await navigator.clipboard.writeText(currentBaseUrl());
+      writeLog("Copy Base URL", { copied: currentBaseUrl() }, "ok");
+    });
+    bind("btnCopyToken", async () => {
+      await navigator.clipboard.writeText(currentToken());
+      writeLog("Copy Token", { copied: currentToken() }, "ok");
+    });
+    bind("btnLoadPatients", async () => {
+      try { await loadPatients(); } catch (error) { setError("Load patients", error); }
+    });
+    bind("btnListPatients", async () => {
+      try { await loadPatients(); } catch (error) { setError("GET /api/patients/", error); }
+    });
+    bind("btnCurrentPatient", async () => {
+      try { await request("/api/patients/me", { method: "GET" }); } catch (error) { setError("GET /api/patients/me", error); }
+    });
+    bind("btnSaveDiabetic", async () => {
+      try {
+        const body = applyPatient(readJsonTextArea("diabeticPayload"));
+        const result = await createJsonRequest("/api/diabetic/", body);
+        if (result.response.ok) fillFormsFromSharedPatient();
+      } catch (error) { setError("POST /api/diabetic/", error); }
+    });
+    bind("btnGetDiabetic", async () => {
+      try {
+        const path = await getSharedPatientUrlPath("/api/diabetic/patient/{id}");
+        await request(path, { method: "GET" });
+      } catch (error) { setError("GET diabetic", error); }
+    });
+    bind("btnDeleteDiabetic", async () => {
+      try {
+        const path = await getSharedPatientUrlPath("/api/diabetic/patient/{id}");
+        await request(path, { method: "DELETE" });
+      } catch (error) { setError("DELETE diabetic", error); }
+    });
+    bind("btnSaveHeart", async () => {
+      try {
+        const body = applyPatient(readJsonTextArea("heartPayload"));
+        const result = await createJsonRequest("/api/heart/", body);
+        if (result.response.ok) fillFormsFromSharedPatient();
+      } catch (error) { setError("POST /api/heart/", error); }
+    });
+    bind("btnGetHeart", async () => {
+      try {
+        const path = await getSharedPatientUrlPath("/api/heart/patient/{id}");
+        await request(path, { method: "GET" });
+      } catch (error) { setError("GET heart", error); }
+    });
+    bind("btnDeleteHeart", async () => {
+      try {
+        const path = await getSharedPatientUrlPath("/api/heart/patient/{id}");
+        await request(path, { method: "DELETE" });
+      } catch (error) { setError("DELETE heart", error); }
+    });
+    bind("btnSaveHistory", async () => {
+      try {
+        const body = applyPatient(readJsonTextArea("historyPayload"));
+        const result = await createJsonRequest("/api/patient-history/", body);
+        if (result.response.ok && result.payload && result.payload.id) {
+          $("historyId").value = result.payload.id;
+        }
+      } catch (error) { setError("POST /api/patient-history/", error); }
+    });
+    bind("btnListHistory", async () => {
+      try { await request("/api/patient-history/", { method: "GET" }); } catch (error) { setError("GET /api/patient-history/", error); }
+    });
+    bind("btnGetHistoryById", async () => {
+      try {
+        const historyId = $("historyId").value.trim();
+        if (!historyId) throw new Error("Enter a history ID first.");
+        await request(`/api/patient-history/${encodeURIComponent(historyId)}`, { method: "GET" });
+      } catch (error) { setError("GET history by ID", error); }
+    });
+    bind("btnGetHistoryByPatient", async () => {
+      try {
+        const path = await getSharedPatientUrlPath("/api/patient-history/patient/{id}");
+        await request(path, { method: "GET" });
+      } catch (error) { setError("GET history by patient", error); }
+    });
+    bind("btnSaveReport", async () => {
+      try {
+        const body = applyPatient(readJsonTextArea("labReportPayload"));
+        const result = await createJsonRequest("/api/lab-reports/", body);
+        if (result.response.ok && result.payload && result.payload.id) {
+          $("reportId").value = result.payload.id;
+        }
+      } catch (error) { setError("POST /api/lab-reports/", error); }
+    });
+    bind("btnListReports", async () => {
+      try {
+        const path = await getSharedPatientUrlPath("/api/lab-reports/patient/{id}");
+        await request(path, { method: "GET" });
+      } catch (error) { setError("GET lab reports", error); }
+    });
+    bind("btnDeleteReport", async () => {
+      try {
+        const reportId = $("reportId").value.trim();
+        if (!reportId) throw new Error("Enter a report ID first.");
+        await request(`/api/lab-reports/${encodeURIComponent(reportId)}`, { method: "DELETE" });
+      } catch (error) { setError("DELETE lab report", error); }
+    });
+    bind("btnSaveRecommendation", async () => {
+      try {
+        const body = applyPatient(readJsonTextArea("recommendationPayload"));
+        const result = await createJsonRequest("/api/recommendations/", body);
+        if (result.response.ok && result.payload && result.payload.id) {
+          $("recommendationId").value = result.payload.id;
+        }
+      } catch (error) { setError("POST /api/recommendations/", error); }
+    });
+    bind("btnListRecommendations", async () => {
+      try {
+        const patientId = sharedPatientId();
+        const path = patientId ? `/api/recommendations/?patient_id=${encodeURIComponent(patientId)}` : "/api/recommendations/";
+        await request(path, { method: "GET" });
+      } catch (error) { setError("GET /api/recommendations/", error); }
+    });
+    bind("btnGetRecommendation", async () => {
+      try {
+        const recommendationId = $("recommendationId").value.trim();
+        if (!recommendationId) throw new Error("Enter a recommendation ID first.");
+        await request(`/api/recommendations/${encodeURIComponent(recommendationId)}`, { method: "GET" });
+      } catch (error) { setError("GET recommendation", error); }
+    });
+    bind("btnArchitecture", async () => {
+      try { await request("/api/lab-agent/architecture", { method: "GET" }); } catch (error) { setError("GET architecture", error); }
+    });
+    bind("btnSaveSource", async () => {
+      try {
+        const body = readJsonTextArea("evidenceSourcePayload");
+        const result = await createJsonRequest("/api/lab-agent/evidence-sources", body);
+        if (result.response.ok && result.payload && result.payload.id) {
+          $("sourceId").value = result.payload.id;
+        }
+      } catch (error) { setError("POST evidence source", error); }
+    });
+    bind("btnListSources", async () => {
+      try { await request("/api/lab-agent/evidence-sources?active_only=false", { method: "GET" }); } catch (error) { setError("GET evidence sources", error); }
+    });
+    bind("btnIngestSource", async () => {
+      try {
+        const sourceId = $("sourceId").value.trim();
+        if (!sourceId) throw new Error("Enter a source ID first.");
+        await request(`/api/lab-agent/evidence-sources/${encodeURIComponent(sourceId)}/ingest`, { method: "POST" });
+      } catch (error) { setError("Ingest evidence source", error); }
+    });
+    bind("btnSaveJob", async () => {
+      try {
+        const body = applyPatient(readJsonTextArea("jobPayload"));
+        if (!Array.isArray(body.reportIds)) body.reportIds = [];
+        if (body.reportIds.length === 0 && $("reportId").value.trim()) {
+          body.reportIds = [$("reportId").value.trim()];
+        }
+        const result = await createJsonRequest("/api/lab-agent/jobs", body);
+        if (result.response.ok && result.payload && result.payload.id) {
+          $("jobId").value = result.payload.id;
+        }
+      } catch (error) { setError("POST /api/lab-agent/jobs", error); }
+    });
+    bind("btnListJobs", async () => {
+      try {
+        const patientId = sharedPatientId();
+        const path = patientId ? `/api/lab-agent/jobs?patient_id=${encodeURIComponent(patientId)}` : "/api/lab-agent/jobs";
+        await request(path, { method: "GET" });
+      } catch (error) { setError("GET jobs", error); }
+    });
+    bind("btnGetJob", async () => {
+      try {
+        const jobId = $("jobId").value.trim();
+        if (!jobId) throw new Error("Enter a job ID first.");
+        await request(`/api/lab-agent/jobs/${encodeURIComponent(jobId)}`, { method: "GET" });
+      } catch (error) { setError("GET job", error); }
+    });
+    bind("btnAnalyzeJob", async () => {
+      try {
+        const jobId = $("jobId").value.trim();
+        if (!jobId) throw new Error("Enter a job ID first.");
+        const evidenceSourceIds = $("analysisEvidenceIds").value.split(",").map((id) => id.trim()).filter(Boolean);
+        const body = {
+          evidenceSourceIds,
+          topK: 5,
+          force: true,
+        };
+        await createJsonRequest(`/api/lab-agent/jobs/${encodeURIComponent(jobId)}/analyze`, body);
+      } catch (error) { setError("Analyze job", error); }
+    });
+    bind("btnGetJobResult", async () => {
+      try {
+        const jobId = $("jobId").value.trim();
+        if (!jobId) throw new Error("Enter a job ID first.");
+        await request(`/api/lab-agent/jobs/${encodeURIComponent(jobId)}/result`, { method: "GET" });
+      } catch (error) { setError("GET job result", error); }
+    });
+    bind("btnFillOcrBase64", async () => {
+      try {
+        const fileInput = $("ocrFile");
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) throw new Error("Choose a file first.");
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const text = String(reader.result || "");
+            resolve(text.includes(",") ? text.split(",")[1] : text);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        $("ocrBase64").value = String(base64);
+        writeLog("OCR base64 loaded", { fileName: file.name, charCount: String(base64).length }, "ok");
+      } catch (error) { setError("Load OCR base64", error); }
+    });
+    bind("btnSaveOcr", async () => {
+      try {
+        const payload = {
+          patientId: sharedPatientId() || undefined,
+          fileName: $("ocrFileName").value.trim() || undefined,
+          mimeType: $("ocrMimeType").value.trim() || undefined,
+          contentBase64: $("ocrBase64").value.trim(),
+        };
+        const result = await createJsonRequest("/api/lab-agent/ocr/jobs", payload);
+        if (result.response.ok && result.payload && result.payload.id) {
+          $("ocrJobId").value = result.payload.id;
+        }
+      } catch (error) { setError("POST OCR job", error); }
+    });
+    bind("btnGetOcr", async () => {
+      try {
+        const ocrJobId = $("ocrJobId").value.trim();
+        if (!ocrJobId) throw new Error("Enter an OCR job ID first.");
+        await request(`/api/lab-agent/ocr/jobs/${encodeURIComponent(ocrJobId)}`, { method: "GET" });
+      } catch (error) { setError("GET OCR job", error); }
+    });
+    bind("btnClearLog", async () => {
+      state.lastJson = null;
+      $("responseLog").textContent = "Log cleared.";
+    });
+    bind("btnCopyLog", async () => {
+      await navigator.clipboard.writeText(JSON.stringify(state.lastJson || {}, null, 2));
+      writeLog("Copy JSON", { message: "Latest console payload copied." }, "ok");
+    });
+
+    ["apiBaseUrl", "sharedToken", "sharedPatientId"].forEach((id) => {
+      $(id).addEventListener("input", () => {
+        syncBaseInputs();
+      });
+    });
+
+    persistState();
+    fillFormsFromSharedPatient();
+    writeLog("Manual console ready", {
+      message: "Use the buttons above to exercise the backend.",
+      baseUrl: state.baseUrl,
+    }, "ok");
+  </script>
+</body>
+</html>
