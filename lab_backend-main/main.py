@@ -1,7 +1,9 @@
 import os
 from pathlib import Path
+from time import perf_counter
+from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from contextlib import asynccontextmanager
@@ -50,6 +52,47 @@ app = FastAPI(
     debug=settings.DEBUG,
     lifespan=lifespan
 )
+
+
+@app.middleware("http")
+async def log_lab_backend_requests(request: Request, call_next):
+    """Emit request/response logs for lab orchestration endpoints."""
+    path = request.url.path
+    should_log = path.startswith("/api/lab-agent") or path.startswith("/api/lab-reports")
+    if not should_log:
+        return await call_next(request)
+
+    trace_id = uuid4().hex[:8]
+    query = request.url.query
+    route = f"{path}?{query}" if query else path
+    started = perf_counter()
+    logger.info("[trace=%s] -> %s %s", trace_id, request.method, route)
+
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        duration_ms = (perf_counter() - started) * 1000
+        logger.exception(
+            "[trace=%s] xx %s %s failed in %.1fms: %s",
+            trace_id,
+            request.method,
+            route,
+            duration_ms,
+            exc,
+        )
+        raise
+
+    duration_ms = (perf_counter() - started) * 1000
+    response.headers["X-Trace-Id"] = trace_id
+    logger.info(
+        "[trace=%s] <- %s %s %d in %.1fms",
+        trace_id,
+        request.method,
+        route,
+        response.status_code,
+        duration_ms,
+    )
+    return response
 
 # Add CORS middleware
 app.add_middleware(

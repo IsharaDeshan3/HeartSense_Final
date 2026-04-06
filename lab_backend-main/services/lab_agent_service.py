@@ -1169,6 +1169,13 @@ class LabAgentService:
         validated_report_ids: list[str] = []
         report_owner_ids: set[str] = set()
 
+        logger.info(
+            "create_job request patient_id=%s report_count=%d min_reports_for_trend=%d",
+            requested_patient_id,
+            len(payload.reportIds),
+            payload.minReportsForTrend,
+        )
+
         for report_id in payload.reportIds:
             if not ObjectId.is_valid(report_id):
                 raise HTTPException(
@@ -1248,6 +1255,14 @@ class LabAgentService:
 
         result = await db.agent_jobs.insert_one(doc)
         created = await db.agent_jobs.find_one({"_id": result.inserted_id})
+        logger.info(
+            "create_job success job_id=%s requested_patient_id=%s resolved_patient_id=%s report_count=%d stage=%s",
+            str(result.inserted_id),
+            requested_patient_id,
+            resolved_patient_id,
+            len(validated_report_ids),
+            stage,
+        )
         return self._to_job_response(created)
 
     async def get_job(self, job_id: str, *, current_user: Optional[dict] = None) -> LabAgentJobResponse:
@@ -1365,6 +1380,12 @@ class LabAgentService:
         top_k: int,
     ) -> tuple[str, dict[str, dict]]:
         db = get_database()
+        logger.info(
+            "_retrieve_evidence start source_ids=%d top_k=%d query_chars=%d",
+            len(source_ids or []),
+            top_k,
+            len(query_text or ""),
+        )
         query = {"isActive": True}
         if source_ids:
             query["_id"] = {"$in": [ObjectId(sid) for sid in source_ids if ObjectId.is_valid(sid)]}
@@ -1378,6 +1399,11 @@ class LabAgentService:
 
         source_map = {str(src["_id"]): src for src in sources}
         chunks = await db.evidence_chunks.find({"sourceId": {"$in": list(source_map.keys())}}).to_list(length=20000)
+        logger.info(
+            "_retrieve_evidence selected_sources=%d candidate_chunks=%d",
+            len(source_map),
+            len(chunks),
+        )
         if not chunks:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1411,6 +1437,11 @@ class LabAgentService:
                 "snippet": snippet,
             }
 
+        logger.info(
+            "_retrieve_evidence done top_chunks=%d citations=%d",
+            len(top_chunks),
+            len(evidence_map),
+        )
         return "\n".join(evidence_lines), evidence_map
 
     async def analyze_job(
@@ -1429,6 +1460,15 @@ class LabAgentService:
         job = await db.agent_jobs.find_one({"_id": ObjectId(job_id)})
         if job is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+
+        logger.info(
+            "analyze_job start job_id=%s patient_id=%s force=%s top_k=%s source_ids=%d",
+            job_id,
+            str(job.get("patientId") or ""),
+            bool(payload.force),
+            payload.topK,
+            len(payload.evidenceSourceIds or []),
+        )
 
         existing = await db.agent_results.find_one({"jobId": job_id})
         if existing and not payload.force:
@@ -1506,9 +1546,22 @@ class LabAgentService:
                 },
             )
 
+            logger.info(
+                "analyze_job success job_id=%s category=%s citations=%d trend_patterns=%d",
+                job_id,
+                str((shaped.get("patientCategory") or {}).get("label") or "unknown"),
+                len(shaped.get("citations") or []),
+                len(shaped.get("trendPatterns") or []),
+            )
             stored = await db.agent_results.find_one({"jobId": job_id})
             return self._to_result_response(stored)
-        except HTTPException:
+        except HTTPException as exc:
+            logger.warning(
+                "analyze_job http_error job_id=%s status=%s detail=%s",
+                job_id,
+                exc.status_code,
+                exc.detail,
+            )
             raise
         except Exception as exc:
             logger.exception(
@@ -1632,6 +1685,14 @@ class LabAgentService:
             }
             result = await db.ocr_jobs.insert_one(doc)
             created = await db.ocr_jobs.find_one({"_id": result.inserted_id})
+            logger.info(
+                "create_ocr_job cache_hit job_id=%s patient_id=%s file=%s mime=%s chars=%d",
+                str(result.inserted_id),
+                patient_id,
+                payload.fileName,
+                mime_type,
+                len(cache_text),
+            )
             return self._to_ocr_job_response(created)
 
         doc = {
@@ -1654,6 +1715,16 @@ class LabAgentService:
 
         queue = self._ensure_ocr_queue()
         await queue.put(job_id)
+
+        logger.info(
+            "create_ocr_job queued job_id=%s patient_id=%s file=%s mime=%s bytes=%d queue_size=%d",
+            job_id,
+            patient_id,
+            payload.fileName,
+            mime_type,
+            len(file_bytes),
+            queue.qsize(),
+        )
 
         created = await db.ocr_jobs.find_one({"_id": result.inserted_id})
         return self._to_ocr_job_response(created)

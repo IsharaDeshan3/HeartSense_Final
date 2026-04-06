@@ -751,7 +751,19 @@ export async function POST(req: NextRequest) {
           );
 
           if (!analyzeRes.ok) {
-            throw new Error("Lab-agent analyze failed");
+            let bodyText = "";
+            try {
+              bodyText = (await analyzeRes.text()).trim();
+            } catch {
+              bodyText = "";
+            }
+            const compactBody = bodyText ? bodyText.replace(/\s+/g, " ").slice(0, 500) : "<empty>";
+            console.error(
+              `[lab-orchestrate] Failed to analyze lab-agent job at ${LAB_BACKEND_URL}/api/lab-agent/jobs/${jobId}/analyze status=${analyzeRes.status} body=${compactBody}`,
+            );
+            throw new Error(
+              `Lab-agent analyze failed (${analyzeRes.status})${bodyText ? `: ${compactBody}` : ""}`,
+            );
           }
           const labAgentResult = (await analyzeRes.json()) as Record<string, unknown>;
           stepCompleted(controller, "run_lab_agent_analysis", "Lab-agent analysis completed");
