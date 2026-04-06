@@ -194,34 +194,52 @@ class WorkflowStore:
 
         current_state = WorkflowState(row["current_state"])
 
-        # ── Idempotency guard ────────────────────────────────────────────────
-        # If the session is already AT or PAST the target next_state, this step
-        # was already saved in a previous request.  Return the existing payload
-        # instead of raising a 409 conflict.
+        # ── Resume/update guard ──────────────────────────────────────────────
+        # If the session is already AT or PAST the target next_state, we still
+        # allow saving a new revision for this step so clinicians can update
+        # symptoms/ECG/labs and resume analysis without restarting the session.
         curr_idx = state_index(current_state)
         next_idx = state_index(next_state)
         if curr_idx >= next_idx >= 0:
-            existing = self.get_latest_step_payload(session_id, step_name)
-            if existing:
-                return {
-                    "session_id": session_id,
-                    "state": current_state.value,
-                    "saved_step": step_name,
-                    "revision": existing["revision"],
-                    "updated_at": existing["created_at"],
-                }
-            # No payload yet but state is already advanced — still OK, just
-            # insert the new payload without changing the state.
             now = datetime.now(timezone.utc).isoformat()
             revision_row = conn.execute(
                 "SELECT COALESCE(MAX(revision), 0) AS max_revision FROM step_payloads WHERE session_id = ? AND step_name = ?",
                 (session_id, step_name),
             ).fetchone()
             next_revision = int(revision_row["max_revision"]) + 1
+
             conn.execute(
                 "INSERT INTO step_payloads (session_id, step_name, payload_json, payload_hash, revision, created_at) VALUES (?, ?, ?, NULL, ?, ?)",
                 (session_id, step_name, json.dumps(payload), next_revision, now),
             )
+
+            conn.execute(
+                """
+                UPDATE sessions
+                SET updated_at = ?, lock_version = ?
+                WHERE session_id = ?
+                """,
+                (now, int(row["lock_version"]) + 1, session_id),
+            )
+
+            conn.execute(
+                """
+                INSERT INTO orchestration_events (session_id, event_type, state_from, state_to, status, message, duration_ms, created_at, correlation_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    f"SAVE_{step_name.upper()}_REVISION",
+                    current_state.value,
+                    current_state.value,
+                    "SUCCESS",
+                    f"{step_name} updated in-place for resume",
+                    0,
+                    now,
+                    row["correlation_id"],
+                ),
+            )
+
             conn.commit()
             return {
                 "session_id": session_id,
@@ -459,6 +477,89 @@ class WorkflowStore:
         ).fetchall()
         return [row["session_id"] for row in rows]
 
+    def list_sessions_for_patient(
+        self,
+        patient_id: str,
+        *,
+        include_completed: bool = True,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        """Return session snapshots for one patient ordered by latest activity."""
+        conn = _get_connection(self.db_path)
+        safe_limit = max(1, min(int(limit), 200))
+
+        if include_completed:
+            rows = conn.execute(
+                """
+                SELECT session_id
+                FROM sessions
+                WHERE patient_id = ?
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (patient_id, safe_limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT session_id
+                FROM sessions
+                WHERE patient_id = ?
+                  AND current_state NOT IN (?, ?)
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (
+                    patient_id,
+                    WorkflowState.ANALYSIS_DONE.value,
+                    WorkflowState.FAILED.value,
+                    safe_limit,
+                ),
+            ).fetchall()
+
+        snapshots: list[dict[str, Any]] = []
+        for row in rows:
+            session = self.get_session(str(row["session_id"]))
+            if session is not None:
+                snapshots.append(session)
+        return snapshots
+
+    def get_latest_session_for_patient(
+        self,
+        patient_id: str,
+        *,
+        include_completed: bool = False,
+    ) -> Optional[dict[str, Any]]:
+        """Return the most recently updated session for one patient."""
+        conn = _get_connection(self.db_path)
+        if include_completed:
+            row = conn.execute(
+                """
+                SELECT session_id
+                FROM sessions
+                WHERE patient_id = ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (patient_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT session_id
+                FROM sessions
+                WHERE patient_id = ?
+                  AND current_state NOT IN (?, ?)
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (patient_id, WorkflowState.ANALYSIS_DONE.value, WorkflowState.FAILED.value),
+            ).fetchone()
+
+        if row is None:
+            return None
+        return self.get_session(str(row["session_id"]))
+
     def delete_session(self, session_id: str) -> None:
         """Delete a session and all its related data from local SQLite."""
         conn = _get_connection(self.db_path)
@@ -467,3 +568,21 @@ class WorkflowStore:
         conn.execute("DELETE FROM step_payloads WHERE session_id = ?", (session_id,))
         conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
         conn.commit()
+
+    def delete_active_sessions_for_patient(self, patient_id: str) -> dict[str, Any]:
+        """Delete unfinished sessions for a patient and return the removed IDs."""
+        sessions = self.list_sessions_for_patient(
+            patient_id,
+            include_completed=False,
+            limit=200,
+        )
+
+        deleted_session_ids = [str(session.get("session_id") or "") for session in sessions if session.get("session_id")]
+        for session_id in deleted_session_ids:
+            self.delete_session(session_id)
+
+        return {
+            "patient_id": patient_id,
+            "deleted_count": len(deleted_session_ids),
+            "deleted_session_ids": deleted_session_ids,
+        }

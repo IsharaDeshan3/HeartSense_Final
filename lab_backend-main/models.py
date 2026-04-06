@@ -396,3 +396,149 @@ class LabReportResponse(BaseModel):
         "json_encoders": {ObjectId: str}
     }
 
+
+# Lab Agent Architecture Models
+class EvidenceSourceCreate(BaseModel):
+    """Register a trusted evidence source for guideline-grounded analysis."""
+    name: str = Field(..., min_length=2, max_length=200)
+    url: str = Field(..., min_length=8, max_length=2048)
+    sourceType: Literal["guideline", "journal", "protocol", "other"] = "guideline"
+    authority: Optional[str] = Field(default=None, max_length=200)
+    tags: list[str] = Field(default_factory=list)
+    isActive: bool = True
+
+
+class EvidenceSourceResponse(BaseModel):
+    """Evidence source response model."""
+    id: str
+    name: str
+    url: str
+    sourceType: str
+    authority: Optional[str] = None
+    tags: list[str]
+    isActive: bool
+    createdBy: str
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class LabAgentJobCreate(BaseModel):
+    """Create a new lab-agent orchestration job for one patient."""
+    patientId: str = Field(..., min_length=1, validation_alias=AliasChoices("patientId", "userId"))
+    reportIds: list[str] = Field(default_factory=list)
+    minReportsForTrend: int = Field(default=4, ge=2, le=12)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+
+
+class LabAgentJobResponse(BaseModel):
+    """Lab-agent orchestration job response."""
+    id: str
+    patientId: str
+    reportIds: list[str]
+    status: Literal["queued", "in_progress", "completed", "failed"]
+    stage: str
+    architectureVersion: str
+    reportCountAtCreation: int
+    minReportsForTrend: int
+    nextAction: str
+    createdBy: str
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class LabAgentArchitectureResponse(BaseModel):
+    """Describes the Step-1 architecture boundaries inside lab_backend-main."""
+    architectureVersion: str
+    stack: str
+    ownership: dict
+    collections: list[str]
+    pipelineStages: list[str]
+    notes: list[str]
+
+
+class EvidenceIngestionResponse(BaseModel):
+    """Evidence ingestion status for one source URL."""
+    sourceId: str
+    url: str
+    status: Literal["ingested", "failed"]
+    contentType: Optional[str] = None
+    chunkCount: int = 0
+    message: str
+    ingestedAt: datetime
+
+
+class LabAgentAnalyzeRequest(BaseModel):
+    """Run evidence-grounded Gemini analysis for one orchestration job."""
+    evidenceSourceIds: list[str] = Field(default_factory=list)
+    topK: Optional[int] = Field(default=None, ge=1, le=20)
+    force: bool = False
+
+
+class LabAgentCitation(BaseModel):
+    """Resolved citation metadata returned to clients."""
+    citationId: str
+    sourceId: str
+    sourceName: str
+    sourceUrl: str
+    snippet: str
+
+
+class TrendPattern(BaseModel):
+    """Deterministic temporal pattern for one lab analyte."""
+    test: str
+    points: int
+    trend: Literal["rising", "falling", "stable"]
+    firstValue: float
+    latestValue: float
+    relativeChange: float
+    slopePerReport: float
+    anomalyFlags: list[str] = Field(default_factory=list)
+    latestStatus: Optional[str] = None
+
+
+class LabAgentResultResponse(BaseModel):
+    """Persisted evidence-grounded analysis result with validated citations."""
+    id: str
+    jobId: str
+    patientId: str
+    status: str
+    model: str
+    summary: str
+    patientCategory: dict
+    findings: list
+    recommendedActions: list[str]
+    citations: list[LabAgentCitation]
+    trendSummary: str = ""
+    trendPatterns: list[TrendPattern] = Field(default_factory=list)
+    evidenceUsedCount: int
+    createdAt: datetime
+
+
+class OcrJobCreate(BaseModel):
+    """Submit an OCR task as an async background job."""
+    patientId: Optional[str] = None
+    fileName: Optional[str] = Field(default=None, max_length=260)
+    mimeType: Optional[str] = Field(default=None, max_length=120)
+    contentBase64: str = Field(..., min_length=10)
+
+
+class OcrJobResponse(BaseModel):
+    """OCR job metadata response."""
+    id: str
+    patientId: Optional[str] = None
+    status: Literal["queued", "in_progress", "completed", "failed"]
+    fileName: Optional[str] = None
+    mimeType: str
+    inputHash: str
+    fromCache: bool
+    method: Optional[str] = None
+    error: Optional[str] = None
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class OcrJobResultResponse(OcrJobResponse):
+    """OCR job with extracted text payload when available."""
+    extractedText: Optional[str] = None
+    charCount: int = 0
+

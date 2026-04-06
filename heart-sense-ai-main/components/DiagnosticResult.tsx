@@ -458,6 +458,7 @@ function sectionIcon(title: string) {
     return <TriangleAlert className="h-4 w-4" />;
   if (t.includes("clinical") || t.includes("evidence"))
     return <Lightbulb className="h-4 w-4" />;
+  if (t.includes("reference")) return <FileText className="h-4 w-4" />;
   if (t.includes("disclaimer")) return <ShieldCheck className="h-4 w-4" />;
   return <ChevronRight className="h-4 w-4" />;
 }
@@ -470,6 +471,8 @@ function sectionColor(title: string): string {
     return "border-blue-500/20 bg-blue-500/5 text-blue-400";
   if (t.includes("gap") || t.includes("limit"))
     return "border-amber-500/20 bg-amber-500/5 text-amber-400";
+  if (t.includes("reference"))
+    return "border-slate-500/20 bg-slate-500/5 text-slate-300";
   if (t.includes("disclaimer"))
     return "border-amber-500/20 bg-amber-500/5 text-amber-400";
   return "border-white/10 bg-white/[0.02] text-muted-foreground";

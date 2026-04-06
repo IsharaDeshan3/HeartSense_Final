@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
   ArrowLeft,
@@ -22,6 +22,7 @@ import type { EcgResult } from "@/lib/diagnosticMapper";
 import {
   WorkflowService,
   type WorkflowState,
+  type WorkflowSession,
 } from "@/services/WorkflowService";
 
 type WorkspacePatient = {
@@ -53,6 +54,41 @@ function createInitialSummary() {
     ecgResult: null as EcgResult | null,
     labResult: null as LabAnalysisResult | null,
   };
+}
+
+function getWorkflowResumeKey(patientId: string) {
+  return `workspace:workflow-resume:${patientId}`;
+}
+
+function mapWorkflowStateToTab(state: WorkflowState | string | null):
+  | "nlp"
+  | "ecg"
+  | "lab"
+  | "ai" {
+  if (!state || state === "SESSION_CREATED") return "nlp";
+  if (state === "EXTRACTION_DONE") return "ecg";
+  if (state === "ECG_DONE") return "lab";
+  return "ai";
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean);
+}
+
+function toApprovedMap(items: string[], prefix: string) {
+  return items.reduce<Record<string, { value: string; status: "approved" }>>(
+    (acc, item, index) => {
+      acc[`${prefix}_${index + 1}`] = {
+        value: item,
+        status: "approved",
+      };
+      return acc;
+    },
+    {},
+  );
 }
 
 const moduleFallback = (title: string, description: string) => (
@@ -106,6 +142,9 @@ const AiDiagnostics = dynamic(() => import("@/components/AiDiagnostics"), {
 export default function DiagnosticWorkspace() {
   const { patientId } = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const forceNewDiagnosis = searchParams.get("new") === "1";
+  const requestedResumeSessionId = searchParams.get("resume_session_id");
   const [patient, setPatient] = useState<WorkspacePatient | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"nlp" | "ecg" | "lab" | "ai">(
@@ -138,6 +177,63 @@ export default function DiagnosticWorkspace() {
     allergies: {},
     risk_factors: {},
   });
+
+  const hydrateFromSession = useCallback((session: WorkflowSession) => {
+    const extractionPayload =
+      (session.step_payloads?.extraction?.payload as Record<string, unknown> | undefined) ??
+      null;
+    const ecgStepPayload =
+      (session.step_payloads?.ecg?.payload as Record<string, unknown> | undefined) ??
+      null;
+    const labStepPayload =
+      (session.step_payloads?.lab?.payload as Record<string, unknown> | undefined) ??
+      null;
+
+    const symptoms = normalizeStringArray(extractionPayload?.symptoms);
+    const riskFactors = normalizeStringArray(extractionPayload?.risk_factors);
+    const translatedText = String(
+      extractionPayload?.translated_text || "Awaiting clinical input...",
+    );
+
+    const ecgResultPayload =
+      (ecgStepPayload?.result as Record<string, unknown> | undefined) ?? null;
+    const labResultPayload =
+      (labStepPayload?.result as Record<string, unknown> | undefined) ?? null;
+
+    const ecgWasSkipped = ecgResultPayload?.status === "skipped";
+    const labWasSkipped = labResultPayload?.status === "skipped";
+
+    setNlpCurrentState((prev) => ({
+      ...prev,
+      symptoms: toApprovedMap(symptoms, "symptom"),
+      risk_factors: toApprovedMap(riskFactors, "risk"),
+    }));
+
+    setSummary((prev) => ({
+      ...prev,
+      recentObservation: translatedText,
+      riskScore:
+        riskFactors.length > 2
+          ? "High"
+          : riskFactors.length > 0
+            ? "Moderate"
+            : "Low",
+      symptoms,
+      riskFactors,
+      ecgResult: ecgWasSkipped
+        ? null
+        : ((ecgResultPayload as unknown as EcgResult | null) ?? null),
+      labResult: labWasSkipped
+        ? null
+        : ((labResultPayload as unknown as LabAnalysisResult | null) ?? null),
+    }));
+
+    setEcgSkipped(Boolean(ecgWasSkipped));
+    setLabSkipped(Boolean(labWasSkipped));
+    setWorkflowSessionId(session.session_id);
+    setWorkflowState(session.current_state);
+    setActiveTab(mapWorkflowStateToTab(session.current_state));
+  }, []);
 
   // Keep summary.symptoms and riskFactors in sync with approved NLP state
   useEffect(() => {
@@ -252,13 +348,89 @@ export default function DiagnosticWorkspace() {
       if (!patient) return;
       // Prevent re-initializing if a session already exists
       if (workflowSessionId) return;
+      const resolvedPatientId = String(patient._id ?? patientId);
+      const resumeKey = getWorkflowResumeKey(resolvedPatientId);
+
       try {
-        const session = await WorkflowService.initSession(
-          String(patient._id ?? patientId),
-          undefined,
-        );
+        if (forceNewDiagnosis) {
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem(resumeKey);
+          }
+
+          const freshSession = await WorkflowService.initSession(
+            resolvedPatientId,
+            undefined,
+          );
+          setWorkflowSessionId(freshSession.session_id);
+          setWorkflowState(freshSession.state);
+          setActiveTab("nlp");
+          setSummary(createInitialSummary());
+          setNlpCurrentState({
+            symptoms: {},
+            medical_history: {},
+            allergies: {},
+            risk_factors: {},
+          });
+          setEcgSkipped(false);
+          setLabSkipped(false);
+
+          router.replace(`/dashboard/doctor/workspace/${resolvedPatientId}`);
+          return;
+        }
+
+        if (requestedResumeSessionId) {
+          try {
+            const explicitSession = await WorkflowService.getSession(
+              requestedResumeSessionId,
+            );
+            if (explicitSession?.patient_id === resolvedPatientId) {
+              hydrateFromSession(explicitSession);
+              router.replace(`/dashboard/doctor/workspace/${resolvedPatientId}`);
+              return;
+            }
+          } catch {
+            // Fallback to cache/latest behavior below.
+          }
+        }
+
+        // 1) Resume from browser cache if still valid.
+        if (typeof window !== "undefined") {
+          const cached = window.localStorage.getItem(resumeKey);
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached) as {
+                session_id?: string;
+                state?: WorkflowState;
+              };
+              if (parsed.session_id) {
+                const existing = await WorkflowService.getSession(parsed.session_id);
+                if (existing?.session_id) {
+                  hydrateFromSession(existing);
+                  return;
+                }
+              }
+            } catch {
+              // Ignore stale or malformed cache.
+            }
+          }
+        }
+
+        // 2) Resume from latest unfinished backend session for this patient.
+        try {
+          const latest = await WorkflowService.getLatestSession(resolvedPatientId, false);
+          if (latest?.session_id) {
+            hydrateFromSession(latest);
+            return;
+          }
+        } catch {
+          // If no resumable session exists, create a fresh one below.
+        }
+
+        // 3) No resumable session found, initialize a new workflow.
+        const session = await WorkflowService.initSession(resolvedPatientId, undefined);
         setWorkflowSessionId(session.session_id);
         setWorkflowState(session.state);
+        setActiveTab(mapWorkflowStateToTab(session.state));
       } catch (error: unknown) {
         toast.error("Failed to initialize workflow session", {
           description: getErrorMessage(error, "Unable to initialize workflow session"),
@@ -267,7 +439,32 @@ export default function DiagnosticWorkspace() {
     };
 
     initWorkflow();
-  }, [patient, patientId, workflowSessionId]);
+  }, [
+    forceNewDiagnosis,
+    hydrateFromSession,
+    patient,
+    patientId,
+    requestedResumeSessionId,
+    router,
+    workflowSessionId,
+  ]);
+
+  useEffect(() => {
+    if (!patient) return;
+    if (!workflowSessionId) return;
+    if (typeof window === "undefined") return;
+
+    const resolvedPatientId = String(patient._id ?? patientId);
+    const resumeKey = getWorkflowResumeKey(resolvedPatientId);
+    window.localStorage.setItem(
+      resumeKey,
+      JSON.stringify({
+        session_id: workflowSessionId,
+        state: workflowState,
+        updated_at: new Date().toISOString(),
+      }),
+    );
+  }, [patient, patientId, workflowSessionId, workflowState]);
 
   const canAccessTab = (tab: "nlp" | "ecg" | "lab" | "ai") => {
     if (tab === "nlp") return true;
@@ -336,24 +533,77 @@ export default function DiagnosticWorkspace() {
     }
   };
 
-  const handleNextToEcg = async () => {
-    if (summary.symptoms.length === 0) {
-      toast.warning("Capture symptoms before proceeding");
+  const handleSaveCurrentStep = async () => {
+    if (!workflowSessionId) {
+      toast.error("Workflow session not ready");
       return;
     }
 
-    // If extraction is already done, just navigate (don't re-save)
-    if (
-      workflowState &&
-      [
-        "EXTRACTION_DONE",
-        "ECG_DONE",
-        "LAB_DONE",
-        "ANALYSIS_RUNNING",
-        "ANALYSIS_DONE",
-      ].includes(workflowState)
-    ) {
-      setActiveTab("ecg");
+    setIsAdvancing(true);
+    try {
+      if (activeTab === "nlp") {
+        if (summary.symptoms.length === 0) {
+          toast.warning("Add symptoms before saving");
+          return;
+        }
+        const saved = await WorkflowService.saveExtraction(workflowSessionId, {
+          symptoms: summary.symptoms,
+          risk_factors: summary.riskFactors,
+          translated_text: summary.recentObservation,
+          raw: { summary },
+        });
+        setWorkflowState(saved.state);
+      } else if (activeTab === "ecg") {
+        if (summary.ecgResult) {
+          const saved = await WorkflowService.saveEcg(
+            workflowSessionId,
+            summary.ecgResult as unknown as Record<string, unknown>,
+          );
+          setWorkflowState(saved.state);
+          setEcgSkipped(false);
+        } else if (ecgSkipped) {
+          const saved = await WorkflowService.saveEcg(workflowSessionId, {
+            status: "skipped",
+            reason: "user_skipped",
+          });
+          setWorkflowState(saved.state);
+        } else {
+          toast.warning("Complete ECG analysis or skip before saving");
+          return;
+        }
+      } else if (activeTab === "lab") {
+        if (summary.labResult) {
+          const saved = await WorkflowService.saveLab(
+            workflowSessionId,
+            summary.labResult as unknown as Record<string, unknown>,
+          );
+          setWorkflowState(saved.state);
+          setLabSkipped(false);
+        } else if (labSkipped) {
+          const saved = await WorkflowService.saveLab(workflowSessionId, {
+            status: "skipped",
+            reason: "user_skipped",
+          });
+          setWorkflowState(saved.state);
+        } else {
+          toast.warning("Complete lab analysis or skip before saving");
+          return;
+        }
+      }
+
+      toast.success("Progress saved");
+    } catch (error: unknown) {
+      toast.error("Failed to save progress", {
+        description: getErrorMessage(error, "Unable to persist current workflow step"),
+      });
+    } finally {
+      setIsAdvancing(false);
+    }
+  };
+
+  const handleNextToEcg = async () => {
+    if (summary.symptoms.length === 0) {
+      toast.warning("Capture symptoms before proceeding");
       return;
     }
 
@@ -402,17 +652,6 @@ export default function DiagnosticWorkspace() {
       return;
     }
 
-    // If ECG is already done, just navigate
-    if (
-      workflowState &&
-      ["ECG_DONE", "LAB_DONE", "ANALYSIS_RUNNING", "ANALYSIS_DONE"].includes(
-        workflowState,
-      )
-    ) {
-      setActiveTab("lab");
-      return;
-    }
-
     if (!workflowSessionId) {
       toast.error("Workflow session not ready");
       return;
@@ -450,15 +689,6 @@ export default function DiagnosticWorkspace() {
       return;
     }
 
-    // If Lab is already done, just navigate
-    if (
-      workflowState &&
-      ["LAB_DONE", "ANALYSIS_RUNNING", "ANALYSIS_DONE"].includes(workflowState)
-    ) {
-      setActiveTab("ai");
-      return;
-    }
-
     if (!workflowSessionId) {
       toast.error("Workflow session not ready");
       return;
@@ -466,9 +696,16 @@ export default function DiagnosticWorkspace() {
 
     setIsAdvancing(true);
     try {
+      const labPayload = summary.labResult
+        ? (summary.labResult as unknown as Record<string, unknown>)
+        : {
+            status: "skipped",
+            reason: "user_skipped",
+          };
+
       const saved = await WorkflowService.saveLab(
         workflowSessionId,
-        summary.labResult as unknown as Record<string, unknown>,
+        labPayload,
       );
       setWorkflowState(saved.state);
 
@@ -950,6 +1187,7 @@ export default function DiagnosticWorkspace() {
                         ? `Patient: ${patient.fullName}, Age: ${patient.age}, Gender: ${patient.gender}`
                         : undefined
                     }
+                    patientName={patient?.fullName}
                     patientId={String(patient?._id ?? patientId)}
                     onAnalysisComplete={handleLabComplete}
                   />
@@ -989,6 +1227,14 @@ export default function DiagnosticWorkspace() {
           {/* WIZARD NEXT BUTTON — pinned footer */}
           {activeTab !== "ai" && (
             <div className="flex justify-end items-center gap-3 pt-4 pb-1 shrink-0 border-t border-white/5 mt-4">
+              <Button
+                onClick={handleSaveCurrentStep}
+                variant="outline"
+                disabled={isAdvancing}
+                className="h-12 px-5 rounded-xl font-bold text-sm"
+              >
+                Save Progress
+              </Button>
               {(activeTab === "ecg" || activeTab === "lab") && (
                 <Button
                   onClick={handleSkipStep}

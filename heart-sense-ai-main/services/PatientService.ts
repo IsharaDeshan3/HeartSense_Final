@@ -2,7 +2,7 @@ const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 const transcriptProxyUrl = "/api/proxy/process-transcript";
 const itemStatusProxyUrl = "/api/proxy/update-item-status";
 const patientHistoryProxyUrl = "/api/proxy/patient-history";
-const labProxyUrl = "/api/lab";
+const labProxyUrl = "/api/lab/analyze";
 
 export interface GeminiResponse {
   isMedical: boolean;
@@ -123,8 +123,8 @@ export const PatientService = {
               parts: [
                 { text: prompt },
                 {
-                  inline_data: {
-                    mime_type: uploadedFile.type,
+                  inlineData: {
+                    mimeType: uploadedFile.type,
                     data: base64Image,
                   },
                 },

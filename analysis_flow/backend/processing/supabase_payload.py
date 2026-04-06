@@ -185,8 +185,16 @@ def save_analysis_payload(
     if patient_id:
         row["patient_id"] = patient_id
 
-    inserted = _post("analysis_payloads", row, timeout=60)
-    row_id: str = str(inserted["id"])
+    # Reuse an existing payload row for this workflow session to avoid
+    # duplicate final entries when analysis is retried/resumed.
+    existing_row_id = check_existing_payload(session_id)
+    if existing_row_id:
+        _patch("analysis_payloads", row, "id", existing_row_id, timeout=60)
+        row_id = existing_row_id
+    else:
+        inserted = _post("analysis_payloads", row, timeout=60)
+        row_id = str(inserted["id"])
+
     _init()
     public_url = f"{_base_url}/rest/v1/analysis_payloads?id=eq.{row_id}"
 
@@ -563,11 +571,17 @@ def get_patient_history_bundle(patient_id: str) -> Dict[str, Any]:
     """Return full history records plus the clinically-compressed summary."""
     records, status = _get_patient_diagnosis_history_with_status(patient_id)
     summary = build_patient_history_summary(patient_id, records)
+    connected = ping_supabase()
+
     return {
         "patient_id": patient_id,
         "summary": summary,
         "records": records,
         "supabase_status": status,
+        "supabase_health": {
+            "connected": connected,
+            "status": "ok" if connected else "unreachable",
+        },
     }
 
 

@@ -1,0 +1,77 @@
+{
+  "base_url": "http://127.0.0.1:8000",
+  "patient_id": "69d35eb0f2c5e8d97b221b71",
+  "reports_dir": "C:\\Users\\DELL\\Desktop\\Full Integration\\lab_backend-main\\tests\\lab-reports-for-testing",
+  "started_at_unix": 1775462665,
+  "report_runs": [
+    {
+      "file": "High-troponin.png",
+      "ocr": {
+        "job_id": "69d36909bf94b55d9d5e0dc1",
+        "status": "completed",
+        "char_count": 2836,
+        "error": null
+      },
+      "lab_report_id": "69d36909bf94b55d9d5e0dc2"
+    },
+    {
+      "file": "liver.JPG",
+      "ocr": {
+        "job_id": "69d3690abf94b55d9d5e0dc3",
+        "status": "completed",
+        "char_count": 4166,
+        "error": null
+      },
+      "lab_report_id": "69d3690abf94b55d9d5e0dc4"
+    },
+    {
+      "file": "na,k,ca.JPG",
+      "ocr": {
+        "job_id": "69d3690bbf94b55d9d5e0dc5",
+        "status": "completed",
+        "char_count": 3662,
+        "error": null
+      },
+      "lab_report_id": "69d3690bbf94b55d9d5e0dc6"
+    },
+    {
+      "file": "Report_templates_22.JPG",
+      "ocr": {
+        "job_id": "69d3690cbf94b55d9d5e0dc7",
+        "status": "completed",
+        "char_count": 1890,
+        "error": null
+      },
+      "lab_report_id": "69d3690cbf94b55d9d5e0dc8"
+    }
+  ],
+  "created_report_ids": [
+    "69d36909bf94b55d9d5e0dc2",
+    "69d3690abf94b55d9d5e0dc4",
+    "69d3690bbf94b55d9d5e0dc6",
+    "69d3690cbf94b55d9d5e0dc8"
+  ],
+  "job": {
+    "id": "69d3690dbf94b55d9d5e0dc9",
+    "patientId": "69d35eb0f2c5e8d97b221b71",
+    "reportIds": [
+      "69d36909bf94b55d9d5e0dc2",
+      "69d3690abf94b55d9d5e0dc4",
+      "69d3690bbf94b55d9d5e0dc6",
+      "69d3690cbf94b55d9d5e0dc8"
+    ],
+    "status": "queued",
+    "stage": "ready_for_analysis",
+    "architectureVersion": "lab-agent-v2",
+    "reportCountAtCreation": 12,
+    "minReportsForTrend": 2,
+    "nextAction": "Run /api/lab-agent/jobs/{job_id}/analyze with evidence source IDs for citation-grounded output.",
+    "createdBy": "frontend",
+    "createdAt": "2026-04-06T08:04:29.092000",
+    "updatedAt": "2026-04-06T08:04:29.092000"
+  },
+  "active_evidence_source_ids": [],
+  "analysis_skipped": true,
+  "analysis_skip_reason": "No active evidence sources available",
+  "finished_at_unix": 1775462670
+}

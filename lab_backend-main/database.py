@@ -114,3 +114,40 @@ async def test_connection():
             "error": str(e)
         }
 
+
+async def ensure_lab_agent_indexes() -> dict:
+    """Create indexes for lab-agent architecture collections."""
+    if not mongodb.is_connected or mongodb.database is None:
+        raise ConnectionError("Database is not connected")
+
+    db = mongodb.database
+
+    await db.evidence_sources.create_index("url", unique=True)
+    await db.evidence_sources.create_index([("isActive", 1), ("updatedAt", -1)])
+
+    await db.evidence_chunks.create_index([("sourceId", 1), ("chunkIndex", 1)], unique=True)
+    await db.evidence_chunks.create_index([("sourceId", 1), ("updatedAt", -1)])
+
+    await db.agent_jobs.create_index([("patientId", 1), ("createdAt", -1)])
+    await db.agent_jobs.create_index([("status", 1), ("updatedAt", -1)])
+    await db.agent_jobs.create_index([("createdBy", 1), ("createdAt", -1)])
+
+    await db.agent_results.create_index("jobId", unique=True)
+    await db.agent_results.create_index([("patientId", 1), ("createdAt", -1)])
+
+    await db.ocr_jobs.create_index([("status", 1), ("updatedAt", -1)])
+    await db.ocr_jobs.create_index([("patientId", 1), ("createdAt", -1)])
+    await db.ocr_jobs.create_index([("inputHash", 1), ("createdAt", -1)])
+
+    await db.ocr_cache.create_index("inputHash", unique=True)
+    await db.ocr_cache.create_index([("updatedAt", -1)])
+
+    return {
+        "evidence_sources": "ok",
+        "evidence_chunks": "ok",
+        "agent_jobs": "ok",
+        "agent_results": "ok",
+        "ocr_jobs": "ok",
+        "ocr_cache": "ok",
+    }
+

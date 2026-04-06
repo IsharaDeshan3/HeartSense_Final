@@ -1,0 +1,95 @@
+{
+  "started_at_unix": 1775463527,
+  "gemini_api_base": "https://generativelanguage.googleapis.com/v1beta",
+  "model": "gemini-2.5-flash",
+  "api_key_present": true,
+  "api_key_masked": "AIzaSy...L2fM",
+  "checks": {
+    "text": {
+      "ok": true,
+      "status": 200,
+      "kind": "ok",
+      "response": {
+        "candidates": [
+          {
+            "content": {
+              "parts": [
+                {
+                  "text": "{\"status\":\"ok\",\"source\":\"lab_backend_main\"}"
+                }
+              ],
+              "role": "model"
+            },
+            "finishReason": "STOP",
+            "index": 0
+          }
+        ],
+        "usageMetadata": {
+          "promptTokenCount": 21,
+          "candidatesTokenCount": 13,
+          "totalTokenCount": 63,
+          "promptTokensDetails": [
+            {
+              "modality": "TEXT",
+              "tokenCount": 21
+            }
+          ],
+          "thoughtsTokenCount": 29
+        },
+        "modelVersion": "gemini-2.5-flash",
+        "responseId": "ZmzTaZWmI-OAqfkPn-y_mAk"
+      }
+    },
+    "vision": {
+      "ok": true,
+      "status": 200,
+      "kind": "ok",
+      "image": "C:\\Users\\DELL\\Desktop\\Full Integration\\lab_backend-main\\tests\\lab-reports-for-testing\\High-troponin.png",
+      "response": {
+        "candidates": [
+          {
+            "content": {
+              "parts": [
+                {
+                  "text": "Here is the plain text extracted from the lab report image:\n\nPage 1 of 1\n\n**DRLOGY PATHOLOGY LAB**\nAccurate | Caring | Instant\n105 -108, SMART VISION COMPLEX, HEALTHCARE ROAD, OPPOSITE HEALTHCARE COMPLEX. MUMBAI - 689578\n\n0123456789 | 0912345678\ndrlogypathlab@drlogy.com\nwww.drlogy.com\n\n**Yash M. Patel**\nAge : 21 Years\nSex : Male\nPID : 555\n\n**Sample Collected At:**\n125, Shivam Bungalow, S G Road,\nMumbai\nRef. By: Dr. Hiren Shah\n\nRegistered on: 02:31 PM 02 Dec, 2X\nCollected on: 03:11 PM 02 Dec, 2X\nReported on: 04:35 PM 02 Dec, 2X\n\n**TROPONIN- I, HIGH SENSITIVE**\n\n| Investigation | Result | Reference Value | Unit |\n|---|---|---|---|\n| **TROPONIN- I, HIGH SENSITIVE, SERUM** | **43.00** | **High** < 26.20 | pg/mL |\n| CMIA | | | |\n\n**Interpretation :**\n\n| INITIAL RESULT IN pg/mL | Remark |\n|---|---|\n| < 26.20 | The upper reference limit (99th percentile) for high sensitive Troponin I (hsTnI) |\n| < 26.20 & pain < 6hrs | Repeat sampling after 3 hours. 50% change in initial value is diagnostic of Myocardial infarction (MI) |\n| > 26.20 - 262.00 | Repeat sampling after 3 hours. 50% change in initial value is diagnostic of Myocardial infarction (MI) |\n| > 262.00 | MI may be ruled in as appropriate with 98% specificity |\n\n**Note:**\n1. Serial sampling to detect the temporal rise and fall of cTnI levels is recommended for the differentiation of acute cardiac events from chronic cardiac disease\n2. Any condition resulting in myocardial injury can potentially increase hsTnI levels thus the results should be used in conjunction with other information such as ECG, clinical observations & symptoms, etc. to diagnose MI\n3. A single hsTnI result may not be sufficient to evaluate MI. Serial blood draws are recommended for evaluation of Acute Coronary Syndrome (ACS)\n4. False positive results can be seen in the presence of Rheumatoid factor and heterophile antibodies\n\n**Comment :**\nTroponins are a group of proteins - C, I & T found in cardiac and skeletal muscle as a complex which regulates calcium dependent interaction of actin and myosin. The cardiac forms of Troponin I (cTnI) & Troponin T (cTnT) are distinct from skeletal muscle forms. Cardiac Troponin is a cardiospecific, highly sensitive marker of myocardial damage and has never shown to be expressed in normal, regenerating or diseased skeletal muscle. In cases of acute myocardial damage, Troponin I levels rise in serum about 4-6 hours after appearance of cardiac symptoms and remain elevated upto 7-12 days of cardiac injury. It is an independent prognostic marker which can predict near, mid and long term outcome in patients with Acute Coronary Syndrome (ACS).\n**Increased Levels :**\nCongestive Heart Failure, Cardiomyopathy, Myocarditis, Heart contusion, Interventional therapy like cardiac surgery and drug induced cardiotoxicity.\n\nThanks for Reference\n**Medical Lab Technician**\n(DMLT, BMLT)\n\n****End of Report****\n**Dr. Payal Shah**\n(MD, Pathologist)\n\n**Dr. Vimal Shah**\n(MD, Pathologist)\n\nGenerated on : 02 Dec, 202X 05:00 PM\nPage 1 of 1\n\nSample Collection 0123456789"
+                }
+              ],
+              "role": "model"
+            },
+            "finishReason": "STOP",
+            "index": 0,
+            "citationMetadata": {
+              "citationSources": [
+                {
+                  "startIndex": 2149,
+                  "endIndex": 2394,
+                  "uri": "https://www.jiyyo.com/test/trop-i",
+                  "license": ""
+                }
+              ]
+            }
+          }
+        ],
+        "usageMetadata": {
+          "promptTokenCount": 267,
+          "candidatesTokenCount": 896,
+          "totalTokenCount": 1409,
+          "promptTokensDetails": [
+            {
+              "modality": "TEXT",
+              "tokenCount": 9
+            },
+            {
+              "modality": "IMAGE",
+              "tokenCount": 258
+            }
+          ],
+          "thoughtsTokenCount": 246
+        },
+        "modelVersion": "gemini-2.5-flash",
+        "responseId": "a2zTafyMB7Wz4-EPztSF8Ac"
+      }
+    }
+  },
+  "finished_at_unix": 1775463539
+}

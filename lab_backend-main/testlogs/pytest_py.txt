@@ -1,0 +1,5 @@
+
+STDERR:
+C:\Users\DELL\Desktop\Full Integration\lab_backend-main\.venv\Scripts\python.exe: No module named pytest
+
+EXIT=1
