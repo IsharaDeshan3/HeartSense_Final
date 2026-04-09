@@ -18,6 +18,7 @@ interface DashboardHeaderProps {
   doctorName?: string;
   icon?: ReactNode;
   children?: ReactNode;
+  showSessionControls?: boolean;
 }
 
 export function DashboardHeader({
@@ -28,6 +29,7 @@ export function DashboardHeader({
   doctorName,
   icon,
   children,
+  showSessionControls = true,
 }: DashboardHeaderProps) {
   const router = useRouter();
 
@@ -62,7 +64,7 @@ export function DashboardHeader({
       </div>
 
       <div className="flex items-center gap-4">
-        <ThemeToggle />
+        {showSessionControls && <ThemeToggle />}
 
         {doctorName ? (
           <div className="text-right hidden sm:block">
@@ -84,16 +86,18 @@ export function DashboardHeader({
           )
         )}
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleLogout}
-          className="h-11 w-11 rounded-xl text-muted-foreground border border-border/60 bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
-          title="Sign Out"
-        >
-          <LogOut className="h-5 w-5" />
-          <span className="sr-only">Sign Out</span>
-        </Button>
+        {showSessionControls && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleLogout}
+            className="h-11 w-11 rounded-xl text-muted-foreground border border-border/60 bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+            title="Sign Out"
+          >
+            <LogOut className="h-5 w-5" />
+            <span className="sr-only">Sign Out</span>
+          </Button>
+        )}
 
         {children}
 

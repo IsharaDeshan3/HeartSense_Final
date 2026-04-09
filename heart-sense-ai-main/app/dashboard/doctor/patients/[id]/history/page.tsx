@@ -3,13 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import {
-  ArrowLeft,
-  Loader2,
-  Plus,
-  History,
-  AlertCircle,
-} from "lucide-react";
+import { ArrowLeft, Loader2, Plus, History, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DashboardHeader } from "@/components/ui/DashboardHeader";
 import { toast } from "sonner";
@@ -48,22 +42,19 @@ function mapWorkflowStateToResumeLabel(state: string) {
   }
   return "Continue diagnosis";
 }
-  const PatientHistory = dynamic(() => import("@/components/PatientHistory"), {
-    ssr: false,
-    loading: () => (
-      <div className="rounded-3xl border border-border/30 bg-card/60 p-8 animate-pulse">
-        <div className="h-6 w-40 rounded-full bg-muted/20 mb-6" />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="h-40 rounded-2xl bg-muted/10" />
-          ))}
-        </div>
+const PatientHistory = dynamic(() => import("@/components/PatientHistory"), {
+  ssr: false,
+  loading: () => (
+    <div className="rounded-3xl border border-border/30 bg-card/60 p-8 animate-pulse">
+      <div className="h-6 w-40 rounded-full bg-muted/20 mb-6" />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="h-40 rounded-2xl bg-muted/10" />
+        ))}
       </div>
-    ),
-  });
-
-
-
+    </div>
+  ),
+});
 
 export default function PatientHistoryPage() {
   const params = useParams();
@@ -71,16 +62,25 @@ export default function PatientHistoryPage() {
   const patientId = params.id as string;
 
   const [patient, setPatient] = useState<PatientInfo | null>(null);
-  const [diagnosisHistory, setDiagnosisHistory] = useState<PatientDiagnosisRecord[]>([]);
-  const [historySummary, setHistorySummary] = useState<PatientHistorySummary | null>(null);
+  const [diagnosisHistory, setDiagnosisHistory] = useState<
+    PatientDiagnosisRecord[]
+  >([]);
+  const [historySummary, setHistorySummary] =
+    useState<PatientHistorySummary | null>(null);
   const [labHistory, setLabHistory] = useState<LabHistoryEntry[]>([]);
-  const [historyStatus, setHistoryStatus] = useState<PatientHistoryStatus | "unknown">("unknown");
-  const [inProgressSessions, setInProgressSessions] = useState<WorkflowSession[]>([]);
+  const [historyStatus, setHistoryStatus] = useState<
+    PatientHistoryStatus | "unknown"
+  >("unknown");
+  const [inProgressSessions, setInProgressSessions] = useState<
+    WorkflowSession[]
+  >([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deletingActiveSessions, setDeletingActiveSessions] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [deletingPayloadId, setDeletingPayloadId] = useState<string | null>(null);
+  const [deletingPayloadId, setDeletingPayloadId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -102,25 +102,36 @@ export default function PatientHistoryPage() {
       setError(null);
 
       try {
-        const [patientRes, historyRes, labRes, sessionsRes] = await Promise.allSettled([
-          fetch(`/api/doctor/patients/${encodeURIComponent(patientId)}`),
-          WorkflowService.getPatientHistory(patientId),
-          fetch(`/api/lab/patient-history?patient_id=${encodeURIComponent(patientId)}`),
-          WorkflowService.listPatientSessions(patientId, {
-            includeCompleted: false,
-            limit: 25,
-          }),
-        ]);
+        const [patientRes, historyRes, labRes, sessionsRes] =
+          await Promise.allSettled([
+            fetch(`/api/doctor/patients/${encodeURIComponent(patientId)}`),
+            WorkflowService.getPatientHistory(patientId),
+            fetch(
+              `/api/lab/patient-history?patient_id=${encodeURIComponent(patientId)}`,
+            ),
+            WorkflowService.listPatientSessions(patientId, {
+              includeCompleted: false,
+              limit: 25,
+            }),
+          ]);
 
         if (patientRes.status === "fulfilled") {
           if (patientRes.value.ok) {
             setPatient(await patientRes.value.json());
           } else {
-            setPatient({ _id: patientId, fullName: "Unknown Patient", patientId });
+            setPatient({
+              _id: patientId,
+              fullName: "Unknown Patient",
+              patientId,
+            });
           }
         } else {
           console.warn("Failed to fetch patient info:", patientRes.reason);
-          setPatient({ _id: patientId, fullName: "Unknown Patient", patientId });
+          setPatient({
+            _id: patientId,
+            fullName: "Unknown Patient",
+            patientId,
+          });
         }
 
         if (historyRes.status === "fulfilled") {
@@ -140,7 +151,9 @@ export default function PatientHistoryPage() {
         if (labRes.status === "fulfilled") {
           if (labRes.value.ok) {
             const labData = await labRes.value.json();
-            setLabHistory(Array.isArray(labData) ? labData : labData.records || []);
+            setLabHistory(
+              Array.isArray(labData) ? labData : labData.records || [],
+            );
           } else {
             setLabHistory([]);
           }
@@ -154,14 +167,20 @@ export default function PatientHistoryPage() {
             ? sessionsRes.value.sessions
             : [];
           setInProgressSessions(
-            sessions.filter((session) => session.current_state !== "SESSION_CREATED"),
+            sessions.filter(
+              (session) => session.current_state !== "SESSION_CREATED",
+            ),
           );
         } else {
-          console.warn("Failed to fetch workflow sessions:", sessionsRes.reason);
+          console.warn(
+            "Failed to fetch workflow sessions:",
+            sessionsRes.reason,
+          );
           setInProgressSessions([]);
         }
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Failed to load patient data";
+        const msg =
+          err instanceof Error ? err.message : "Failed to load patient data";
         setError(msg);
         toast.error("Failed to load patient data");
       } finally {
@@ -183,7 +202,11 @@ export default function PatientHistoryPage() {
   };
 
   const handleDeleteActiveSessions = async () => {
-    if (!patientId || deletingActiveSessions || inProgressSessions.length === 0) {
+    if (
+      !patientId ||
+      deletingActiveSessions ||
+      inProgressSessions.length === 0
+    ) {
       return;
     }
 
@@ -194,8 +217,11 @@ export default function PatientHistoryPage() {
 
     setDeletingActiveSessions(true);
     try {
-      const result = await WorkflowService.deleteActivePatientSessions(patientId);
-      toast.success(`Deleted ${result.deleted_count} active session${result.deleted_count === 1 ? "" : "s"}`);
+      const result =
+        await WorkflowService.deleteActivePatientSessions(patientId);
+      toast.success(
+        `Deleted ${result.deleted_count} active session${result.deleted_count === 1 ? "" : "s"}`,
+      );
       setInProgressSessions([]);
       if (historyStatus !== "unreachable") {
         const refreshed = await WorkflowService.getPatientHistory(patientId);
@@ -207,7 +233,8 @@ export default function PatientHistoryPage() {
         setHistoryStatus(derivedStatus);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to delete active sessions";
+      const msg =
+        err instanceof Error ? err.message : "Failed to delete active sessions";
       toast.error(msg);
     } finally {
       setDeletingActiveSessions(false);
@@ -219,7 +246,9 @@ export default function PatientHistoryPage() {
     const previousSummary = historySummary;
 
     // Optimistic UI: remove immediately from timeline.
-    setDiagnosisHistory((prev) => prev.filter((record) => record.payload_id !== payloadId));
+    setDiagnosisHistory((prev) =>
+      prev.filter((record) => record.payload_id !== payloadId),
+    );
     if (historySummary) {
       setHistorySummary({
         ...historySummary,
@@ -240,7 +269,8 @@ export default function PatientHistoryPage() {
     } catch (err: unknown) {
       setDiagnosisHistory(previousHistory);
       setHistorySummary(previousSummary);
-      const msg = err instanceof Error ? err.message : "Failed to delete history entry";
+      const msg =
+        err instanceof Error ? err.message : "Failed to delete history entry";
       toast.error(msg);
     } finally {
       setDeletingPayloadId(null);
@@ -253,6 +283,7 @@ export default function PatientHistoryPage() {
         title="Patient History"
         icon={<History className="h-8 w-8" />}
         doctorName={currentUser?.fullName ?? ""}
+        showSessionControls={false}
       />
 
       <div className="p-12 flex-1 overflow-y-auto space-y-6">
@@ -280,14 +311,15 @@ export default function PatientHistoryPage() {
           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-800 flex items-start gap-3">
             <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5" />
             <div className="text-sm">
-              Patient history is unavailable right now. Showing the rest of the patient record.
+              Patient history is unavailable right now. Showing the rest of the
+              patient record.
             </div>
           </div>
         )}
 
         {/* Content */}
         {!isLoading && inProgressSessions.length > 0 && (
-          <div className="rounded-2xl border border-primary/20 bg-primary/[0.04] p-5 space-y-3">
+          <div className="rounded-2xl border border-primary/20 bg-primary/4 p-5 space-y-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <h3 className="text-sm font-black uppercase tracking-wider text-primary/80">
                 In-Progress Diagnoses
@@ -304,7 +336,9 @@ export default function PatientHistoryPage() {
                   disabled={deletingActiveSessions}
                   className="h-8 rounded-lg border-rose-500/20 text-rose-400 hover:bg-rose-500/10"
                 >
-                  {deletingActiveSessions ? "Deleting..." : "Delete Active Sessions"}
+                  {deletingActiveSessions
+                    ? "Deleting..."
+                    : "Delete Active Sessions"}
                 </Button>
               </div>
             </div>
@@ -313,12 +347,15 @@ export default function PatientHistoryPage() {
               {inProgressSessions.map((session) => (
                 <div
                   key={session.session_id}
-                  className="rounded-xl border border-white/10 bg-white/[0.02] p-3 flex items-center justify-between gap-3 flex-wrap"
+                  className="rounded-xl border border-white/10 bg-white/2 p-3 flex items-center justify-between gap-3 flex-wrap"
                 >
                   <div className="space-y-1">
-                    <p className="text-sm font-bold">{mapWorkflowStateToResumeLabel(session.current_state)}</p>
+                    <p className="text-sm font-bold">
+                      {mapWorkflowStateToResumeLabel(session.current_state)}
+                    </p>
                     <p className="text-xs text-muted-foreground">
-                      State: {session.current_state} - Updated: {new Date(session.updated_at).toLocaleString()}
+                      State: {session.current_state} - Updated:{" "}
+                      {new Date(session.updated_at).toLocaleString()}
                     </p>
                   </div>
                   <Button
