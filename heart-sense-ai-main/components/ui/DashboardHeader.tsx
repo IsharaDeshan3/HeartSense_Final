@@ -27,7 +27,7 @@ export function DashboardHeader({
   stats,
   doctorName,
   icon,
-  children
+  children,
 }: DashboardHeaderProps) {
   const router = useRouter();
 
@@ -42,16 +42,20 @@ export function DashboardHeader({
   };
 
   const badgeColors = {
-    primary: "bg-primary/10 border-primary/30 text-primary",
-    accent: "bg-accent/10 border-accent/30 text-accent",
+    primary: "bg-primary/10 border-primary/20 text-primary",
+    accent: "bg-accent/10 border-accent/20 text-accent",
   };
 
   return (
-    <header className="h-24 border-b border-border/40 flex items-center justify-between px-12 glass z-10 shrink-0">
+    <header className="h-24 border-b border-border/60 flex items-center justify-between px-8 md:px-12 bg-background/80 backdrop-blur-xl z-10 shrink-0">
       <div className="flex items-center gap-6">
-        <h1 className="text-3xl font-black tracking-tight leading-none whitespace-nowrap">{title}</h1>
+        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight leading-none whitespace-nowrap">
+          {title}
+        </h1>
         {badge && (
-          <div className={`px-4 py-1.5 rounded-full border text-[11px] font-black uppercase tracking-[0.2em] shadow-sm ${badgeColors[badgeVariant]}`}>
+          <div
+            className={`px-4 py-1.5 rounded-full border text-[11px] font-semibold uppercase tracking-[0.18em] ${badgeColors[badgeVariant]}`}
+          >
             {badge}
           </div>
         )}
@@ -62,14 +66,20 @@ export function DashboardHeader({
 
         {doctorName ? (
           <div className="text-right hidden sm:block">
-            <p className="text-xs font-black text-primary tracking-[0.2em] uppercase mb-1">Doctor</p>
-            <p className="text-[11px] text-muted-foreground font-bold">{doctorName}</p>
+            <p className="text-xs font-medium text-muted-foreground tracking-[0.18em] uppercase mb-1">
+              Doctor
+            </p>
+            <p className="text-sm text-foreground font-medium">{doctorName}</p>
           </div>
         ) : (
           stats && (
             <div className="text-right hidden sm:block">
-              <p className="text-xs font-black text-primary tracking-[0.2em] uppercase mb-1">{stats.label}</p>
-              <p className="text-[11px] text-muted-foreground font-bold">{stats.value}</p>
+              <p className="text-xs font-medium text-muted-foreground tracking-[0.18em] uppercase mb-1">
+                {stats.label}
+              </p>
+              <p className="text-sm text-foreground font-medium">
+                {stats.value}
+              </p>
             </div>
           )
         )}
@@ -78,18 +88,17 @@ export function DashboardHeader({
           variant="ghost"
           size="icon"
           onClick={handleLogout}
-          className="h-12 w-12 rounded-2xl text-red-500 border border-red-500/20 bg-red-500/5 hover:bg-red-500/15 hover:text-red-400 hover:border-red-500/40 transition-all duration-300 hover:shadow-[0_0_20px_rgba(239,68,68,0.3)] group relative overflow-hidden"
+          className="h-11 w-11 rounded-xl text-muted-foreground border border-border/60 bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
           title="Sign Out"
         >
-          <div className="absolute inset-0 bg-red-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <LogOut className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
+          <LogOut className="h-5 w-5" />
           <span className="sr-only">Sign Out</span>
         </Button>
 
         {children}
 
         {icon && (
-          <div className="h-14 w-14 rounded-2xl bg-primary/10 border border-primary/30 flex-center text-primary futuristic-glow shrink-0">
+          <div className="h-14 w-14 rounded-2xl bg-primary/10 border border-primary/20 flex-center text-primary shrink-0">
             {icon}
           </div>
         )}

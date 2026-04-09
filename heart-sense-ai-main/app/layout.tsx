@@ -1,15 +1,22 @@
 import type { Metadata, Viewport } from "next";
-import { Nunito } from "next/font/google";
+import { IBM_Plex_Sans, IBM_Plex_Sans_Condensed } from "next/font/google";
 import "./globals.css";
 import "uplot/dist/uPlot.min.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 
-const nunito = Nunito({
-  variable: "--font-nunito",
+const ibmPlexSans = IBM_Plex_Sans({
+  variable: "--font-ibm-plex-sans",
   subsets: ["latin"],
   display: "swap",
-  weight: ["300", "400", "500", "600", "700", "800", "900"],
+  weight: ["300", "400", "500", "600", "700"],
+});
+
+const ibmPlexSansCondensed = IBM_Plex_Sans_Condensed({
+  variable: "--font-ibm-plex-sans-condensed",
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["300", "400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -55,8 +62,8 @@ export const viewport: Viewport = {
   maximumScale: 5,
   userScalable: true,
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+    { media: "(prefers-color-scheme: light)", color: "#f6f2ea" },
+    { media: "(prefers-color-scheme: dark)", color: "#26221f" },
   ],
 };
 
@@ -72,7 +79,7 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" sizes="any" />
       </head>
       <body
-        className={`${nunito.variable} font-sans antialiased min-h-screen`}
+        className={`${ibmPlexSans.variable} ${ibmPlexSansCondensed.variable} font-sans antialiased min-h-screen`}
       >
         <ThemeProvider
           attribute="class"

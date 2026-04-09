@@ -1,224 +1,1381 @@
+"use client";
+
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { 
-  HeartPulse, 
-  Mic, 
-  Activity, 
-  FileText, 
-  BrainCircuit, 
-  Database, 
-  Globe, 
-  ShieldCheck, 
-  ArrowRight,
-  Stethoscope,
-  Microscope,
-  Network
-} from "lucide-react";
+import Image from "next/image";
+import { useEffect } from "react";
+import { HeartPulse } from "lucide-react";
 
 export default function Home() {
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+
+          const target = entry.target as HTMLElement;
+          target.classList.add("visible");
+        });
+      },
+      { threshold: 0.12 },
+    );
+
+    const revealElements = document.querySelectorAll(".reveal");
+    revealElements.forEach((el) => observer.observe(el));
+
+    const anchorLinks =
+      document.querySelectorAll<HTMLAnchorElement>('a[href^="#"]');
+
+    const handlers: Array<{
+      anchor: HTMLAnchorElement;
+      handler: (event: Event) => void;
+    }> = [];
+
+    anchorLinks.forEach((anchor) => {
+      const handler = (event: Event) => {
+        const hash = anchor.hash;
+        if (!hash || hash === "#") {
+          return;
+        }
+
+        const targetId = decodeURIComponent(hash.slice(1));
+        if (!targetId) {
+          return;
+        }
+
+        const target = document.getElementById(targetId);
+        if (!target) return;
+
+        event.preventDefault();
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      };
+
+      anchor.addEventListener("click", handler);
+      handlers.push({ anchor, handler });
+    });
+
+    return () => {
+      revealElements.forEach((el) => observer.unobserve(el));
+      observer.disconnect();
+
+      handlers.forEach(({ anchor, handler }) => {
+        anchor.removeEventListener("click", handler);
+      });
+    };
+  }, []);
+
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground selection:bg-primary/20 overflow-x-hidden font-sans">
-      {/* Bioluminescent Background Ambience */}
-      <div className="fixed inset-0 -z-10 pointer-events-none overflow-hidden opacity-50 dark:opacity-100">
-        <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-primary/20 rounded-full blur-[160px] animate-pulse"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-accent/20 rounded-full blur-[160px] animate-pulse" style={{ animationDelay: '3s' }}></div>
+    <>
+      <nav>
+        <Link href="#" className="nav-logo">
+          <div className="nav-logo-icon" aria-hidden>
+            <HeartPulse size={20} />
+          </div>
+          <span className="nav-wordmark">
+            Heart<span>Sense</span> AI
+          </span>
+        </Link>
+        <div className="nav-links">
+          <a href="#abstract">Abstract</a>
+          <a href="#problem">Problem</a>
+          <a href="#modules">Modules</a>
+        </div>
+        <Link href="/login" className="nav-cta">
+          Clinician Access
+        </Link>
+      </nav>
+
+      <section className="hero">
+        <div className="hero-orb hero-orb-1" />
+        <div className="hero-orb hero-orb-2" />
+        <div className="hero-orb hero-orb-3" />
+
+        <div className="hero-layout">
+          <div className="hero-content">
+            <div className="hero-kicker">
+              Live Research Program · SLIIT Malabe · 2026
+            </div>
+            <h1 className="hero-h1">
+              <em>Clinical-Grade</em> Cardiac Decision Support for Every
+              Hospital
+            </h1>
+            <p className="hero-sub">
+              Built for Sri Lanka's frontline care teams, HeartSense AI combines
+              Sinhala consultation intelligence, ECG interpretation, lab
+              reasoning, and rare-case retrieval into one explainable workspace
+              for faster and safer triage.
+            </p>
+            <div className="trust-row">
+              <span className="trust-chip">SLIIT Research Initiative</span>
+              <span className="trust-chip">Clinical Workflow Focused</span>
+              <span className="trust-chip">Explainable AI Pipeline</span>
+            </div>
+            <div className="hero-btns">
+              <a href="/login" className="btn-primary">
+                Request Clinical Pilot Access
+              </a>
+              <a href="#abstract" className="btn-outline">
+                Review Research Abstract {">"}
+              </a>
+            </div>
+
+            <div className="hero-ecg-wrap">
+              <svg
+                className="ecg-line"
+                viewBox="0 0 700 60"
+                preserveAspectRatio="none"
+              >
+                <path
+                  className="ecg-path"
+                  d="M0,30 L40,30 L50,30 L55,28 L60,30 L80,30 L90,10 L100,50 L110,30 L125,30 L130,28 L135,30 L160,30 L165,14 L172,46 L178,30 L200,30 L210,30 L215,28 L220,30 L240,30 L250,8 L260,52 L270,30 L290,30 L295,28 L300,30 L320,30 L330,10 L340,50 L350,30 L370,30 L375,28 L380,30 L400,30 L410,8 L420,52 L430,30 L450,30 L455,28 L460,30 L480,30 L490,10 L500,50 L510,30 L530,30 L535,28 L540,30 L560,30 L570,8 L580,52 L590,30 L620,30 L630,28 L640,30 L700,30"
+                />
+              </svg>
+            </div>
+          </div>
+
+          <aside
+            className="hero-visual reveal reveal-d2"
+            aria-label="Hero visual"
+          >
+            <Image
+              src="/hero-image-res.png"
+              alt="Doctor interacting with a cardiac AI interface"
+              fill
+              priority
+              sizes="(max-width: 980px) 100vw, 46vw"
+              className="hero-photo"
+            />
+          </aside>
+        </div>
+      </section>
+
+      <div className="stats-strip">
+        <div className="stat-item reveal">
+          <span className="stat-num">32%</span>
+          <span className="stat-label">of global mortality is CVD</span>
+        </div>
+        <div className="stat-item reveal reveal-d1">
+          <span className="stat-num">17.9M</span>
+          <span className="stat-label">annual deaths worldwide</span>
+        </div>
+        <div className="stat-item reveal reveal-d2">
+          <span className="stat-num">92.4%</span>
+          <span className="stat-label">precision heart attack model</span>
+        </div>
+        <div className="stat-item reveal reveal-d3">
+          <span className="stat-num">0.88</span>
+          <span className="stat-label">F1 score ECG recognition</span>
+        </div>
+        <div className="stat-item reveal reveal-d4">
+          <span className="stat-num">700K+</span>
+          <span className="stat-label">rare-case FAISS vectors</span>
+        </div>
       </div>
 
-      {/* Navigation */}
-      <header className="sticky top-0 z-50 w-full glass border-b border-border/50 supports-[backdrop-filter]:bg-background/40">
-        <div className="container mx-auto flex h-20 items-center justify-between px-6 lg:px-12">
-          <Link href="/" className="flex items-center gap-3 group transition-all duration-300">
-            <div className="p-2 rounded-xl bg-primary/10 group-hover:bg-primary/20 transition-colors">
-              <HeartPulse className="h-8 w-8 text-primary group-hover:scale-110 transition-transform" />
+      <section id="abstract" className="abstract-section">
+        <div className="container">
+          <div className="abstract-card reveal">
+            <div className="abstract-grid">
+              <div>
+                <span className="section-kicker">Scientific Abstract</span>
+                <p className="abstract-quote">
+                  "Cardiovascular disease remains one of the most urgent
+                  clinical burdens, while many frontline settings still depend
+                  on delayed specialist review and fragmented workflows.
+                  HeartSense AI is designed as a multimodal clinical support
+                  pipeline, connecting consultation context, ECG interpretation,
+                  lab reasoning, and evidence retrieval into one explainable
+                  decision interface."
+                </p>
+              </div>
+              <div className="abstract-side">
+                <h3>Why This Research Matters</h3>
+                <ul>
+                  <li>
+                    Bridges specialist access gaps in regional care settings.
+                  </li>
+                  <li>
+                    Supports doctors with explainable and auditable AI output.
+                  </li>
+                  <li>
+                    Combines symptom, signal, lab, and evidence in one flow.
+                  </li>
+                  <li>
+                    Designed for practical integration into existing workflow.
+                  </li>
+                </ul>
+                <div className="abstract-meta">
+                  <div className="abstract-meta-item">
+                    Faculty · <span>SLIIT Malabe</span>
+                  </div>
+                  <div className="abstract-meta-item">
+                    Framework · <span>Multi-modal AI</span>
+                  </div>
+                  <div className="abstract-meta-item">
+                    Focus · <span>Rural Sri Lanka</span>
+                  </div>
+                  <div className="abstract-meta-item">
+                    Year · <span>2026</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <span className="text-2xl font-black tracking-tighter text-gradient">HEARTSENSE AI</span>
-          </Link>
-          <nav className="hidden md:flex items-center gap-10 text-sm font-bold uppercase tracking-widest">
-            <Link href="#abstract" className="text-muted-foreground hover:text-primary transition-colors hover:text-glow">Abstract</Link>
-            <Link href="#methodology" className="text-muted-foreground hover:text-primary transition-colors hover:text-glow">Methodology</Link>
-            <Link href="#modules" className="text-muted-foreground hover:text-primary transition-colors hover:text-glow">Core Modules</Link>
-          </nav>
-          <div className="flex items-center gap-4">
-            <Button asChild className="rounded-full px-8 py-6 bg-primary text-primary-foreground futuristic-glow border-none hover:opacity-90 transition-all font-black text-base">
-              <Link href="/register">CLINICIAN ACCESS</Link>
-            </Button>
           </div>
         </div>
-      </header>
+      </section>
 
-      <main className="flex-1 flex flex-col items-center">
-        {/* Research Hero Section */}
-        <section className="relative w-full max-w-7xl px-6 pt-24 pb-32 flex flex-col items-center text-center">
-          <div className="inline-flex items-center rounded-full border border-primary/30 bg-primary/5 px-6 py-2 text-xs font-black tracking-[0.3em] text-primary mb-12 uppercase organic-pulse shadow-[0_0_20px_rgba(var(--primary),0.1)]">
-            Research Grade Diagnostic Support
+      <section id="problem" className="gaps-section">
+        <div className="container">
+          <div className="reveal">
+            <span className="section-kicker">Problem Landscape</span>
+            <h2 className="section-h2">
+              Four barriers slowing reliable cardiac decision-making
+            </h2>
           </div>
-          
-          <h1 className="text-6xl md:text-8xl lg:text-9xl font-black tracking-tight leading-[0.95] mb-10 max-w-6xl">
-            Integrated <span className="text-gradient">Cardiac AI</span> <br className="hidden md:block"/> for Equitable Care
-          </h1>
-          
-          <p className="text-xl md:text-2xl text-muted-foreground max-w-4xl mb-16 leading-relaxed font-medium">
-            Bridging the specialist divide in Sri Lanka through neural symptom extraction and noise-robust waveform interpretation.
+          <div className="gaps-grid reveal">
+            <div className="gap-card">
+              <div className="gap-index">01 · Documentation Friction</div>
+              <div className="gap-title">
+                Clinical language is lost in translation
+              </div>
+              <div className="gap-text">
+                Sinhala consultations often become fragmented during manual note
+                conversion, reducing the fidelity of clinically relevant
+                context.
+              </div>
+            </div>
+            <div className="gap-card">
+              <div className="gap-index">
+                02 · ECG Interpretation Bottleneck
+              </div>
+              <div className="gap-title">
+                Signal quality and expertise mismatch
+              </div>
+              <div className="gap-text">
+                Accurate interpretation depends on specialist experience, while
+                real-world ECG sources are frequently noisy, scanned, or
+                incomplete.
+              </div>
+            </div>
+            <div className="gap-card">
+              <div className="gap-index">03 · Fragmented Risk Insight</div>
+              <div className="gap-title">
+                Labs and history are interpreted in isolation
+              </div>
+              <div className="gap-text">
+                Static scoring misses longitudinal biomarker movement and fails
+                to produce clear next-step diagnostic guidance.
+              </div>
+            </div>
+            <div className="gap-card">
+              <div className="gap-index">04 · Rare-Case Blind Spots</div>
+              <div className="gap-title">
+                Low-frequency cases remain under-supported
+              </div>
+              <div className="gap-text">
+                Pattern-only models can underperform on uncommon but critical
+                conditions without explicit evidence retrieval.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="modules" className="modules-section">
+        <div className="container">
+          <div className="modules-header reveal">
+            <span className="section-kicker">The Multimodal Framework</span>
+            <h2 className="section-h2">
+              Four integrated layers, one clinician workflow
+            </h2>
+          </div>
+          <div className="modules-grid">
+            <div className="module-card reveal reveal-d1">
+              <div className="module-num">MODULE · 01</div>
+              <div className="module-title">Sinhala Clinical NLP</div>
+              <div className="module-desc">
+                Converts natural consultation dialogue into structured clinical
+                context, preserving intent before diagnostic reasoning begins.
+              </div>
+              <div className="module-metric">
+                <span className="metric-val">Input Layer</span>
+                <span className="metric-label">Consultation intelligence</span>
+              </div>
+            </div>
+            <div className="module-card reveal reveal-d2">
+              <div className="module-num">MODULE · 02</div>
+              <div className="module-title">Noise-Robust ECG Digitization</div>
+              <div className="module-desc">
+                Stabilizes and interprets real-world ECG input from imperfect
+                sources to produce clinician-usable signal insight.
+              </div>
+              <div className="module-metric">
+                <span className="metric-val">Signal Layer</span>
+                <span className="metric-label">
+                  ECG quality and interpretation
+                </span>
+              </div>
+            </div>
+            <div className="module-card reveal reveal-d3">
+              <div className="module-num">MODULE · 03</div>
+              <div className="module-title">Category-Aware Lab Analysis</div>
+              <div className="module-desc">
+                Aligns extracted lab data with longitudinal context to support
+                urgency-aware recommendations and better triage decisions.
+              </div>
+              <div className="module-metric">
+                <span className="metric-val">Risk Layer</span>
+                <span className="metric-label">Trend-aware lab reasoning</span>
+              </div>
+            </div>
+            <div className="module-card reveal reveal-d4">
+              <div className="module-num">MODULE · 04</div>
+              <div className="module-title">Evidence-Driven Reasoning</div>
+              <div className="module-desc">
+                Connects patient signals to evidence-backed knowledge retrieval
+                so recommendations remain explainable and clinically grounded.
+              </div>
+              <div className="module-metric">
+                <span className="metric-val">Evidence Layer</span>
+                <span className="metric-label">
+                  Rare-case retrieval + synthesis
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="cta" className="cta-section">
+        <div className="cta-inner reveal">
+          <span className="section-kicker">Pilot and Collaboration</span>
+          <h2 className="cta-h2">
+            Move this research from prototype to <em>clinical impact</em>
+          </h2>
+          <p className="cta-sub">
+            Partner with the HeartSense AI team to validate workflows,
+            participate in pilot deployment, or collaborate on the next phase of
+            research translation.
           </p>
-
-          <div className="flex flex-center flex-wrap gap-6">
-            <Button size="lg" className="rounded-full h-16 px-12 text-xl font-black bg-primary text-primary-foreground futuristic-glow hover:scale-105 transition-transform">
-              EXPLORE METHODOLOGY
-            </Button>
-            <Button size="lg" variant="outline" className="rounded-full h-16 px-12 text-xl font-bold border-primary/20 hover:bg-primary/5 backdrop-blur-md group">
-              PEER REVIEWS <ArrowRight className="ml-2 w-6 h-6 group-hover:translate-x-2 transition-transform" />
-            </Button>
+          <div className="cta-cards">
+            <article className="cta-card">
+              <h3>For Clinicians</h3>
+              <p>
+                Join the pilot access queue and evaluate HeartSense AI in
+                day-to-day cardiac triage workflows.
+              </p>
+              <a href="/register" className="btn-primary">
+                Request Clinical Pilot Access
+              </a>
+            </article>
+            <article className="cta-card">
+              <h3>For Researchers</h3>
+              <p>
+                Collaborate on dataset expansion, model validation, and
+                publication-ready translational studies.
+              </p>
+              <a href="#" className="btn-outline">
+                Contact Research Team {">"}
+              </a>
+            </article>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* Abstract Section */}
-        <section id="abstract" className="w-full py-24 container px-6">
-           <div className="max-w-5xl mx-auto glass p-10 md:p-20 rounded-[4rem] relative overflow-hidden text-center border-primary/20 futuristic-glow">
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-1.5 bg-gradient-to-r from-transparent via-primary to-transparent"></div>
-              <h2 className="text-base font-black tracking-[0.4em] text-primary uppercase mb-10">Scientific Abstract</h2>
-              <p className="text-2xl md:text-3xl italic text-foreground leading-[1.4] font-semibold tracking-tight">
-                "Cardiovascular diseases account for 32% of global deaths. Our research proposes an integrated AI system synthesizing Sinhala NLP and ECG recognition to ground diagnostic hypotheses in established clinical guidelines."
-              </p>
-           </div>
-        </section>
-
-        {/* Core Methodology Modules */}
-        <section id="modules" className="w-full py-32 bg-primary/5 border-y border-border/50">
-          <div className="container mx-auto px-6 lg:px-12">
-            <div className="text-center mb-24">
-              <h2 className="text-4xl md:text-6xl font-black mb-6 tracking-tight text-gradient">The Multimodal Framework</h2>
-              <p className="text-muted-foreground text-xl max-w-3xl mx-auto font-medium">
-                Four independent intelligence layers working in clinical synchrony to define the future of diagnostics.
-              </p>
+      <footer>
+        <div className="footer-inner">
+          <div className="footer-left">
+            <div className="footer-wordmark">
+              Heart<span>Sense</span> AI
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-              {[
-                { 
-                  icon: <Mic className="w-10 h-10" />, 
-                  title: "Sinhala Clinical NLP", 
-                  desc: "Fine-tuned Whisper model with real-time symptom extraction from Sinhala consultations." 
-                },
-                { 
-                  icon: <Activity className="w-10 h-10" />, 
-                  title: "ECG Digitization", 
-                  desc: "Noise-robust CNNs for path-specific classification from digitized paper waveforms." 
-                },
-                { 
-                  icon: <Microscope className="w-10 h-10" />, 
-                  title: "Category-Aware RAG", 
-                  desc: "Evidence-backed lab test recommendations grounded in international ESC/AHA guidelines." 
-                },
-                { 
-                  icon: <BrainCircuit className="w-10 h-10" />, 
-                  title: "Synthesis Agent", 
-                  desc: "Knowledge Reasoning Agent identifying rare pathologies like Kounis syndrome." 
-                }
-              ].map((f, i) => (
-                <Card key={i} className="glass group hover:border-primary/50 transition-all duration-500 overflow-hidden text-center p-2 rounded-[3rem]">
-                  <CardContent className="pt-16 pb-12 px-10 flex flex-col items-center">
-                    <div className="h-24 w-24 rounded-[2rem] bg-primary/10 flex-center mb-10 text-primary futuristic-glow group-hover:scale-110 group-hover:rotate-3 transition-all duration-500">
-                      {f.icon}
-                    </div>
-                    <h3 className="text-2xl font-black mb-6 tracking-tight group-hover:text-glow transition-all">{f.title}</h3>
-                    <p className="text-muted-foreground text-base leading-relaxed font-medium">{f.desc}</p>
-                  </CardContent>
-                </Card>
-              ))}
+            <div className="footer-sub">
+              AI-Powered Cardiac Diagnosis Support · SLIIT Malabe
             </div>
           </div>
-        </section>
-
-        {/* Technical Specification Section */}
-        <section id="methodology" className="w-full py-32 container px-6 flex flex-col items-center">
-           <div className="grid grid-cols-1 lg:grid-cols-2 gap-20 items-center max-w-7xl">
-              <div className="text-left">
-                 <h2 className="text-5xl md:text-7xl font-black mb-12 text-gradient leading-[0.95]">Bridging the <br/> Expertise Gap</h2>
-                 <div className="space-y-10">
-                    {[
-                      { icon: <Globe className="text-primary w-8 h-8" />, title: "Low-Resource Language Support", text: "Optimized NLP pipelines for the Sinhala context to avoid loss of vital symptomatic nuances." },
-                      { icon: <Database className="text-accent w-8 h-8" />, title: "FAISS Indexed Evidence", text: "Retrieval from a proprietary corpus of rare-case research for conditions like Uhl anomaly." },
-                      { icon: <Network className="text-primary w-8 h-8" />, title: "Distributed Orchestration", text: "Orchestrated through local inference workers and retrieval pipelines." }
-                    ].map((item, i) => (
-                      <div key={i} className="flex gap-8 group">
-                        <div className="shrink-0 h-16 w-16 glass rounded-2xl flex-center border-primary/10 shadow-xl group-hover:scale-110 transition-transform">
-                          {item.icon}
-                        </div>
-                        <div>
-                          <h4 className="text-xl font-black mb-3 group-hover:text-glow transition-all">{item.title}</h4>
-                          <p className="text-muted-foreground text-base leading-relaxed font-medium">{item.text}</p>
-                        </div>
-                      </div>
-                    ))}
-                 </div>
-              </div>
-
-              {/* Research Metrics Visualization */}
-              <div className="glass p-16 rounded-[4rem] border-primary/10 relative group futuristic-glow overflow-hidden">
-                 <div className="absolute inset-0 bg-primary/5 blur-[80px] -z-10 group-hover:bg-primary/10 transition-all duration-700"></div>
-                 <div className="flex flex-col gap-12">
-                    <div className="space-y-6">
-                       <div className="flex justify-between items-end">
-                          <span className="text-sm font-black tracking-[0.5em] text-primary uppercase">Precision Metric</span>
-                          <span className="text-6xl font-black text-gradient">92.4%</span>
-                       </div>
-                       <div className="h-2.5 w-full bg-primary/10 rounded-full overflow-hidden">
-                          <div className="h-full w-[92.4%] bg-primary shadow-[0_0_20px_var(--color-primary)]"></div>
-                       </div>
-                    </div>
-                    <div className="space-y-6">
-                       <div className="flex justify-between items-end">
-                          <span className="text-sm font-black tracking-[0.5em] text-accent uppercase">F1 Recognition</span>
-                          <span className="text-6xl font-black text-gradient">0.88</span>
-                       </div>
-                       <div className="h-2.5 w-full bg-accent/10 rounded-full overflow-hidden">
-                          <div className="h-full w-[88%] bg-accent shadow-[0_0_20px_var(--color-accent)]"></div>
-                       </div>
-                    </div>
-                    <div className="pt-10 border-t border-border mt-6">
-                       <p className="text-xs text-muted-foreground font-black leading-relaxed text-center uppercase tracking-[0.4em] opacity-60">
-                          SLIIT RESEARCH | CLINICAL VALIDATION 2026
-                       </p>
-                    </div>
-                 </div>
-              </div>
-           </div>
-        </section>
-
-        {/* Dark Mode CTA Section */}
-        <section className="w-full py-48 flex flex-center flex-col relative overflow-hidden">
-           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,oklch(0.7_0.2_210/0.15)_0%,transparent_70%)] -z-10 animate-pulse"></div>
-           <div className="p-4 rounded-3xl bg-primary/10 mb-12 futuristic-glow">
-              <Stethoscope className="w-16 h-16 text-primary organic-pulse" />
-           </div>
-           <h2 className="text-5xl md:text-8xl font-black text-center mb-12 max-w-5xl tracking-tighter leading-[0.9]">
-              Democratizing <span className="text-gradient">Cardiac Expertise</span> <br className="hidden md:block" /> Across the Nation.
-           </h2>
-           <div className="flex gap-6 flex-wrap justify-center">
-              <Button size="lg" className="rounded-full h-20 px-16 text-2xl font-black bg-primary text-primary-foreground shadow-2xl futuristic-glow hover:scale-[1.05] transition-all">
-                ACCESS CLINICAL BETA
-              </Button>
-              <Button size="lg" variant="ghost" className="rounded-full h-20 px-16 text-2xl font-black border-2 border-primary/20 hover:bg-primary/5 backdrop-blur-xl transition-all">
-                JOIN RESEARCH
-              </Button>
-           </div>
-        </section>
-      </main>
-
-      <footer className="w-full py-24 border-t border-border glass flex-center bg-background/80">
-        <div className="container mx-auto px-6 text-center">
-          <div className="flex flex-center flex-wrap gap-8 mb-12 opacity-50">
-             <span className="text-[11px] font-black tracking-[0.5em] uppercase">SYSTEM V4.0.2</span>
-             <span className="text-[11px] font-black tracking-[0.5em] uppercase">HEARTSENSE.AI</span>
-             <span className="text-[11px] font-black tracking-[0.5em] uppercase">SLIIT MALABE</span>
+          <div className="footer-right">
+            <a href="#abstract">Abstract</a>
+            <a href="#problem">Problem</a>
+            <a href="#modules">Modules</a>
           </div>
-          <div className="max-w-4xl mx-auto mb-10 text-muted-foreground text-sm font-medium tracking-wide">
-            Designed for the medical frontline. Ensuring every heartbeat is heard, analyzed, and protected with research-grade artificial intelligence.
-          </div>
-          <p className="text-xs text-muted-foreground font-black uppercase tracking-widest opacity-40">© 2026 HEARTSENSE RESEARCH INITIATIVE. ESTABLISHED AT SLIIT MALABE.</p>
+        </div>
+        <div className="footer-bottom">
+          <span>
+            © 2026 HeartSense Research Initiative — Established at SLIIT Malabe
+          </span>
+          <span className="footer-code">
+            SYSTEM V4.0.2 · CLINICAL VALIDATION 2026
+          </span>
         </div>
       </footer>
-    </div>
+
+      <style jsx global>{`
+        :root {
+          --bg: oklch(0.97 0.006 85);
+          --bg-2: oklch(0.96 0.008 85);
+          --bg-3: oklch(0.94 0.01 83);
+          --fg: oklch(0.2 0.015 60);
+          --fg-2: oklch(0.38 0.015 65);
+          --fg-3: oklch(0.54 0.013 70);
+          --card: oklch(0.99 0.004 85 / 0.92);
+          --primary: oklch(0.42 0.05 220);
+          --primary-l: oklch(0.58 0.045 220);
+          --primary-ll: oklch(0.88 0.03 220);
+          --accent: oklch(0.52 0.055 195);
+          --accent-l: oklch(0.86 0.025 195);
+          --success: oklch(0.48 0.11 155);
+          --success-l: oklch(0.87 0.06 155);
+          --warn: oklch(0.58 0.12 75);
+          --warn-l: oklch(0.92 0.065 75);
+          --danger: oklch(0.52 0.18 25);
+          --danger-l: oklch(0.93 0.06 25);
+          --border: oklch(0.86 0.008 85 / 0.7);
+          --mono:
+            "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+            Consolas, "Liberation Mono", "Courier New", monospace;
+          --sans: var(--font-ibm-plex-sans), sans-serif;
+          --serif:
+            var(--font-ibm-plex-sans-condensed), var(--font-ibm-plex-sans),
+            sans-serif;
+          --r-lg: 16px;
+          --r-xl: 24px;
+          --r-pill: 999px;
+        }
+
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+        }
+
+        html {
+          scroll-behavior: smooth;
+        }
+
+        body {
+          font-family: var(--sans);
+          background: var(--bg);
+          color: var(--fg);
+          overflow-x: hidden;
+          -webkit-font-smoothing: antialiased;
+        }
+
+        body::before {
+          content: "";
+          position: fixed;
+          inset: 0;
+          z-index: 0;
+          pointer-events: none;
+          background-image:
+            linear-gradient(oklch(0.42 0.05 220 / 0.03) 1px, transparent 1px),
+            linear-gradient(
+              90deg,
+              oklch(0.42 0.05 220 / 0.03) 1px,
+              transparent 1px
+            );
+          background-size: 48px 48px;
+        }
+
+        nav {
+          position: sticky;
+          top: 0;
+          z-index: 100;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0 2rem;
+          height: 68px;
+          background: oklch(0.97 0.006 85 / 0.88);
+          backdrop-filter: blur(16px);
+          border-bottom: 1px solid var(--border);
+        }
+
+        .nav-logo {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          text-decoration: none;
+          color: inherit;
+        }
+
+        .nav-logo-icon {
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          background: var(--primary);
+          color: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .nav-wordmark {
+          font-family: var(--serif);
+          font-size: 18px;
+          color: var(--fg);
+          letter-spacing: -0.02em;
+        }
+
+        .nav-wordmark span {
+          color: var(--primary);
+        }
+
+        .nav-links {
+          display: flex;
+          gap: 1.2rem;
+          align-items: center;
+        }
+
+        .nav-links a {
+          font-size: 13px;
+          font-weight: 400;
+          color: var(--fg-2);
+          text-decoration: none;
+          letter-spacing: 0.04em;
+          transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+          color: var(--primary);
+        }
+
+        .nav-cta {
+          font-size: 13px;
+          font-weight: 500;
+          padding: 8px 20px;
+          border-radius: var(--r-pill);
+          background: var(--primary);
+          color: white;
+          border: none;
+          cursor: pointer;
+          letter-spacing: 0.03em;
+          transition:
+            opacity 0.2s,
+            transform 0.15s;
+          text-decoration: none;
+        }
+
+        .nav-cta:hover {
+          opacity: 0.88;
+          transform: translateY(-1px);
+        }
+
+        .hero {
+          position: relative;
+          z-index: 1;
+          min-height: 92vh;
+          padding: 5rem 2rem 5rem;
+          overflow: hidden;
+        }
+
+        .hero-layout {
+          max-width: 1160px;
+          margin: 0 auto;
+          display: grid;
+          grid-template-columns: 1.08fr 0.92fr;
+          gap: 2.5rem;
+          align-items: center;
+        }
+
+        .hero-content {
+          max-width: 660px;
+        }
+
+        .hero-orb {
+          position: absolute;
+          border-radius: 50%;
+          pointer-events: none;
+          filter: blur(80px);
+          animation: float 8s ease-in-out infinite;
+        }
+
+        .hero-orb-1 {
+          width: 520px;
+          height: 520px;
+          top: -120px;
+          left: -100px;
+          background: oklch(0.58 0.045 220 / 0.14);
+        }
+
+        .hero-orb-2 {
+          width: 400px;
+          height: 400px;
+          bottom: -80px;
+          right: -80px;
+          background: oklch(0.52 0.055 195 / 0.12);
+          animation-delay: -4s;
+        }
+
+        .hero-orb-3 {
+          width: 280px;
+          height: 280px;
+          top: 40%;
+          left: 55%;
+          background: oklch(0.48 0.11 155 / 0.08);
+          animation-delay: -2s;
+        }
+
+        @keyframes float {
+          0%,
+          100% {
+            transform: translateY(0) scale(1);
+          }
+          50% {
+            transform: translateY(-24px) scale(1.04);
+          }
+        }
+
+        .hero-kicker {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 16px;
+          border-radius: var(--r-pill);
+          background: var(--primary-ll);
+          color: var(--primary);
+          font-size: 11px;
+          font-family: var(--mono);
+          font-weight: 500;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          margin-bottom: 2rem;
+          border: 1px solid oklch(0.42 0.05 220 / 0.25);
+          animation: fadeUp 0.7s ease both;
+        }
+
+        .hero-kicker::before {
+          content: "";
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: var(--success);
+          animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+          0%,
+          100% {
+            opacity: 1;
+            transform: scale(1);
+          }
+          50% {
+            opacity: 0.5;
+            transform: scale(1.4);
+          }
+        }
+
+        .hero-h1 {
+          font-family: var(--serif);
+          font-size: clamp(2.7rem, 5.6vw, 5rem);
+          font-weight: 500;
+          line-height: 1.08;
+          letter-spacing: -0.02em;
+          color: var(--fg);
+          max-width: 680px;
+          margin-bottom: 1.5rem;
+          animation: fadeUp 0.7s 0.1s ease both;
+          text-wrap: balance;
+        }
+
+        .hero-h1 em {
+          font-style: italic;
+          color: var(--primary);
+        }
+
+        .hero-sub {
+          font-size: 17px;
+          line-height: 1.7;
+          color: var(--fg-2);
+          max-width: 620px;
+          font-weight: 300;
+          margin-bottom: 1.25rem;
+          animation: fadeUp 0.7s 0.2s ease both;
+        }
+
+        .trust-row {
+          display: flex;
+          gap: 0.6rem;
+          flex-wrap: wrap;
+          margin-bottom: 1.8rem;
+        }
+
+        .trust-chip {
+          padding: 5px 10px;
+          border-radius: 999px;
+          font-size: 10px;
+          font-family: var(--mono);
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          background: oklch(0.96 0.01 85 / 0.78);
+          border: 1px solid oklch(0.86 0.008 85 / 0.95);
+          color: var(--fg-2);
+        }
+
+        .hero-btns {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+          animation: fadeUp 0.7s 0.3s ease both;
+        }
+
+        .btn-primary,
+        .btn-outline {
+          padding: 13px 32px;
+          border-radius: var(--r-pill);
+          font-size: 14px;
+          font-weight: 500;
+          text-decoration: none;
+          display: inline-block;
+          transition:
+            transform 0.15s,
+            opacity 0.2s,
+            border-color 0.2s,
+            color 0.2s;
+        }
+
+        .btn-primary {
+          background: var(--primary);
+          color: white;
+          border: none;
+        }
+
+        .btn-primary:hover {
+          transform: translateY(-2px);
+          opacity: 0.9;
+        }
+
+        .btn-outline {
+          background: transparent;
+          color: var(--fg-2);
+          border: 1px solid var(--border);
+        }
+
+        .btn-outline:hover {
+          border-color: var(--primary);
+          color: var(--primary);
+          transform: translateY(-2px);
+        }
+
+        .hero-ecg-wrap {
+          width: 100%;
+          max-width: 700px;
+          margin-top: 2.8rem;
+          opacity: 0.55;
+          animation: fadeUp 0.8s 0.4s ease both;
+        }
+
+        .ecg-line {
+          width: 100%;
+          height: 60px;
+        }
+
+        .ecg-path {
+          fill: none;
+          stroke: var(--primary);
+          stroke-width: 1.5;
+          stroke-linecap: round;
+          stroke-dasharray: 18 10;
+          stroke-dashoffset: 0;
+          animation: ecgFlow 14s linear infinite;
+        }
+
+        @keyframes ecgFlow {
+          to {
+            stroke-dashoffset: -1680;
+          }
+        }
+
+        .hero-visual {
+          border-radius: var(--r-xl);
+          background: var(--bg-2);
+          min-height: 540px;
+          display: flex;
+          align-items: stretch;
+          box-shadow: 0 20px 60px oklch(0.42 0.05 220 / 0.08);
+        }
+
+        .hero-visual-inner {
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          gap: 1rem;
+          padding: 2rem;
+        }
+
+        .hero-visual-kicker {
+          font-size: 11px;
+          font-family: var(--mono);
+          color: var(--fg-3);
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .hero-visual-inner h3 {
+          font-family: var(--serif);
+          font-weight: 500;
+          font-size: 1.8rem;
+        }
+
+        .hero-visual-inner p {
+          font-size: 14px;
+          line-height: 1.7;
+          color: var(--fg-2);
+          font-weight: 300;
+          max-width: 34ch;
+        }
+
+        .hero-image-frame {
+          margin-top: 0.5rem;
+          border: 1px solid oklch(0.42 0.05 220 / 0.2);
+          border-radius: 18px;
+          min-height: 320px;
+          background: oklch(0.92 0.015 220 / 0.35);
+          overflow: hidden;
+          position: relative;
+        }
+
+        .hero-photo {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          object-position: center;
+        }
+
+        .hero-image-overlay {
+          position: absolute;
+          left: 14px;
+          right: 14px;
+          bottom: 14px;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .hero-image-stat {
+          background: oklch(0.98 0.005 85 / 0.82);
+          border: 1px solid oklch(0.86 0.008 85 / 0.95);
+          backdrop-filter: blur(10px);
+          border-radius: 12px;
+          padding: 10px 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .hero-image-stat span {
+          font-family: var(--mono);
+          font-size: 10px;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          color: var(--fg-3);
+        }
+
+        .hero-image-stat strong {
+          font-size: 12px;
+          color: var(--fg-2);
+          font-weight: 500;
+        }
+
+        .stats-strip {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          justify-content: center;
+          flex-wrap: wrap;
+          border-top: 1px solid var(--border);
+          border-bottom: 1px solid var(--border);
+          background: var(--card);
+        }
+
+        .stat-item {
+          padding: 2rem 2.4rem;
+          text-align: center;
+          border-right: 1px solid var(--border);
+          flex: 1;
+          min-width: 150px;
+        }
+
+        .stat-item:last-child {
+          border-right: none;
+        }
+
+        .stat-num {
+          font-family: var(--mono);
+          font-size: 2rem;
+          font-weight: 500;
+          color: var(--primary);
+          display: block;
+          line-height: 1;
+        }
+
+        .stat-label {
+          font-size: 12px;
+          color: var(--fg-3);
+          margin-top: 6px;
+          letter-spacing: 0.05em;
+        }
+
+        section {
+          position: relative;
+          z-index: 1;
+        }
+
+        .container {
+          max-width: 1160px;
+          margin: 0 auto;
+          padding: 0 2rem;
+        }
+
+        .section-kicker {
+          font-family: var(--mono);
+          font-size: 10px;
+          font-weight: 500;
+          color: var(--primary);
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          margin-bottom: 1rem;
+          display: block;
+        }
+
+        .section-h2 {
+          font-family: var(--serif);
+          font-size: clamp(2rem, 4vw, 3rem);
+          font-weight: 500;
+          line-height: 1.15;
+          letter-spacing: -0.02em;
+          color: var(--fg);
+          max-width: 560px;
+        }
+
+        .abstract-section {
+          padding: 7rem 2rem;
+        }
+
+        .abstract-card {
+          max-width: 860px;
+          margin: 0 auto;
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: var(--r-xl);
+          padding: 3rem;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .abstract-grid {
+          display: grid;
+          grid-template-columns: 1.25fr 0.75fr;
+          gap: 2rem;
+          align-items: start;
+        }
+
+        .abstract-side {
+          border: 1px solid oklch(0.86 0.008 85 / 0.9);
+          border-radius: 14px;
+          background: oklch(0.98 0.004 85 / 0.65);
+          padding: 1.15rem;
+        }
+
+        .abstract-side h3 {
+          font-family: var(--serif);
+          font-size: 1.05rem;
+          color: var(--fg);
+          margin-bottom: 0.75rem;
+        }
+
+        .abstract-side ul {
+          margin: 0;
+          padding-left: 1rem;
+          color: var(--fg-2);
+          display: grid;
+          gap: 0.45rem;
+          font-size: 13px;
+          line-height: 1.55;
+          margin-bottom: 1rem;
+        }
+
+        .abstract-card::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 200px;
+          height: 3px;
+          background: linear-gradient(
+            90deg,
+            transparent,
+            var(--primary),
+            transparent
+          );
+        }
+
+        .abstract-quote {
+          font-family: var(--serif);
+          font-size: clamp(1.2rem, 2.5vw, 1.8rem);
+          line-height: 1.5;
+          color: var(--fg);
+          font-style: italic;
+          font-weight: 400;
+          letter-spacing: -0.01em;
+          margin-bottom: 2rem;
+        }
+
+        .abstract-quote strong {
+          color: var(--primary);
+          font-style: normal;
+          font-weight: 600;
+        }
+
+        .abstract-meta {
+          display: flex;
+          gap: 0.7rem;
+          flex-wrap: wrap;
+        }
+
+        .abstract-meta-item {
+          font-size: 11px;
+          font-family: var(--mono);
+          color: var(--fg-3);
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .abstract-meta-item span {
+          color: var(--primary);
+          font-weight: 500;
+        }
+
+        .gaps-section {
+          padding: 5rem 2rem 7rem;
+          background: var(--bg-2);
+          border-top: 1px solid var(--border);
+          border-bottom: 1px solid var(--border);
+        }
+
+        .gaps-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+          gap: 0.8rem;
+          margin-top: 3rem;
+        }
+
+        .gap-card {
+          background: oklch(0.99 0.004 85 / 0.86);
+          border: 1px solid oklch(0.86 0.008 85 / 0.9);
+          border-radius: 14px;
+          padding: 2rem;
+          backdrop-filter: blur(8px);
+        }
+
+        .gap-index {
+          font-family: var(--mono);
+          font-size: 11px;
+          color: var(--fg-3);
+          margin-bottom: 1rem;
+          letter-spacing: 0.1em;
+        }
+
+        .gap-title {
+          font-family: var(--serif);
+          font-size: 1.2rem;
+          margin-bottom: 0.75rem;
+          line-height: 1.3;
+        }
+
+        .gap-text {
+          font-size: 13.5px;
+          line-height: 1.7;
+          color: var(--fg-2);
+          font-weight: 300;
+        }
+
+        .modules-section {
+          padding: 7rem 2rem;
+        }
+
+        .modules-header {
+          text-align: center;
+          max-width: 560px;
+          margin: 0 auto 3.5rem;
+        }
+
+        .modules-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          gap: 1.15rem;
+        }
+
+        .module-card {
+          background: oklch(0.99 0.004 85 / 0.88);
+          border: 1px solid oklch(0.86 0.008 85 / 0.95);
+          border-radius: var(--r-xl);
+          padding: 2rem;
+          backdrop-filter: blur(10px);
+          transition:
+            transform 0.25s,
+            border-color 0.25s,
+            box-shadow 0.25s;
+        }
+
+        .module-card:hover {
+          transform: translateY(-4px);
+          border-color: oklch(0.42 0.05 220 / 0.35);
+          box-shadow: 0 8px 32px oklch(0.42 0.05 220 / 0.1);
+        }
+
+        .module-num {
+          font-family: var(--mono);
+          font-size: 10px;
+          color: var(--fg-3);
+          margin-bottom: 1rem;
+          letter-spacing: 0.12em;
+        }
+
+        .module-title {
+          font-family: var(--serif);
+          font-size: 1.3rem;
+          margin-bottom: 0.75rem;
+        }
+
+        .module-desc {
+          font-size: 13.5px;
+          line-height: 1.7;
+          color: var(--fg-2);
+          font-weight: 300;
+          margin-bottom: 1rem;
+        }
+
+        .module-metric {
+          display: flex;
+          align-items: baseline;
+          gap: 6px;
+        }
+
+        .metric-val {
+          font-family: var(--mono);
+          font-size: 1.35rem;
+          font-weight: 500;
+          color: var(--primary);
+        }
+
+        .metric-label {
+          font-size: 11px;
+          color: var(--fg-3);
+          letter-spacing: 0.05em;
+        }
+
+        .cta-section {
+          padding: 7rem 2rem;
+          text-align: center;
+        }
+
+        .cta-inner {
+          max-width: 760px;
+          margin: 0 auto;
+        }
+
+        .cta-h2 {
+          font-family: var(--serif);
+          font-size: clamp(2rem, 5vw, 4rem);
+          font-weight: 500;
+          line-height: 1.1;
+          letter-spacing: -0.02em;
+          margin-bottom: 1.3rem;
+        }
+
+        .cta-h2 em {
+          font-style: italic;
+          color: var(--primary);
+        }
+
+        .cta-sub {
+          font-size: 16px;
+          line-height: 1.7;
+          color: var(--fg-2);
+          font-weight: 300;
+          margin-bottom: 2rem;
+        }
+
+        .cta-btns {
+          display: flex;
+          gap: 12px;
+          justify-content: center;
+          flex-wrap: wrap;
+        }
+
+        .cta-cards {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 1rem;
+          margin-top: 1.2rem;
+        }
+
+        .cta-card {
+          text-align: left;
+          background: oklch(0.99 0.004 85 / 0.86);
+          border: 1px solid oklch(0.86 0.008 85 / 0.9);
+          border-radius: 16px;
+          backdrop-filter: blur(10px);
+          padding: 1.25rem;
+          display: grid;
+          gap: 0.8rem;
+        }
+
+        .cta-card h3 {
+          font-family: var(--serif);
+          font-size: 1.15rem;
+          font-weight: 500;
+          color: var(--fg);
+        }
+
+        .cta-card p {
+          font-size: 14px;
+          line-height: 1.65;
+          color: var(--fg-2);
+        }
+
+        footer {
+          border-top: 1px solid var(--border);
+          padding: 3rem 2rem;
+          background: var(--bg-2);
+        }
+
+        .footer-inner {
+          max-width: 1160px;
+          margin: 0 auto;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 1.5rem;
+        }
+
+        .footer-left {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .footer-wordmark {
+          font-family: var(--serif);
+          font-size: 20px;
+          color: var(--fg);
+        }
+
+        .footer-wordmark span {
+          color: var(--primary);
+        }
+
+        .footer-sub {
+          font-size: 12px;
+          color: var(--fg-3);
+        }
+
+        .footer-right {
+          display: flex;
+          gap: 1.2rem;
+          flex-wrap: wrap;
+        }
+
+        .footer-right a {
+          font-size: 12px;
+          color: var(--fg-3);
+          text-decoration: none;
+          transition: color 0.2s;
+        }
+
+        .footer-right a:hover {
+          color: var(--primary);
+        }
+
+        .footer-bottom {
+          max-width: 1160px;
+          margin: 1.75rem auto 0;
+          padding-top: 1.1rem;
+          border-top: 1px solid oklch(0.86 0.008 85 / 0.5);
+          display: flex;
+          justify-content: space-between;
+          font-size: 11px;
+          color: oklch(0.54 0.013 70 / 0.6);
+          flex-wrap: wrap;
+          gap: 1rem;
+        }
+
+        .footer-code {
+          font-family: var(--mono);
+          font-size: 10px;
+        }
+
+        .reveal {
+          opacity: 0;
+          transform: translateY(28px);
+          transition:
+            opacity 0.65s ease,
+            transform 0.65s ease;
+        }
+
+        .reveal.visible {
+          opacity: 1;
+          transform: translateY(0);
+        }
+
+        .reveal-d1 {
+          transition-delay: 0.05s;
+        }
+
+        .reveal-d2 {
+          transition-delay: 0.12s;
+        }
+
+        .reveal-d3 {
+          transition-delay: 0.19s;
+        }
+
+        .reveal-d4 {
+          transition-delay: 0.26s;
+        }
+
+        @keyframes fadeUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @media (max-width: 980px) {
+          nav {
+            padding: 0 1rem;
+          }
+
+          .nav-links {
+            display: none;
+          }
+
+          .hero-layout {
+            grid-template-columns: 1fr;
+          }
+
+          .hero-visual {
+            min-height: 380px;
+          }
+
+          .hero-image-overlay {
+            grid-template-columns: 1fr;
+          }
+
+          .abstract-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .cta-cards {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+    </>
   );
 }

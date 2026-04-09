@@ -1,16 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { HeartPulse, UserCircle, BriefcaseMedical, ShieldCheck, ArrowRight, Dna, Lock } from "lucide-react";
+import {
+  HeartPulse,
+  ShieldCheck,
+  ArrowRight,
+  Dna,
+  Lock,
+  UserRound,
+  Mail,
+  BadgeCheck,
+} from "lucide-react";
 import { toast } from "sonner";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { setTheme } = useTheme();
   const role = "doctor"; // Hardcoded for public route
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -26,9 +38,13 @@ export default function RegisterPage() {
     setFormData((prev) => ({ ...prev, [e.target.id]: e.target.value }));
   };
 
+  useEffect(() => {
+    setTheme("light");
+  }, [setTheme]);
+
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    
+
     if (formData.password !== formData.confirmPassword) {
       toast.error("Password Mismatch", {
         description: "Please ensure both passwords are identical.",
@@ -57,7 +73,7 @@ export default function RegisterPage() {
       toast.success("Identity Verified", {
         description: `Welcome to the HeartSense ecosystem, ${formData.firstName}.`,
       });
-      
+
       // All public registered doctors go to waiting initially
       router.push("/dashboard/doctor/waiting");
     } catch (error: any) {
@@ -70,119 +86,244 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen grid place-items-center bg-background p-6 relative selection:bg-primary/20 overflow-hidden">
-      {/* Background Ambience */}
+    <div className="min-h-screen grid place-items-center bg-background selection:bg-primary/20 relative overflow-hidden p-4 md:p-6">
       <div className="absolute inset-0 -z-10 pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vw] h-[100vh] bg-[radial-gradient(circle_at_center,oklch(0.7_0.15_190/0.05)_0%,transparent_70%)] opacity-50"></div>
+        <div className="absolute -top-44 right-0 h-136 w-xl rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute bottom-0 left-0 h-80 w-100 rounded-full bg-accent/15 blur-3xl" />
       </div>
 
-      <div className="w-full max-w-[1100px] grid lg:grid-cols-2 gap-0 overflow-hidden glass rounded-[2.5rem] shadow-2xl relative">
-        {/* Left Side: Immersive Brand Info */}
-        <div className="hidden lg:flex flex-col p-12 relative overflow-hidden bg-primary/5">
-          <div className="absolute top-0 right-0 p-20 opacity-10 blur-3xl bg-primary rounded-full"></div>
-          
-          <Link href="/" className="relative z-10 flex items-center gap-2 mb-20 group">
-             <HeartPulse className="h-8 w-8 text-primary group-hover:scale-110 transition-transform" />
-             <span className="text-xl font-bold tracking-tight text-gradient">HEARTSENSE AI</span>
-          </Link>
+      <motion.div
+        initial={{ opacity: 0, y: 20, scale: 0.985 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+        className="mx-auto grid w-full max-w-6xl overflow-hidden rounded-4xl border border-border/70 bg-card/80 backdrop-blur-xl shadow-2xl lg:grid-cols-[1.05fr_0.95fr]"
+      >
+        <motion.section
+          initial={{ opacity: 0, x: -16 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.32, delay: 0.04, ease: [0.22, 1, 0.36, 1] }}
+          className="hidden lg:flex flex-col justify-between border-r border-border/60 bg-linear-to-br from-primary/8 via-background to-accent/8 p-10"
+        >
+          <div>
+            <Link
+              href="/"
+              className="inline-flex items-center gap-3 text-foreground"
+            >
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-primary text-primary-foreground shadow-lg">
+                <HeartPulse className="h-5 w-5" />
+              </span>
+              <span className="text-xl font-semibold tracking-tight">
+                HeartSense AI
+              </span>
+            </Link>
 
-          <div className="relative z-10">
-            <h2 className="text-4xl font-bold leading-tight mb-6">Securing the future <br /> of <span className="text-primary">Human Hearts</span></h2>
-            <p className="text-muted-foreground text-lg mb-10 leading-relaxed">
-              Integrate with an ethical AI collective designed to support clinical excellence and patient safety.
-            </p>
-            
-            <div className="space-y-6">
-               {[
-                 { icon: <ShieldCheck />, text: "Regulatory Compliance" },
-                 { icon: <Dna />, text: "Bioluminescent Optimization" },
-                 { icon: <UserCircle />, text: "Professional Identity Verification" }
-               ].map((item, i) => (
-                 <div key={i} className="flex items-center gap-4 text-sm font-medium">
-                   <div className="h-8 w-8 rounded-lg bg-primary/10 flex-center text-primary">{item.icon}</div>
-                   {item.text}
-                 </div>
-               ))}
+            <div className="mt-16 space-y-6">
+              <p className="text-xs uppercase tracking-[0.16em] text-primary font-semibold">
+                Clinician Registration
+              </p>
+              <h2 className="text-4xl font-semibold leading-tight text-foreground">
+                Create your professional identity for pilot access
+              </h2>
+              <p className="text-base leading-relaxed text-muted-foreground max-w-lg">
+                Join the HeartSense research ecosystem with verified clinical
+                credentials and gain staged access to doctor-facing diagnostic
+                tools.
+              </p>
             </div>
           </div>
 
-          <div className="mt-auto relative z-10 pt-10 border-t border-white/5">
-             <p className="text-xs text-muted-foreground font-bold tracking-widest uppercase mb-2">Sri Lankan Research Grade</p>
-             <p className="text-xs text-muted-foreground">Approved for deployment in clinical environments 2026.</p>
+          <div className="space-y-4">
+            {[
+              { icon: ShieldCheck, text: "Credential-aware onboarding" },
+              { icon: BadgeCheck, text: "Verification-first access control" },
+              { icon: Dna, text: "Research-grade clinical platform" },
+            ].map((item, index) => (
+              <div
+                key={index}
+                className="flex items-center gap-3 rounded-xl border border-border/70 bg-background/70 px-4 py-3"
+              >
+                <item.icon className="h-4 w-4 text-primary" />
+                <span className="text-sm text-foreground/90">{item.text}</span>
+              </div>
+            ))}
           </div>
-        </div>
+        </motion.section>
 
-        {/* Right Side: Centered Form */}
-        <div className="p-8 md:p-12 flex flex-col justify-center relative bg-card/10">
-          <div className="w-full max-w-md mx-auto">
-            <header className="mb-8 text-center lg:text-left">
-               <div className="lg:hidden flex justify-center mb-6">
-                 <HeartPulse className="h-10 w-10 text-primary" />
-               </div>
-               <h1 className="text-3xl font-bold mb-2 tracking-tight">Clinician Registration</h1>
-               <p className="text-muted-foreground text-sm">Create your professional profile to access diagnostic tools.</p>
+        <motion.section
+          initial={{ opacity: 0, x: 16 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.32, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
+          className="p-6 sm:p-8 lg:p-10"
+        >
+          <div className="mx-auto w-full max-w-md">
+            <div className="mb-8 lg:hidden">
+              <Link
+                href="/"
+                className="inline-flex items-center gap-2 text-foreground"
+              >
+                <HeartPulse className="h-7 w-7 text-primary" />
+                <span className="text-lg font-semibold">HeartSense AI</span>
+              </Link>
+            </div>
+
+            <header className="mb-8 space-y-2">
+              <p className="text-xs uppercase tracking-[0.16em] text-primary font-semibold">
+                Professional Sign Up
+              </p>
+              <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+                Clinician registration
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Set up your account to request pilot workspace access.
+              </p>
             </header>
 
             <form onSubmit={onSubmit} className="space-y-5">
-
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">First Name</Label>
-                    <Input id="firstName" placeholder="John" required value={formData.firstName} onChange={handleChange} className="bg-white/5 border-white/10 rounded-xl h-11 focus:border-primary/50 transition-all" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Last Name</Label>
-                    <Input id="lastName" placeholder="Doe" required value={formData.lastName} onChange={handleChange} className="bg-white/5 border-white/10 rounded-xl h-11 focus:border-primary/50 transition-all" />
-                  </div>
-                </div>
-
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Work Email</Label>
-                  <Input id="email" type="email" placeholder="name@hospital.lk" required value={formData.email} onChange={handleChange} className="bg-white/5 border-white/10 rounded-xl h-11 focus:border-primary/50 transition-all" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="identifier" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    SLMC License Number
+                  <Label
+                    htmlFor="firstName"
+                    className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+                  >
+                    First Name
                   </Label>
-                  <Input id="identifier" placeholder="SLMC-XXXXX" required value={formData.identifier} onChange={handleChange} className="bg-white/5 border-white/10 rounded-xl h-11 focus:border-primary/50 transition-all" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="password" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Password</Label>
-                    <div className="relative">
-                      <Input id="password" type="password" required value={formData.password} onChange={handleChange} className="bg-white/5 border-white/10 rounded-xl h-11 pl-10 focus:border-primary/50 transition-all" />
-                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    </div>
+                  <div className="relative">
+                    <Input
+                      id="firstName"
+                      placeholder="John"
+                      required
+                      value={formData.firstName}
+                      onChange={handleChange}
+                      className="h-11 rounded-xl border-border/80 bg-background/80 pl-10"
+                    />
+                    <UserRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="confirmPassword" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Confirm</Label>
-                    <div className="relative">
-                      <Input id="confirmPassword" type="password" required value={formData.confirmPassword} onChange={handleChange} className="bg-white/5 border-white/10 rounded-xl h-11 pl-10 focus:border-primary/50 transition-all" />
-                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    </div>
+                </div>
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="lastName"
+                    className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+                  >
+                    Last Name
+                  </Label>
+                  <Input
+                    id="lastName"
+                    placeholder="Doe"
+                    required
+                    value={formData.lastName}
+                    onChange={handleChange}
+                    className="h-11 rounded-xl border-border/80 bg-background/80"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label
+                  htmlFor="email"
+                  className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+                >
+                  Work Email
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="name@hospital.lk"
+                    required
+                    value={formData.email}
+                    onChange={handleChange}
+                    className="h-11 rounded-xl border-border/80 bg-background/80 pl-10"
+                  />
+                  <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label
+                  htmlFor="identifier"
+                  className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+                >
+                  SLMC License Number
+                </Label>
+                <Input
+                  id="identifier"
+                  placeholder="SLMC-XXXXX"
+                  required
+                  value={formData.identifier}
+                  onChange={handleChange}
+                  className="h-11 rounded-xl border-border/80 bg-background/80"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="password"
+                    className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+                  >
+                    Password
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type="password"
+                      required
+                      value={formData.password}
+                      onChange={handleChange}
+                      className="h-11 rounded-xl border-border/80 bg-background/80 pl-10"
+                    />
+                    <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="confirmPassword"
+                    className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+                  >
+                    Confirm
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="confirmPassword"
+                      type="password"
+                      required
+                      value={formData.confirmPassword}
+                      onChange={handleChange}
+                      className="h-11 rounded-xl border-border/80 bg-background/80 pl-10"
+                    />
+                    <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   </div>
                 </div>
               </div>
 
-              <Button className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-bold shadow-lg glow-primary border-none hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 group mt-2" type="submit" disabled={isLoading}>
-                {isLoading ? "Synchronizing Identity..." : (
-                  <>
-                    Initialize Professional Profile <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                  </>
+              <Button
+                className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-semibold shadow-lg transition-all hover:opacity-95"
+                type="submit"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  "Creating Profile..."
+                ) : (
+                  <span className="inline-flex items-center gap-2">
+                    Create Clinician Profile
+                    <ArrowRight className="h-4 w-4" />
+                  </span>
                 )}
               </Button>
 
-              <p className="text-center text-sm text-muted-foreground">
-                Already part of the ecosystem?{" "}
-                <Link href="/login" className="text-primary hover:text-accent transition-colors font-bold">Sign in</Link>
+              <p className="pt-1 text-center text-sm text-muted-foreground">
+                Already have an account?{" "}
+                <Link
+                  href="/login"
+                  className="font-semibold text-primary hover:text-accent"
+                >
+                  Sign in
+                </Link>
               </p>
             </form>
           </div>
-        </div>
-      </div>
+        </motion.section>
+      </motion.div>
     </div>
   );
 }
