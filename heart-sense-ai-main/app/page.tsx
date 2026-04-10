@@ -224,10 +224,12 @@ export default function Home() {
           justify-content: center;
         }
         .n-word {
-          font-family: var(--serif);
+          font-family: var(--sans);
           font-size: 20px;
           font-weight: 500;
+          font-style: extra-bold;
           letter-spacing: -0.01em;
+          text-transform: uppercase;
         }
         .n-word span {
           color: var(--accent);

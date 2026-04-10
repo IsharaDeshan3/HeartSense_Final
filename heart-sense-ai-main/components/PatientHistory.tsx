@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Clock,
   Activity,
@@ -29,6 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import type {
   PatientDiagnosisRecord,
   PatientHistorySummary,
+  WorkflowSession,
 } from "@/services/WorkflowService";
 
 // Types
@@ -61,6 +62,10 @@ interface PatientHistoryProps {
   diagnosisHistory: PatientDiagnosisRecord[];
   historySummary?: PatientHistorySummary | null;
   labHistory: LabHistoryEntry[];
+  inProgressSessions?: WorkflowSession[];
+  onContinueDiagnosis?: (sessionId: string) => void;
+  onDeleteActiveSessions?: () => Promise<void> | void;
+  deletingActiveSessions?: boolean;
   isLoading?: boolean;
   onDeleteHistoryEntry?: (payloadId: string) => Promise<void> | void;
   deletingPayloadId?: string | null;
@@ -96,6 +101,88 @@ function formatDateShort(dateStr: string | null | undefined): string {
   } catch {
     return dateStr;
   }
+}
+
+function mapWorkflowStateToResumeLabel(state: string) {
+  if (state === "EXTRACTION_DONE") return "Symptoms saved - continue at ECG";
+  if (state === "ECG_DONE") return "ECG saved - continue at Lab";
+  if (state === "LAB_DONE" || state === "ANALYSIS_RUNNING") {
+    return "Lab saved - continue at Analysis";
+  }
+  return "Continue diagnosis";
+}
+
+function InProgressDiagnosesPanel({
+  sessions,
+  deletingActiveSessions,
+  onDeleteActiveSessions,
+  onContinueDiagnosis,
+}: {
+  sessions: WorkflowSession[];
+  deletingActiveSessions: boolean;
+  onDeleteActiveSessions?: () => Promise<void> | void;
+  onContinueDiagnosis?: (sessionId: string) => void;
+}) {
+  return (
+    <Card className="glass border-primary/20 rounded-3xl">
+      <CardContent className="p-4 sm:p-5 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-black uppercase tracking-wide text-primary/85">
+              In-Progress Diagnoses
+            </p>
+            <p className="text-xs text-foreground/80 mt-1">
+              {sessions.length} active session{sessions.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          {sessions.length > 0 && onDeleteActiveSessions && (
+            <button
+              type="button"
+              onClick={() => onDeleteActiveSessions()}
+              disabled={deletingActiveSessions}
+              className="h-8 rounded-lg border border-rose-500/25 text-rose-400 hover:bg-rose-500/10 disabled:opacity-60 disabled:cursor-not-allowed px-2.5 text-xs font-semibold"
+            >
+              {deletingActiveSessions ? "Deleting..." : "Delete Active"}
+            </button>
+          )}
+        </div>
+
+        {sessions.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border/30 bg-muted/5 px-3 py-4 text-sm text-muted-foreground">
+            No active diagnosis sessions.
+          </div>
+        ) : (
+          <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+            {sessions.map((session) => (
+              <div
+                key={session.session_id}
+                className="rounded-xl border border-border/20 bg-background/40 p-3"
+              >
+                <p className="text-sm font-semibold text-foreground/95 leading-snug">
+                  {mapWorkflowStateToResumeLabel(session.current_state)}
+                </p>
+                <p className="text-xs text-foreground/75 mt-1">
+                  State: {session.current_state}
+                </p>
+                <p className="text-xs text-foreground/75">
+                  Updated: {new Date(session.updated_at).toLocaleString()}
+                </p>
+                <div className="mt-2.5">
+                  <button
+                    type="button"
+                    onClick={() => onContinueDiagnosis?.(session.session_id)}
+                    className="h-8 rounded-lg bg-primary text-primary-foreground px-3 text-xs font-semibold"
+                  >
+                    Continue
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 // Sinhala unicode range: 0D80-0DFF
@@ -252,9 +339,7 @@ interface OraModeContent {
 }
 
 function normalizeOraMode(value: unknown): OraMode {
-  return String(value ?? "").toLowerCase() === "newbie"
-    ? "newbie"
-    : "seasoned";
+  return String(value ?? "").toLowerCase() === "newbie" ? "newbie" : "seasoned";
 }
 
 function cleanDiagnosisOutput(raw: string): string {
@@ -265,7 +350,7 @@ function cleanDiagnosisOutput(raw: string): string {
   if (!text) return "";
 
   const leakMatch = text.match(
-    /^\s*(RULES:?|INTERNAL AUTHORING CONSTRAINTS(?:\s*\(.*\))?:?|═══ INPUT DATA ═══|PATIENT PRESENTATION:|KRA INPUT OBJECT:|KRA OUTPUT OBJECT:|KRA ANALYSIS:|═══ TASK ═══)\s*$/im,
+    /^\s*(RULES:?|INTERNAL AUTHORING CONSTRAINTS(?:\s*\(.*\))?:?|ΓòÉΓòÉΓòÉ INPUT DATA ΓòÉΓòÉΓòÉ|PATIENT PRESENTATION:|KRA INPUT OBJECT:|KRA OUTPUT OBJECT:|KRA ANALYSIS:|ΓòÉΓòÉΓòÉ TASK ΓòÉΓòÉΓòÉ)\s*$/im,
   );
   if (!leakMatch || typeof leakMatch.index !== "number") {
     return text;
@@ -294,9 +379,7 @@ function resolveOraContent(record: PatientDiagnosisRecord): {
 
   const persistedDisclaimers = record.ora_disclaimers || {};
   const newbieDisclaimer = String(persistedDisclaimers.newbie || "").trim();
-  const seasonedDisclaimer = String(
-    persistedDisclaimers.seasoned || "",
-  ).trim();
+  const seasonedDisclaimer = String(persistedDisclaimers.seasoned || "").trim();
   if (newbieDisclaimer) disclaimers.newbie = newbieDisclaimer;
   if (seasonedDisclaimer) disclaimers.seasoned = seasonedDisclaimer;
 
@@ -345,7 +428,7 @@ function parseDiagnosisOutput(text: string): DiagSection[] {
   for (const line of lines) {
     const headingMatch =
       line.match(/^#{1,3}\s+(.+)/) ||
-      line.match(/^ðŸ©º\s*(.+)/) ||
+      line.match(/^├░┼╕┬⌐┬║\s*(.+)/) ||
       line.match(/^\*\*([^*]{3,})\*\*\s*$/) ||
       line.match(/^([A-Z][A-Z\s]{3,}):$/);
     if (headingMatch) {
@@ -436,6 +519,14 @@ function DiagnosisOverviewChart({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     new Set(),
   );
+  const [viewBox, setViewBox] = useState({ x: 0, y: 0, w: 1100, h: 660 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef<{
+    clientX: number;
+    clientY: number;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const W = 1100,
     H = 660;
@@ -450,6 +541,43 @@ function DiagnosisOverviewChart({
   const CENTER_R = 62;
   const MAX_ITEMS = 6;
   const ARC_SPAN = 110;
+  const MIN_VIEW_W = W * 0.5;
+  const MAX_VIEW_W = W * 1.5;
+
+  const clampViewBox = (x: number, y: number, w: number) => {
+    const nextW = Math.min(MAX_VIEW_W, Math.max(MIN_VIEW_W, w));
+    const nextH = (nextW * H) / W;
+
+    const overflowX = Math.max(0, (nextW - W) / 2);
+    const overflowY = Math.max(0, (nextH - H) / 2);
+    const minX = -overflowX;
+    const maxX = W - nextW + overflowX;
+    const minY = -overflowY;
+    const maxY = H - nextH + overflowY;
+
+    return {
+      x: Math.min(maxX, Math.max(minX, x)),
+      y: Math.min(maxY, Math.max(minY, y)),
+      w: nextW,
+      h: nextH,
+    };
+  };
+
+  const zoomCentered = (factor: number) => {
+    setViewBox((prev) => {
+      const centerX = prev.x + prev.w / 2;
+      const centerY = prev.y + prev.h / 2;
+      const nextW = prev.w * factor;
+      const nextH = (nextW * H) / W;
+      const nextX = centerX - nextW / 2;
+      const nextY = centerY - nextH / 2;
+      return clampViewBox(nextX, nextY, nextW);
+    });
+  };
+
+  const resetView = () => {
+    setViewBox({ x: 0, y: 0, w: W, h: H });
+  };
 
   // Dynamic fill helper - brightens rgba fill for hover/selected states
   const dynFill = (base: string, state: "normal" | "hover" | "selected") => {
@@ -619,13 +747,97 @@ function DiagnosisOverviewChart({
 
   return (
     <div className="flex gap-3 items-start">
-      {/* ── Left: chart ── */}
-      <div className="flex-1 min-w-0">
+      {/* ΓöÇΓöÇ Left: chart ΓöÇΓöÇ */}
+      <div className="flex-1 min-w-0 relative">
+        <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => zoomCentered(0.85)}
+            className="h-7 w-7 rounded-md border border-border/30 bg-background/70 text-foreground/85 text-sm font-bold hover:bg-background"
+            aria-label="Zoom in"
+            title="Zoom in"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            onClick={() => zoomCentered(1.15)}
+            className="h-7 w-7 rounded-md border border-border/30 bg-background/70 text-foreground/85 text-sm font-bold hover:bg-background"
+            aria-label="Zoom out"
+            title="Zoom out"
+          >
+            -
+          </button>
+          <button
+            type="button"
+            onClick={resetView}
+            className="h-7 px-2 rounded-md border border-border/30 bg-background/70 text-foreground/80 text-xs font-semibold hover:bg-background"
+            aria-label="Reset view"
+            title="Reset view"
+          >
+            Reset
+          </button>
+        </div>
         <svg
-          viewBox={`0 0 ${W} ${H}`}
-          className="w-full h-auto select-none"
+          viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
+          className={`w-full h-auto select-none ${isPanning ? "cursor-grabbing" : "cursor-grab"}`}
           xmlns="http://www.w3.org/2000/svg"
+          onMouseDown={(e) => {
+            setIsPanning(true);
+            panStartRef.current = {
+              clientX: e.clientX,
+              clientY: e.clientY,
+              x: viewBox.x,
+              y: viewBox.y,
+            };
+          }}
+          onMouseMove={(e) => {
+            if (!isPanning || !panStartRef.current) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const dx =
+              ((e.clientX - panStartRef.current.clientX) / rect.width) *
+              viewBox.w;
+            const dy =
+              ((e.clientY - panStartRef.current.clientY) / rect.height) *
+              viewBox.h;
+            setViewBox(
+              clampViewBox(
+                panStartRef.current.x - dx,
+                panStartRef.current.y - dy,
+                viewBox.w,
+              ),
+            );
+          }}
+          onMouseUp={() => {
+            setIsPanning(false);
+            panStartRef.current = null;
+          }}
+          onMouseLeave={() => {
+            setIsPanning(false);
+            panStartRef.current = null;
+          }}
+          onWheel={(e) => {
+            if (!e.ctrlKey && !e.metaKey) {
+              return;
+            }
+            e.preventDefault();
+            const rect = e.currentTarget.getBoundingClientRect();
+            const relX = (e.clientX - rect.left) / rect.width;
+            const relY = (e.clientY - rect.top) / rect.height;
+            const factor = e.deltaY < 0 ? 0.92 : 1.08;
+
+            setViewBox((prev) => {
+              const nextW = prev.w * factor;
+              const nextH = (nextW * H) / W;
+              const worldX = prev.x + relX * prev.w;
+              const worldY = prev.y + relY * prev.h;
+              const nextX = worldX - relX * nextW;
+              const nextY = worldY - relY * nextH;
+              return clampViewBox(nextX, nextY, nextW);
+            });
+          }}
           onClick={(e) => {
+            if (isPanning) return;
             if (e.target === e.currentTarget) setSelectedNode(null);
           }}
         >
@@ -960,8 +1172,8 @@ function DiagnosisOverviewChart({
         </svg>
       </div>
 
-      {/* ── Right: detail panel ── */}
-      <div className="w-72 shrink-0 self-stretch">
+      {/* ΓöÇΓöÇ Right: detail panel ΓöÇΓöÇ */}
+      <div className="w-72 shrink-0 self-stretch max-h-136 overflow-y-auto pr-1">
         {selectedNode && selGroup ? (
           <div
             className="rounded-xl border p-4 space-y-3 h-full"
@@ -1042,7 +1254,7 @@ function DiagnosisOverviewChart({
                           const resolvedVisit = resolveOraContent(v);
                           const hasVisitDiagnosis = Boolean(
                             resolvedVisit.outputs.seasoned ||
-                              resolvedVisit.outputs.newbie,
+                            resolvedVisit.outputs.newbie,
                           );
 
                           return (
@@ -1102,13 +1314,19 @@ export default function PatientHistory({
   diagnosisHistory,
   historySummary,
   labHistory,
+  inProgressSessions = [],
+  onContinueDiagnosis,
+  onDeleteActiveSessions,
+  deletingActiveSessions = false,
   isLoading = false,
   onDeleteHistoryEntry,
   deletingPayloadId = null,
 }: PatientHistoryProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedLabId, setExpandedLabId] = useState<string | null>(null);
-  const [selectedOraModes, setSelectedOraModes] = useState<Record<string, OraMode>>({});
+  const [selectedOraModes, setSelectedOraModes] = useState<
+    Record<string, OraMode>
+  >({});
   const [activeTab, setActiveTab] = useState<TabKey>("timeline");
 
   const toggleExpand = (id: string) =>
@@ -1231,6 +1449,15 @@ export default function PatientHistory({
         </CardContent>
       </Card>
 
+      {inProgressSessions.length > 0 && (
+        <InProgressDiagnosesPanel
+          sessions={inProgressSessions}
+          deletingActiveSessions={deletingActiveSessions}
+          onDeleteActiveSessions={onDeleteActiveSessions}
+          onContinueDiagnosis={onContinueDiagnosis}
+        />
+      )}
+
       {/* Tabs */}
       <div className="flex gap-1.5 p-1 bg-muted/10 border border-border/20 rounded-2xl w-fit">
         {tabs.map((tab) => (
@@ -1292,7 +1519,8 @@ export default function PatientHistory({
                 const labFields = extractLabFields(record.labs_json);
                 const resolvedOra = resolveOraContent(record);
                 const selectedMode =
-                  selectedOraModes[record.payload_id] ?? resolvedOra.defaultMode;
+                  selectedOraModes[record.payload_id] ??
+                  resolvedOra.defaultMode;
                 const selectedOutput =
                   resolvedOra.outputs[selectedMode] ||
                   resolvedOra.outputs.seasoned ||
@@ -1359,61 +1587,62 @@ export default function PatientHistory({
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                                <span className="text-sm font-bold">
+                              <div className="flex flex-wrap items-center gap-2.5 mb-2">
+                                <span className="text-base font-bold">
                                   {formatDate(record.created_at)}
                                 </span>
                                 <Badge
                                   className={
                                     isCompleted
-                                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[9px]"
-                                      : "bg-amber-500/10 text-amber-400 border-amber-500/20 text-[9px]"
+                                      ? "bg-emerald-500/15 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-600/30 dark:border-emerald-500/20 text-xs"
+                                      : "bg-amber-500/15 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-600/30 dark:border-amber-500/20 text-xs"
                                   }
                                 >
                                   {record.status || "unknown"}
                                 </Badge>
                                 {record.experience_level && (
-                                  <Badge variant="outline" className="text-[9px]">
+                                  <Badge variant="outline" className="text-xs">
                                     {record.experience_level}
                                   </Badge>
                                 )}
                                 {availableModeLabel && (
-                                  <Badge variant="outline" className="text-[9px]">
+                                  <Badge variant="outline" className="text-xs">
                                     {availableModeLabel}
                                   </Badge>
                                 )}
-                                <span className="text-[10px] text-muted-foreground/50 font-mono">
+                                <span className="text-xs text-foreground/70 font-mono">
                                   Visit #{diagnosisHistory.length - idx}
                                 </span>
                                 {(record.doctor_name || record.doctor_id) && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/70 bg-white/4 border border-border/20 rounded-full px-2 py-0.5">
+                                  <span className="inline-flex items-center gap-1 text-xs text-foreground/75 bg-white/4 border border-border/20 rounded-full px-2 py-0.5">
                                     <Stethoscope className="h-2.5 w-2.5 shrink-0" />
                                     {record.doctor_name ?? record.doctor_id}
                                   </span>
                                 )}
                               </div>
-                              <p className="text-xs text-muted-foreground leading-relaxed">
+                              <p className="text-sm text-foreground/80 leading-relaxed">
                                 {extractSymptomsSummary(record.symptoms_json)}
                               </p>
                               {/* Data chips */}
-                              <div className="flex gap-1.5 mt-2.5 flex-wrap">
+                              <div className="flex gap-2 mt-3 flex-wrap">
                                 {record.symptoms_json && (
-                                  <span className="inline-flex items-center gap-1 text-[9px] bg-blue-500/8 border border-blue-500/15 text-blue-400 rounded-full px-2 py-0.5">
-                                    <FileText className="h-2.5 w-2.5" /> Symptoms
+                                  <span className="inline-flex items-center gap-1 text-xs bg-teal-500/15 dark:bg-teal-500/10 border border-teal-600/30 dark:border-teal-500/25 text-teal-700 dark:text-teal-300 rounded-full px-2.5 py-1">
+                                    <FileText className="h-2.5 w-2.5" />{" "}
+                                    Symptoms
                                   </span>
                                 )}
                                 {record.ecg_json && (
-                                  <span className="inline-flex items-center gap-1 text-[9px] bg-violet-500/8 border border-violet-500/15 text-violet-400 rounded-full px-2 py-0.5">
+                                  <span className="inline-flex items-center gap-1 text-xs bg-violet-500/14 dark:bg-violet-500/10 border border-violet-600/30 dark:border-violet-500/25 text-violet-700 dark:text-violet-300 rounded-full px-2.5 py-1">
                                     <Activity className="h-2.5 w-2.5" /> ECG
                                   </span>
                                 )}
                                 {record.labs_json && (
-                                  <span className="inline-flex items-center gap-1 text-[9px] bg-cyan-500/8 border border-cyan-500/15 text-cyan-400 rounded-full px-2 py-0.5">
+                                  <span className="inline-flex items-center gap-1 text-xs bg-cyan-500/14 dark:bg-cyan-500/10 border border-cyan-600/30 dark:border-cyan-500/25 text-cyan-700 dark:text-cyan-300 rounded-full px-2.5 py-1">
                                     <Microscope className="h-2.5 w-2.5" /> Labs
                                   </span>
                                 )}
                                 {hasDiagnosisOutput && (
-                                  <span className="inline-flex items-center gap-1 text-[9px] bg-primary/8 border border-primary/15 text-primary rounded-full px-2 py-0.5">
+                                  <span className="inline-flex items-center gap-1 text-xs bg-primary/14 dark:bg-primary/10 border border-primary/30 dark:border-primary/25 text-primary rounded-full px-2.5 py-1">
                                     <BrainCircuit className="h-2.5 w-2.5" /> AI
                                     Diagnosis
                                   </span>
@@ -1436,7 +1665,11 @@ export default function PatientHistory({
                               type="button"
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                if (!window.confirm("Delete this history entry? This will remove linked KRA/ORA records.")) {
+                                if (
+                                  !window.confirm(
+                                    "Delete this history entry? This will remove linked KRA/ORA records.",
+                                  )
+                                ) {
                                   return;
                                 }
                                 await onDeleteHistoryEntry(record.payload_id);
@@ -1458,23 +1691,23 @@ export default function PatientHistory({
                         {/* Expanded detail panel */}
                         {isExpanded && (
                           <div className="border-t border-border/10 bg-white/1">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-y md:divide-y-0 md:divide-x divide-border/10">
+                            <div className="grid grid-cols-1 divide-y divide-border/10">
                               {/* Left: Symptoms & ECG */}
                               <div className="p-5 space-y-5">
                                 {/* Symptoms */}
                                 <div>
                                   <div className="flex items-center gap-2 mb-3">
-                                    <div className="h-6 w-6 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                                      <FileText className="h-3.5 w-3.5 text-blue-400" />
+                                    <div className="h-7 w-7 rounded-lg bg-teal-500/12 dark:bg-teal-500/10 flex items-center justify-center">
+                                      <FileText className="h-4 w-4 text-teal-700 dark:text-teal-300" />
                                     </div>
-                                    <span className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+                                    <span className="text-sm font-black uppercase tracking-[0.12em] text-foreground/75">
                                       Chief Complaint / Symptoms
                                     </span>
                                   </div>
-                                  <div className="rounded-xl bg-blue-500/4 border border-blue-500/10 p-4 space-y-3">
+                                  <div className="rounded-xl bg-teal-500/8 dark:bg-teal-500/6 border border-teal-600/20 dark:border-teal-500/20 p-4 space-y-3">
                                     {structuredSymptoms.chiefComplaint && (
                                       <div>
-                                        <p className="text-[10px] font-black uppercase tracking-wider text-blue-400/70 mb-1.5">
+                                        <p className="text-xs font-black uppercase tracking-wide text-teal-700 dark:text-teal-300 mb-1.5">
                                           Chief Complaint
                                         </p>
                                         <p className="text-sm font-semibold text-foreground/90">
@@ -1484,7 +1717,7 @@ export default function PatientHistory({
                                     )}
                                     {structuredSymptoms.symptoms.length > 0 && (
                                       <div>
-                                        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-2">
+                                        <p className="text-xs font-black uppercase tracking-wide text-foreground/75 mb-2">
                                           Symptoms
                                         </p>
                                         <div className="flex flex-wrap gap-1.5">
@@ -1492,7 +1725,7 @@ export default function PatientHistory({
                                             (sym, i) => (
                                               <span
                                                 key={i}
-                                                className="inline-flex items-center text-[11px] bg-blue-500/8 border border-blue-500/15 text-blue-300 rounded-full px-2.5 py-1"
+                                                className="inline-flex items-center text-xs bg-teal-500/15 dark:bg-teal-500/10 border border-teal-600/30 dark:border-teal-500/25 text-teal-700 dark:text-teal-300 rounded-full px-2.5 py-1"
                                               >
                                                 {sym}
                                               </span>
@@ -1504,7 +1737,7 @@ export default function PatientHistory({
                                     {structuredSymptoms.riskFactors.length >
                                       0 && (
                                       <div>
-                                        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-2">
+                                        <p className="text-xs font-black uppercase tracking-wide text-foreground/75 mb-2">
                                           Risk Factors
                                         </p>
                                         <div className="flex flex-wrap gap-1.5">
@@ -1521,10 +1754,10 @@ export default function PatientHistory({
                                         </div>
                                       </div>
                                     )}
-                                    <div className="flex flex-wrap gap-x-6 gap-y-1">
+                                    <div className="flex flex-wrap gap-x-6 gap-y-2">
                                       {structuredSymptoms.duration && (
-                                        <div className="text-xs">
-                                          <span className="text-muted-foreground">
+                                        <div className="text-sm">
+                                          <span className="text-foreground/70">
                                             Duration:{" "}
                                           </span>
                                           <span className="font-semibold">
@@ -1533,8 +1766,8 @@ export default function PatientHistory({
                                         </div>
                                       )}
                                       {structuredSymptoms.onset && (
-                                        <div className="text-xs">
-                                          <span className="text-muted-foreground">
+                                        <div className="text-sm">
+                                          <span className="text-foreground/70">
                                             Onset:{" "}
                                           </span>
                                           <span className="font-semibold">
@@ -1543,8 +1776,8 @@ export default function PatientHistory({
                                         </div>
                                       )}
                                       {structuredSymptoms.severity && (
-                                        <div className="text-xs">
-                                          <span className="text-muted-foreground">
+                                        <div className="text-sm">
+                                          <span className="text-foreground/70">
                                             Severity:{" "}
                                           </span>
                                           <span className="font-semibold">
@@ -1556,7 +1789,7 @@ export default function PatientHistory({
                                     {structuredSymptoms.medicalHistory.length >
                                       0 && (
                                       <div>
-                                        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-2">
+                                        <p className="text-xs font-black uppercase tracking-wide text-foreground/75 mb-2">
                                           Medical History
                                         </p>
                                         <div className="flex flex-wrap gap-1.5">
@@ -1564,7 +1797,7 @@ export default function PatientHistory({
                                             (h, i) => (
                                               <span
                                                 key={i}
-                                                className="inline-flex text-[11px] bg-muted/10 border border-border/20 text-muted-foreground rounded-full px-2.5 py-1"
+                                                className="inline-flex text-xs bg-muted/10 border border-border/20 text-foreground/75 rounded-full px-2.5 py-1"
                                               >
                                                 {h}
                                               </span>
@@ -1579,7 +1812,7 @@ export default function PatientHistory({
                                         0 &&
                                       structuredSymptoms.riskFactors.length ===
                                         0 && (
-                                        <p className="text-xs text-muted-foreground/60 italic">
+                                        <p className="text-sm text-foreground/70 italic">
                                           Symptom details not available in
                                           structured form.
                                         </p>
@@ -1594,7 +1827,7 @@ export default function PatientHistory({
                                       <div className="h-6 w-6 rounded-lg bg-violet-500/10 flex items-center justify-center">
                                         <Activity className="h-3.5 w-3.5 text-violet-400" />
                                       </div>
-                                      <span className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+                                      <span className="text-sm font-black uppercase tracking-[0.12em] text-foreground/75">
                                         ECG Findings
                                       </span>
                                     </div>
@@ -1604,10 +1837,10 @@ export default function PatientHistory({
                                           key={i}
                                           className={`flex items-center justify-between px-4 py-2.5 ${i % 2 === 0 ? "bg-white/1" : ""}`}
                                         >
-                                          <span className="text-xs text-muted-foreground">
+                                          <span className="text-sm text-foreground/70">
                                             {f.label}
                                           </span>
-                                          <span className="text-xs font-semibold">
+                                          <span className="text-sm font-semibold">
                                             {f.value}
                                           </span>
                                         </div>
@@ -1623,7 +1856,7 @@ export default function PatientHistory({
                                       <div className="h-6 w-6 rounded-lg bg-cyan-500/10 flex items-center justify-center">
                                         <Microscope className="h-3.5 w-3.5 text-cyan-400" />
                                       </div>
-                                      <span className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+                                      <span className="text-sm font-black uppercase tracking-[0.12em] text-foreground/75">
                                         Lab Values
                                       </span>
                                     </div>
@@ -1633,10 +1866,10 @@ export default function PatientHistory({
                                           key={i}
                                           className={`flex items-center justify-between px-4 py-2.5 ${i % 2 === 0 ? "bg-white/1" : ""}`}
                                         >
-                                          <span className="text-xs text-muted-foreground">
+                                          <span className="text-sm text-foreground/70">
                                             {f.label}
                                           </span>
-                                          <span className="text-xs font-semibold font-mono">
+                                          <span className="text-sm font-semibold font-mono">
                                             {f.value}
                                           </span>
                                         </div>
@@ -1652,7 +1885,7 @@ export default function PatientHistory({
                                   <div className="h-6 w-6 rounded-lg bg-primary/10 flex items-center justify-center">
                                     <BrainCircuit className="h-3.5 w-3.5 text-primary" />
                                   </div>
-                                  <span className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+                                  <span className="text-sm font-black uppercase tracking-[0.12em] text-foreground/75">
                                     AI Diagnosis
                                   </span>
                                 </div>
@@ -1670,7 +1903,7 @@ export default function PatientHistory({
                                                 "seasoned",
                                               )
                                             }
-                                            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-colors ${
+                                            className={`px-3 py-1.5 text-xs font-black uppercase tracking-wide transition-colors ${
                                               selectedMode === "seasoned"
                                                 ? "bg-primary text-primary-foreground"
                                                 : "text-muted-foreground hover:bg-white/5"
@@ -1686,7 +1919,7 @@ export default function PatientHistory({
                                                 "newbie",
                                               )
                                             }
-                                            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-colors ${
+                                            className={`px-3 py-1.5 text-xs font-black uppercase tracking-wide transition-colors ${
                                               selectedMode === "newbie"
                                                 ? "bg-primary text-primary-foreground"
                                                 : "text-muted-foreground hover:bg-white/5"
@@ -1706,7 +1939,7 @@ export default function PatientHistory({
                                         >
                                           <div className="flex items-center gap-2 px-4 py-2.5 bg-primary/4 border-b border-border/10">
                                             <HeartPulse className="h-3 w-3 text-primary" />
-                                            <span className="text-[11px] font-black text-primary/80">
+                                            <span className="text-sm font-black text-primary/85">
                                               {section.heading}
                                             </span>
                                           </div>
@@ -1726,14 +1959,14 @@ export default function PatientHistory({
                                                 );
                                               return (
                                                 <div className="overflow-x-auto">
-                                                  <table className="w-full text-xs">
+                                                  <table className="w-full text-sm">
                                                     <thead>
                                                       <tr className="border-b border-border/10">
                                                         {headers.map(
                                                           (h, hi) => (
                                                             <th
                                                               key={hi}
-                                                              className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-muted-foreground"
+                                                              className="px-3 py-2 text-left text-xs font-black uppercase tracking-wide text-foreground/70"
                                                             >
                                                               {h}
                                                             </th>
@@ -1759,7 +1992,7 @@ export default function PatientHistory({
                                                                     className="px-3 py-2.5"
                                                                   >
                                                                     <span
-                                                                      className={`inline-flex items-center text-[10px] font-bold border rounded-full px-2 py-0.5 ${severityColor(cell)}`}
+                                                                      className={`inline-flex items-center text-xs font-bold border rounded-full px-2 py-0.5 ${severityColor(cell)}`}
                                                                     >
                                                                       {cell}
                                                                     </span>
@@ -1790,7 +2023,7 @@ export default function PatientHistory({
                                                                             }}
                                                                           />
                                                                         </div>
-                                                                        <span className="text-[10px] font-bold text-primary shrink-0">
+                                                                        <span className="text-xs font-bold text-primary shrink-0">
                                                                           {Math.round(
                                                                             pct *
                                                                               100,
@@ -1809,7 +2042,7 @@ export default function PatientHistory({
                                                               return (
                                                                 <td
                                                                   key={ci}
-                                                                  className="px-3 py-2.5 text-foreground/80 leading-relaxed"
+                                                                  className="px-3 py-2.5 text-foreground/90 leading-relaxed"
                                                                 >
                                                                   {ci === 1 ? (
                                                                     <span className="font-semibold text-foreground">
@@ -1847,7 +2080,7 @@ export default function PatientHistory({
                                                     return (
                                                       <p
                                                         key={li}
-                                                        className="text-xs text-foreground/70 leading-relaxed"
+                                                        className="text-sm text-foreground/80 leading-relaxed"
                                                       >
                                                         {renderInline(
                                                           line.trim(),
@@ -1866,7 +2099,7 @@ export default function PatientHistory({
                                                       <span
                                                         className={`mt-1.5 shrink-0 rounded-full ${indented ? "h-1 w-1 bg-muted-foreground/40" : "h-1.5 w-1.5 bg-primary/60"}`}
                                                       />
-                                                      <p className="text-xs text-foreground/80 leading-relaxed">
+                                                      <p className="text-sm text-foreground/85 leading-relaxed">
                                                         {renderInline(txt)}
                                                       </p>
                                                     </div>
@@ -1876,7 +2109,7 @@ export default function PatientHistory({
                                           ) : (
                                             /* Plain text section */
                                             <div className="px-4 py-3">
-                                              <p className="text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap">
+                                              <p className="text-sm text-foreground/85 leading-relaxed whitespace-pre-wrap">
                                                 {section.content}
                                               </p>
                                             </div>
@@ -1885,7 +2118,7 @@ export default function PatientHistory({
                                       ))
                                     ) : (
                                       <div className="rounded-xl border border-border/15 p-4">
-                                        <pre className="text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap font-sans">
+                                        <pre className="text-sm text-foreground/85 leading-relaxed whitespace-pre-wrap font-sans">
                                           {selectedOutput}
                                         </pre>
                                       </div>
@@ -1894,7 +2127,7 @@ export default function PatientHistory({
                                     {selectedDisclaimer && (
                                       <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/5 border border-amber-500/15">
                                         <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
-                                        <p className="text-[10px] text-amber-400/80 leading-relaxed">
+                                        <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
                                           {selectedDisclaimer}
                                         </p>
                                       </div>
@@ -2389,7 +2622,7 @@ export default function PatientHistory({
               <span className="text-[#fbbf24] font-semibold">risk factors</span>{" "}
               and{" "}
               <span className="text-[#22d3ee] font-semibold">lab findings</span>
-              . Click any hub or node — details appear on the right.
+              . Click any hub or node ΓÇö details appear on the right.
             </p>
 
             {/* Legend */}

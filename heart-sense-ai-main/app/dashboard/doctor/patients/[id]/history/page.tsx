@@ -33,15 +33,6 @@ interface LabHistoryEntry {
     status: string;
   }>;
 }
-
-function mapWorkflowStateToResumeLabel(state: string) {
-  if (state === "EXTRACTION_DONE") return "Symptoms saved - continue at ECG";
-  if (state === "ECG_DONE") return "ECG saved - continue at Lab";
-  if (state === "LAB_DONE" || state === "ANALYSIS_RUNNING") {
-    return "Lab saved - continue at Analysis";
-  }
-  return "Continue diagnosis";
-}
 const PatientHistory = dynamic(() => import("@/components/PatientHistory"), {
   ssr: false,
   loading: () => (
@@ -318,58 +309,6 @@ export default function PatientHistoryPage() {
         )}
 
         {/* Content */}
-        {!isLoading && inProgressSessions.length > 0 && (
-          <div className="rounded-2xl border border-primary/20 bg-primary/4 p-5 space-y-3">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <h3 className="text-sm font-black uppercase tracking-wider text-primary/80">
-                In-Progress Diagnoses
-              </h3>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-muted-foreground">
-                  {inProgressSessions.length} active session
-                  {inProgressSessions.length === 1 ? "" : "s"}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleDeleteActiveSessions}
-                  disabled={deletingActiveSessions}
-                  className="h-8 rounded-lg border-rose-500/20 text-rose-400 hover:bg-rose-500/10"
-                >
-                  {deletingActiveSessions
-                    ? "Deleting..."
-                    : "Delete Active Sessions"}
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              {inProgressSessions.map((session) => (
-                <div
-                  key={session.session_id}
-                  className="rounded-xl border border-white/10 bg-white/2 p-3 flex items-center justify-between gap-3 flex-wrap"
-                >
-                  <div className="space-y-1">
-                    <p className="text-sm font-bold">
-                      {mapWorkflowStateToResumeLabel(session.current_state)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      State: {session.current_state} - Updated:{" "}
-                      {new Date(session.updated_at).toLocaleString()}
-                    </p>
-                  </div>
-                  <Button
-                    onClick={() => handleContinueDiagnosis(session.session_id)}
-                    size="sm"
-                    className="rounded-lg"
-                  >
-                    Continue
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center h-80">
@@ -394,6 +333,10 @@ export default function PatientHistoryPage() {
             diagnosisHistory={diagnosisHistory}
             historySummary={historySummary}
             labHistory={labHistory}
+            inProgressSessions={inProgressSessions}
+            onContinueDiagnosis={handleContinueDiagnosis}
+            onDeleteActiveSessions={handleDeleteActiveSessions}
+            deletingActiveSessions={deletingActiveSessions}
             onDeleteHistoryEntry={handleDeleteHistoryEntry}
             deletingPayloadId={deletingPayloadId}
           />
