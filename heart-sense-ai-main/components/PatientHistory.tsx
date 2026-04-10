@@ -1176,10 +1176,9 @@ function DiagnosisOverviewChart({
       <div className="w-72 shrink-0 self-stretch max-h-136 overflow-y-auto pr-1">
         {selectedNode && selGroup ? (
           <div
-            className="rounded-xl border p-4 space-y-3 h-full"
+            className="rounded-xl border p-4 space-y-3 h-full bg-card/90 dark:bg-card/60"
             style={{
               borderColor: selGroup.hue + "44",
-              background: selGroup.bg,
             }}
           >
             <div className="flex items-center gap-2">
@@ -1187,12 +1186,12 @@ function DiagnosisOverviewChart({
                 className="h-2.5 w-2.5 rounded-full shrink-0"
                 style={{ backgroundColor: selGroup.hue }}
               />
-              <span className="text-xs font-semibold text-muted-foreground">
+              <span className="text-sm font-semibold text-foreground/75">
                 {selGroup.label}
               </span>
               {selectedNode.type === "item" && (
                 <span
-                  className="text-sm font-black ml-1"
+                  className="text-base font-black ml-1"
                   style={{ color: selGroup.hue }}
                 >
                   {selectedNode.item}
@@ -1200,7 +1199,7 @@ function DiagnosisOverviewChart({
               )}
               {selectedNode.type === "hub" && (
                 <span
-                  className="text-sm font-black ml-1"
+                  className="text-base font-black ml-1"
                   style={{ color: selGroup.hue }}
                 >
                   {selGroup.items.length} entries
@@ -1208,7 +1207,7 @@ function DiagnosisOverviewChart({
               )}
               <button
                 onClick={() => setSelectedNode(null)}
-                className="text-muted-foreground hover:text-foreground text-xs ml-auto transition-colors px-1"
+                className="text-foreground/70 hover:text-foreground text-sm ml-auto transition-colors px-1"
               >
                 \u2715
               </button>
@@ -1221,7 +1220,7 @@ function DiagnosisOverviewChart({
                     <button
                       key={item}
                       onClick={() => onItemClick(selGroup.label, item)}
-                      className="text-xs rounded-full px-3 py-1 font-semibold transition-all hover:scale-105 active:scale-95"
+                      className="text-sm rounded-full px-3 py-1 font-semibold transition-all hover:scale-105 active:scale-95"
                       style={{
                         background: selGroup.bg,
                         border: `1px solid ${selGroup.hue}66`,
@@ -1232,7 +1231,7 @@ function DiagnosisOverviewChart({
                     </button>
                   ))}
                 </div>
-                <p className="text-[10px] text-muted-foreground/50">
+                <p className="text-sm text-foreground/70">
                   Click a pill to drill into that entry \u00b7 click the hub
                   again to collapse its nodes
                 </p>
@@ -1246,7 +1245,7 @@ function DiagnosisOverviewChart({
                   <div className="space-y-1.5">
                     {visits.length > 0 ? (
                       <>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        <p className="text-xs font-bold uppercase tracking-wide text-foreground/70">
                           Recorded in {visits.length} visit
                           {visits.length !== 1 ? "s" : ""}
                         </p>
@@ -1260,7 +1259,7 @@ function DiagnosisOverviewChart({
                           return (
                             <div
                               key={v.payload_id}
-                              className="text-xs rounded-lg px-3 py-1.5 flex items-center gap-2"
+                              className="text-sm rounded-lg px-3 py-1.5 flex items-center gap-2"
                               style={{
                                 background: selGroup.hue + "18",
                                 border: `1px solid ${selGroup.hue}33`,
@@ -1274,7 +1273,7 @@ function DiagnosisOverviewChart({
                                 {formatDate(v.created_at)}
                               </span>
                               {hasVisitDiagnosis && (
-                                <span className="text-muted-foreground/50 ml-auto text-[10px]">
+                                <span className="text-foreground/70 ml-auto text-xs">
                                   has AI diagnosis
                                 </span>
                               )}
@@ -1283,7 +1282,7 @@ function DiagnosisOverviewChart({
                         })}
                       </>
                     ) : (
-                      <p className="text-xs text-muted-foreground/60">
+                      <p className="text-sm text-foreground/70">
                         Sourced from the AI longitudinal summary across all
                         visits.
                       </p>
@@ -1295,7 +1294,7 @@ function DiagnosisOverviewChart({
         ) : (
           <div className="rounded-xl border border-border/15 h-full flex flex-col items-center justify-center gap-3 p-6 text-center min-h-48">
             <Network className="h-8 w-8 text-muted-foreground/20" />
-            <p className="text-xs text-muted-foreground/40 leading-relaxed">
+            <p className="text-sm text-foreground/65 leading-relaxed">
               Click a <span className="font-semibold">hub</span> or{" "}
               <span className="font-semibold">node</span> on the map to see
               details here
@@ -2344,7 +2343,7 @@ export default function PatientHistory({
                       </div>
                       <div>
                         <p className="text-xl font-black">{stat.value}</p>
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                        <p className="text-xs text-foreground/70 uppercase tracking-wide">
                           {stat.label}
                         </p>
                       </div>
@@ -2360,10 +2359,10 @@ export default function PatientHistory({
                     <div className="h-7 w-7 rounded-xl bg-primary/10 flex items-center justify-center">
                       <BrainCircuit className="h-4 w-4 text-primary" />
                     </div>
-                    <span className="text-[11px] font-black uppercase tracking-[0.2em] text-muted-foreground">
+                    <span className="text-sm font-black uppercase tracking-[0.18em] text-foreground/75">
                       Longitudinal AI Summary
                     </span>
-                    <Badge variant="secondary" className="text-[9px] ml-auto">
+                    <Badge variant="secondary" className="text-xs ml-auto">
                       For KRA Reasoning
                     </Badge>
                   </div>
@@ -2377,7 +2376,7 @@ export default function PatientHistory({
                         >
                           <div className="flex items-center gap-2 px-4 py-2.5 bg-primary/4 border-b border-border/10">
                             <HeartPulse className="h-3 w-3 text-primary" />
-                            <span className="text-[11px] font-black text-primary/80">
+                            <span className="text-sm font-black text-primary/85">
                               {section.heading}
                             </span>
                           </div>
@@ -2394,13 +2393,13 @@ export default function PatientHistory({
                               );
                               return (
                                 <div className="overflow-x-auto">
-                                  <table className="w-full text-xs">
+                                  <table className="w-full text-sm">
                                     <thead>
                                       <tr className="border-b border-border/10">
                                         {headers.map((h, hi) => (
                                           <th
                                             key={hi}
-                                            className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-muted-foreground"
+                                            className="px-3 py-2 text-left text-xs font-black uppercase tracking-wider text-foreground/70"
                                           >
                                             {h}
                                           </th>
@@ -2421,7 +2420,7 @@ export default function PatientHistory({
                                                   className="px-3 py-2.5"
                                                 >
                                                   <span
-                                                    className={`inline-flex items-center text-[10px] font-bold border rounded-full px-2 py-0.5 ${severityColor(cell)}`}
+                                                    className={`inline-flex items-center text-xs font-bold border rounded-full px-2.5 py-1 ${severityColor(cell)}`}
                                                   >
                                                     {cell}
                                                   </span>
@@ -2444,7 +2443,7 @@ export default function PatientHistory({
                                                           }}
                                                         />
                                                       </div>
-                                                      <span className="text-[10px] font-bold text-primary shrink-0">
+                                                      <span className="text-xs font-bold text-primary shrink-0">
                                                         {Math.round(pct * 100)}%
                                                       </span>
                                                     </div>
@@ -2486,7 +2485,7 @@ export default function PatientHistory({
                                   return (
                                     <p
                                       key={li}
-                                      className="text-xs text-foreground/70 leading-relaxed"
+                                      className="text-sm text-foreground/75 leading-relaxed"
                                     >
                                       {renderInline(line.trim())}
                                     </p>
@@ -2500,7 +2499,7 @@ export default function PatientHistory({
                                     <span
                                       className={`mt-1.5 shrink-0 rounded-full ${indented ? "h-1 w-1 bg-muted-foreground/40" : "h-1.5 w-1.5 bg-primary/60"}`}
                                     />
-                                    <p className="text-xs text-foreground/80 leading-relaxed">
+                                    <p className="text-sm text-foreground/85 leading-relaxed">
                                       {renderInline(txt)}
                                     </p>
                                   </div>
@@ -2509,7 +2508,7 @@ export default function PatientHistory({
                             </div>
                           ) : (
                             <div className="px-4 py-3">
-                              <p className="text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap">
+                              <p className="text-sm text-foreground/85 leading-relaxed whitespace-pre-wrap">
                                 {section.content}
                               </p>
                             </div>
@@ -2607,15 +2606,18 @@ export default function PatientHistory({
               <div className="h-7 w-7 rounded-xl bg-primary/10 flex items-center justify-center">
                 <Network className="h-4 w-4 text-primary" />
               </div>
-              <span className="text-[11px] font-black uppercase tracking-[0.2em] text-muted-foreground">
+              <span className="text-sm font-black uppercase tracking-[0.14em] text-foreground/75">
                 Patient Overview Map
               </span>
-              <Badge variant="secondary" className="text-[9px] ml-auto">
+              <Badge
+                variant="secondary"
+                className="text-xs ml-auto text-foreground/80"
+              >
                 Interactive
               </Badge>
             </div>
 
-            <p className="text-xs text-muted-foreground/60 leading-relaxed">
+            <p className="text-sm text-foreground/75 leading-relaxed">
               Radial overview of this patient&apos;s{" "}
               <span className="text-[#818cf8] font-semibold">symptoms</span>,{" "}
               <span className="text-[#f87171] font-semibold">diagnoses</span>,{" "}
@@ -2638,7 +2640,7 @@ export default function PatientHistory({
                     className="h-2.5 w-2.5 rounded-full shrink-0"
                     style={{ backgroundColor: color }}
                   />
-                  <span className="text-[10px] font-semibold text-muted-foreground">
+                  <span className="text-sm font-semibold text-foreground/75">
                     {label}
                   </span>
                 </div>
