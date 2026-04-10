@@ -13,6 +13,8 @@ import {
   ClipboardList,
   AlertCircle,
   SkipForward,
+  CircleHelp,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -60,11 +62,13 @@ function getWorkflowResumeKey(patientId: string) {
   return `workspace:workflow-resume:${patientId}`;
 }
 
-function mapWorkflowStateToTab(state: WorkflowState | string | null):
-  | "nlp"
-  | "ecg"
-  | "lab"
-  | "ai" {
+function getWorkspaceGuideKey(patientId: string) {
+  return `workspace:guide-hidden:${patientId}`;
+}
+
+function mapWorkflowStateToTab(
+  state: WorkflowState | string | null,
+): "nlp" | "ecg" | "lab" | "ai" {
   if (!state || state === "SESSION_CREATED") return "nlp";
   if (state === "EXTRACTION_DONE") return "ecg";
   if (state === "ECG_DONE") return "lab";
@@ -73,9 +77,7 @@ function mapWorkflowStateToTab(state: WorkflowState | string | null):
 
 function normalizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => String(item ?? "").trim())
-    .filter(Boolean);
+  return value.map((item) => String(item ?? "").trim()).filter(Boolean);
 }
 
 function toApprovedMap(items: string[], prefix: string) {
@@ -157,6 +159,7 @@ export default function DiagnosticWorkspace() {
     null,
   );
   const [isAdvancing, setIsAdvancing] = useState(false);
+  const [showGuide, setShowGuide] = useState(true);
 
   // Workspace State System (Persistent between modules)
   const [summary, setSummary] = useState(createInitialSummary);
@@ -180,14 +183,17 @@ export default function DiagnosticWorkspace() {
 
   const hydrateFromSession = useCallback((session: WorkflowSession) => {
     const extractionPayload =
-      (session.step_payloads?.extraction?.payload as Record<string, unknown> | undefined) ??
-      null;
+      (session.step_payloads?.extraction?.payload as
+        | Record<string, unknown>
+        | undefined) ?? null;
     const ecgStepPayload =
-      (session.step_payloads?.ecg?.payload as Record<string, unknown> | undefined) ??
-      null;
+      (session.step_payloads?.ecg?.payload as
+        | Record<string, unknown>
+        | undefined) ?? null;
     const labStepPayload =
-      (session.step_payloads?.lab?.payload as Record<string, unknown> | undefined) ??
-      null;
+      (session.step_payloads?.lab?.payload as
+        | Record<string, unknown>
+        | undefined) ?? null;
 
     const symptoms = normalizeStringArray(extractionPayload?.symptoms);
     const riskFactors = normalizeStringArray(extractionPayload?.risk_factors);
@@ -251,8 +257,8 @@ export default function DiagnosticWorkspace() {
         approvedRiskFactors.length > 2
           ? "High"
           : approvedRiskFactors.length > 0
-          ? "Moderate"
-          : "Low",
+            ? "Moderate"
+            : "Low",
     }));
   }, [nlpCurrentState]);
 
@@ -385,7 +391,9 @@ export default function DiagnosticWorkspace() {
             );
             if (explicitSession?.patient_id === resolvedPatientId) {
               hydrateFromSession(explicitSession);
-              router.replace(`/dashboard/doctor/workspace/${resolvedPatientId}`);
+              router.replace(
+                `/dashboard/doctor/workspace/${resolvedPatientId}`,
+              );
               return;
             }
           } catch {
@@ -403,7 +411,9 @@ export default function DiagnosticWorkspace() {
                 state?: WorkflowState;
               };
               if (parsed.session_id) {
-                const existing = await WorkflowService.getSession(parsed.session_id);
+                const existing = await WorkflowService.getSession(
+                  parsed.session_id,
+                );
                 if (existing?.session_id) {
                   hydrateFromSession(existing);
                   return;
@@ -417,7 +427,10 @@ export default function DiagnosticWorkspace() {
 
         // 2) Resume from latest unfinished backend session for this patient.
         try {
-          const latest = await WorkflowService.getLatestSession(resolvedPatientId, false);
+          const latest = await WorkflowService.getLatestSession(
+            resolvedPatientId,
+            false,
+          );
           if (latest?.session_id) {
             hydrateFromSession(latest);
             return;
@@ -427,13 +440,19 @@ export default function DiagnosticWorkspace() {
         }
 
         // 3) No resumable session found, initialize a new workflow.
-        const session = await WorkflowService.initSession(resolvedPatientId, undefined);
+        const session = await WorkflowService.initSession(
+          resolvedPatientId,
+          undefined,
+        );
         setWorkflowSessionId(session.session_id);
         setWorkflowState(session.state);
         setActiveTab(mapWorkflowStateToTab(session.state));
       } catch (error: unknown) {
         toast.error("Failed to initialize workflow session", {
-          description: getErrorMessage(error, "Unable to initialize workflow session"),
+          description: getErrorMessage(
+            error,
+            "Unable to initialize workflow session",
+          ),
         });
       }
     };
@@ -465,6 +484,32 @@ export default function DiagnosticWorkspace() {
       }),
     );
   }, [patient, patientId, workflowSessionId, workflowState]);
+
+  useEffect(() => {
+    if (!patient) return;
+    if (typeof window === "undefined") return;
+
+    const resolvedPatientId = String(patient._id ?? patientId);
+    const guideKey = getWorkspaceGuideKey(resolvedPatientId);
+    const hidden = window.localStorage.getItem(guideKey) === "1";
+    setShowGuide(!hidden);
+  }, [patient, patientId]);
+
+  const handleCloseGuide = () => {
+    const resolvedPatientId = String(patient?._id ?? patientId ?? "");
+    if (resolvedPatientId && typeof window !== "undefined") {
+      window.localStorage.setItem(getWorkspaceGuideKey(resolvedPatientId), "1");
+    }
+    setShowGuide(false);
+  };
+
+  const handleOpenGuide = () => {
+    const resolvedPatientId = String(patient?._id ?? patientId ?? "");
+    if (resolvedPatientId && typeof window !== "undefined") {
+      window.localStorage.setItem(getWorkspaceGuideKey(resolvedPatientId), "0");
+    }
+    setShowGuide(true);
+  };
 
   const canAccessTab = (tab: "nlp" | "ecg" | "lab" | "ai") => {
     if (tab === "nlp") return true;
@@ -594,7 +639,10 @@ export default function DiagnosticWorkspace() {
       toast.success("Progress saved");
     } catch (error: unknown) {
       toast.error("Failed to save progress", {
-        description: getErrorMessage(error, "Unable to persist current workflow step"),
+        description: getErrorMessage(
+          error,
+          "Unable to persist current workflow step",
+        ),
       });
     } finally {
       setIsAdvancing(false);
@@ -796,7 +844,7 @@ export default function DiagnosticWorkspace() {
 
               {summary.symptoms.length > 0 && (
                 <div className="rounded-2xl border border-white/5 p-4 bg-white/[0.02]">
-                  <p className="text-[10px] font-bold text-muted-foreground mb-2 flex items-center gap-2 text-orange-400">
+                  <p className="text-[10px] font-bold mb-2 flex items-center gap-2 text-orange-400">
                     <AlertCircle className="h-3 w-3" /> ACTIVE SYMPTOMS
                   </p>
                   <div className="flex flex-wrap gap-1">
@@ -893,9 +941,9 @@ export default function DiagnosticWorkspace() {
                           summary.ecgResult.abnormalities.severity === "normal"
                             ? "bg-emerald-500/10 text-emerald-400"
                             : summary.ecgResult.abnormalities.severity ===
-                              "mild"
-                            ? "bg-amber-500/10 text-amber-400"
-                            : "bg-rose-500/10 text-rose-400"
+                                "mild"
+                              ? "bg-amber-500/10 text-amber-400"
+                              : "bg-rose-500/10 text-rose-400"
                         }`}
                       >
                         {summary.ecgResult.abnormalities.severity}
@@ -990,88 +1038,146 @@ export default function DiagnosticWorkspace() {
 
         {/* WIZARD STEPPER HEADER */}
         <div className="border-b border-border/30 bg-background/80 backdrop-blur-xl px-6 py-3 shrink-0">
-          <div className="flex items-center justify-center gap-0 max-w-4xl mx-auto">
-            {[
-              {
-                key: "nlp" as const,
-                label: "Patient Symptoms",
-                icon: <ClipboardList className="h-4 w-4" />,
-                step: 1,
-              },
-              {
-                key: "ecg" as const,
-                label: "ECG Analysis",
-                icon: <Activity className="h-4 w-4" />,
-                step: 2,
-              },
-              {
-                key: "lab" as const,
-                label: "Lab Reports",
-                icon: <Microscope className="h-4 w-4" />,
-                step: 3,
-              },
-              {
-                key: "ai" as const,
-                label: "Analysis",
-                icon: <BrainCircuit className="h-4 w-4" />,
-                step: 4,
-              },
-            ].map((item, idx) => {
-              const isActive = activeTab === item.key;
-              const isCompleted =
-                (item.key === "nlp" && summary.symptoms.length > 0) ||
-                (item.key === "ecg" && summary.ecgResult !== null) ||
-                (item.key === "lab" && summary.labResult !== null);
-              const isAccessible = canAccessTab(item.key);
+          <div className="flex items-center justify-between gap-4 max-w-6xl mx-auto">
+            <div className="flex-1 flex items-center justify-center gap-0">
+              {[
+                {
+                  key: "nlp" as const,
+                  label: "Patient Symptoms",
+                  icon: <ClipboardList className="h-4 w-4" />,
+                  step: 1,
+                },
+                {
+                  key: "ecg" as const,
+                  label: "ECG Analysis",
+                  icon: <Activity className="h-4 w-4" />,
+                  step: 2,
+                },
+                {
+                  key: "lab" as const,
+                  label: "Lab Reports",
+                  icon: <Microscope className="h-4 w-4" />,
+                  step: 3,
+                },
+                {
+                  key: "ai" as const,
+                  label: "Analysis",
+                  icon: <BrainCircuit className="h-4 w-4" />,
+                  step: 4,
+                },
+              ].map((item, idx) => {
+                const isActive = activeTab === item.key;
+                const isCompleted =
+                  (item.key === "nlp" && summary.symptoms.length > 0) ||
+                  (item.key === "ecg" && summary.ecgResult !== null) ||
+                  (item.key === "lab" && summary.labResult !== null);
+                const isAccessible = canAccessTab(item.key);
 
-              return (
-                <div key={item.key} className="flex items-center">
-                  {/* Step Button */}
-                  <button
-                    onClick={() => isAccessible && handleTabChange(item.key)}
-                    disabled={!isAccessible}
-                    className={`flex items-center gap-3 px-5 py-3 rounded-2xl transition-all duration-300 whitespace-nowrap ${
-                      isActive
-                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105"
-                        : isCompleted
-                        ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20 cursor-pointer"
-                        : isAccessible
-                        ? "bg-white/5 text-foreground border border-border/30 hover:bg-white/10 cursor-pointer"
-                        : "bg-white/[0.02] text-muted-foreground/40 border border-border/10 cursor-not-allowed"
-                    }`}
-                  >
-                    <div
-                      className={`h-7 w-7 rounded-lg flex-center text-xs font-black ${
+                return (
+                  <div key={item.key} className="flex items-center">
+                    {/* Step Button */}
+                    <button
+                      onClick={() => isAccessible && handleTabChange(item.key)}
+                      disabled={!isAccessible}
+                      className={`flex items-center gap-3 px-5 py-3 rounded-2xl transition-all duration-300 whitespace-nowrap ${
                         isActive
-                          ? "bg-primary-foreground/20"
+                          ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105"
                           : isCompleted
-                          ? "bg-emerald-500/20"
-                          : "bg-white/10"
+                            ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20 cursor-pointer"
+                            : isAccessible
+                              ? "bg-white/5 text-foreground border border-border/30 hover:bg-white/10 cursor-pointer"
+                              : "bg-white/[0.02] text-muted-foreground/40 border border-border/10 cursor-not-allowed"
                       }`}
                     >
-                      {isCompleted && !isActive ? (
-                        <ShieldCheck className="h-3.5 w-3.5" />
-                      ) : (
-                        item.step
-                      )}
-                    </div>
-                    <span className="text-sm font-bold">{item.label}</span>
-                  </button>
+                      <div
+                        className={`h-7 w-7 rounded-lg flex-center text-xs font-black ${
+                          isActive
+                            ? "bg-primary-foreground/20"
+                            : isCompleted
+                              ? "bg-emerald-500/20"
+                              : "bg-white/10"
+                        }`}
+                      >
+                        {isCompleted && !isActive ? (
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                        ) : (
+                          item.step
+                        )}
+                      </div>
+                      <span className="text-sm font-bold">{item.label}</span>
+                    </button>
 
-                  {/* Arrow between steps */}
-                  {idx < 3 && (
-                    <div className="mx-3 flex items-center text-muted-foreground/30">
-                      <ChevronRight className="h-5 w-5" />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                    {/* Arrow between steps */}
+                    {idx < 3 && (
+                      <div className="mx-3 flex items-center text-muted-foreground/30">
+                        <ChevronRight className="h-5 w-5" />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={showGuide ? handleCloseGuide : handleOpenGuide}
+              className="h-9 rounded-xl gap-2 text-xs font-bold uppercase tracking-wide shrink-0"
+              title={showGuide ? "Hide guide" : "Show guide"}
+            >
+              <CircleHelp className="h-4 w-4" />
+              {showGuide ? "Hide Guide" : "Show Guide"}
+            </Button>
           </div>
         </div>
 
         {/* STEP CONTENT */}
         <div className="p-6 flex-1 flex flex-col min-h-0 overflow-hidden">
+          {showGuide && (
+            <div className="mb-4 rounded-2xl border border-primary/20 bg-primary/5 p-4 md:p-5 shrink-0">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-3">
+                  <h3 className="text-sm md:text-base font-black uppercase tracking-wide text-primary">
+                    Diagnostic Guide: Step by Step
+                  </h3>
+                  <ol className="space-y-2 text-sm text-foreground/85">
+                    <li>
+                      1. Capture and approve symptoms in Patient Symptoms.
+                    </li>
+                    <li>2. Save symptoms and proceed to ECG Analysis.</li>
+                    <li>3. Upload ECG and confirm rhythm findings.</li>
+                    <li>4. Continue to Lab Reports and extract lab values.</li>
+                    <li>5. Review abnormalities and proceed to Analysis.</li>
+                    <li>
+                      6. In Analysis, verify combined AI diagnostic output.
+                    </li>
+                    <li>
+                      7. Save progress at each stage or skip ECG/Lab when
+                      clinically appropriate.
+                    </li>
+                    <li>
+                      8. Complete workflow and return to patient history for
+                      follow-up.
+                    </li>
+                  </ol>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleCloseGuide}
+                  className="h-8 w-8 rounded-lg"
+                  title="Close guide"
+                >
+                  <X className="h-4 w-4" />
+                  <span className="sr-only">Close guide</span>
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="flex-1 min-h-0 overflow-y-auto">
             {visitedTabs.has("nlp") && (
               <div className={activeTab !== "nlp" ? "hidden" : ""}>
@@ -1250,8 +1356,8 @@ export default function DiagnosticWorkspace() {
                   activeTab === "nlp"
                     ? handleNextToEcg
                     : activeTab === "ecg"
-                    ? handleNextToLab
-                    : handleNextToAnalysis
+                      ? handleNextToLab
+                      : handleNextToAnalysis
                 }
                 disabled={
                   isAdvancing ||
