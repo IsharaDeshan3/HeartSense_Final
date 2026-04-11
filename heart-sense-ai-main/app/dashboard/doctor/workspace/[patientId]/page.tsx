@@ -94,7 +94,7 @@ function toApprovedMap(items: string[], prefix: string) {
 }
 
 const moduleFallback = (title: string, description: string) => (
-  <div className="flex min-h-[24rem] items-center justify-center rounded-3xl border border-white/5 bg-white/[0.02] p-8 text-center">
+  <div className="flex min-h-96 items-center justify-center rounded-3xl border border-border/60 bg-card/75 p-8 text-center">
     <div className="max-w-md space-y-3">
       <div className="mx-auto h-10 w-10 animate-pulse rounded-2xl bg-primary/10" />
       <p className="text-sm font-bold uppercase tracking-[0.25em] text-primary/70">
@@ -793,7 +793,7 @@ export default function DiagnosticWorkspace() {
   return (
     <div className="h-screen bg-background flex flex-col lg:flex-row overflow-hidden">
       {/* PERSISTENT CLINICAL SIDEBAR */}
-      <aside className="w-full lg:w-72 border-r border-white/5 glass p-4 space-y-4 flex flex-col shrink-0 overflow-y-auto">
+      <aside className="w-full lg:w-72 border-r border-border/60 glass p-4 space-y-4 flex flex-col shrink-0 overflow-y-auto">
         <div className="space-y-4">
           <LinkButton
             onClick={() => router.push("/dashboard/doctor")}
@@ -817,10 +817,10 @@ export default function DiagnosticWorkspace() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 text-[10px] font-bold">
-              <div className="px-2 py-1.5 bg-white/5 rounded-lg text-muted-foreground uppercase">
+              <div className="px-2 py-1.5 bg-muted/40 rounded-lg text-muted-foreground uppercase">
                 Age: {patient?.age}y
               </div>
-              <div className="px-2 py-1.5 bg-white/5 rounded-lg text-muted-foreground uppercase">
+              <div className="px-2 py-1.5 bg-muted/40 rounded-lg text-muted-foreground uppercase">
                 {patient?.gender}
               </div>
             </div>
@@ -833,17 +833,17 @@ export default function DiagnosticWorkspace() {
               Active Clinical Summary
             </h3>
             <div className="space-y-3">
-              <div className="rounded-xl border border-white/5 p-3 bg-white/[0.02]">
+              <div className="rounded-xl border border-border/60 p-3 bg-card/75 shadow-sm">
                 <p className="text-[10px] font-bold text-muted-foreground mb-2 flex items-center gap-2">
                   <Activity className="h-3 w-3" /> NEURAL RISK STATUS
                 </p>
-                <div className="text-lg font-black text-white italic">
+                <div className="text-lg font-black text-foreground italic">
                   {summary.riskScore.toUpperCase()}
                 </div>
               </div>
 
               {summary.symptoms.length > 0 && (
-                <div className="rounded-2xl border border-white/5 p-4 bg-white/[0.02]">
+                <div className="rounded-2xl border border-border/60 p-4 bg-card/75 shadow-sm">
                   <p className="text-[10px] font-bold mb-2 flex items-center gap-2 text-orange-400">
                     <AlertCircle className="h-3 w-3" /> ACTIVE SYMPTOMS
                   </p>
@@ -851,7 +851,7 @@ export default function DiagnosticWorkspace() {
                     {summary.symptoms.map((s, i) => (
                       <span
                         key={i}
-                        className="text-[8px] font-bold text-white/60 bg-white/5 px-2 py-0.5 rounded uppercase tracking-wider"
+                        className="text-[10px] font-bold text-foreground/75 bg-muted/60 px-2 py-0.5 rounded uppercase tracking-wider"
                       >
                         {s}
                       </span>
@@ -861,7 +861,7 @@ export default function DiagnosticWorkspace() {
               )}
 
               {summary.riskFactors.length > 0 && (
-                <div className="rounded-2xl border border-white/5 p-4 bg-white/[0.02]">
+                <div className="rounded-2xl border border-border/60 p-4 bg-card/75 shadow-sm">
                   <p className="text-[10px] font-bold mb-2 flex items-center gap-2 text-red-400">
                     <AlertCircle className="h-3 w-3" /> RISK FACTORS
                   </p>
@@ -869,7 +869,7 @@ export default function DiagnosticWorkspace() {
                     {summary.riskFactors.map((r, i) => (
                       <span
                         key={i}
-                        className="text-[8px] font-bold text-red-300/80 bg-rose-500/10 px-2 py-0.5 rounded uppercase tracking-wider"
+                        className="text-[10px] font-bold text-red-500 bg-rose-500/10 px-2 py-0.5 rounded uppercase tracking-wider"
                       >
                         {r}
                       </span>
@@ -881,7 +881,7 @@ export default function DiagnosticWorkspace() {
               {Object.values(nlpCurrentState.medical_history).filter(
                 (v) => v.status === "approved",
               ).length > 0 && (
-                <div className="rounded-2xl border border-white/5 p-4 bg-white/[0.02]">
+                <div className="rounded-2xl border border-border/60 p-4 bg-card/75 shadow-sm">
                   <p className="text-[10px] font-bold mb-2 flex items-center gap-2 text-sky-400">
                     <ClipboardList className="h-3 w-3" /> MEDICAL HISTORY
                   </p>
@@ -891,7 +891,7 @@ export default function DiagnosticWorkspace() {
                       .map((v, i) => (
                         <span
                           key={i}
-                          className="text-[8px] font-bold text-sky-300/80 bg-sky-500/10 px-2 py-0.5 rounded uppercase tracking-wider"
+                          className="text-[10px] font-bold text-sky-500 bg-sky-500/10 px-2 py-0.5 rounded uppercase tracking-wider"
                         >
                           {v.value}
                         </span>
@@ -903,7 +903,7 @@ export default function DiagnosticWorkspace() {
               {Object.values(nlpCurrentState.allergies).filter(
                 (v) => v.status === "approved",
               ).length > 0 && (
-                <div className="rounded-2xl border border-white/5 p-4 bg-white/[0.02]">
+                <div className="rounded-2xl border border-border/60 p-4 bg-card/75 shadow-sm">
                   <p className="text-[10px] font-bold mb-2 flex items-center gap-2 text-amber-400">
                     <AlertCircle className="h-3 w-3" /> ALLERGIES
                   </p>
@@ -913,7 +913,7 @@ export default function DiagnosticWorkspace() {
                       .map((v, i) => (
                         <span
                           key={i}
-                          className="text-[8px] font-bold text-amber-300/80 bg-amber-500/10 px-2 py-0.5 rounded uppercase tracking-wider"
+                          className="text-[10px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded uppercase tracking-wider"
                         >
                           {v.value}
                         </span>
@@ -923,12 +923,12 @@ export default function DiagnosticWorkspace() {
               )}
 
               {summary.ecgResult && (
-                <div className="rounded-2xl border border-white/5 p-4 bg-white/[0.02]">
+                <div className="rounded-2xl border border-border/60 p-4 bg-card/75 shadow-sm">
                   <p className="text-[10px] font-bold mb-2 flex items-center gap-2 text-blue-400">
                     <Activity className="h-3 w-3" /> ECG FINDINGS
                   </p>
                   <div className="space-y-1.5">
-                    <p className="text-xs text-white font-bold">
+                    <p className="text-sm text-foreground font-bold">
                       {summary.ecgResult.rhythm_analysis.rhythm_type}
                     </p>
                     <p className="text-[10px] text-muted-foreground">
@@ -937,7 +937,7 @@ export default function DiagnosticWorkspace() {
                     </p>
                     <div className="flex flex-wrap gap-1">
                       <span
-                        className={`text-[8px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
                           summary.ecgResult.abnormalities.severity === "normal"
                             ? "bg-emerald-500/10 text-emerald-400"
                             : summary.ecgResult.abnormalities.severity ===
@@ -949,7 +949,7 @@ export default function DiagnosticWorkspace() {
                         {summary.ecgResult.abnormalities.severity}
                       </span>
                       {summary.ecgResult.diagnosis?.urgency && (
-                        <span className="text-[8px] font-bold px-2 py-0.5 rounded uppercase tracking-wider bg-violet-500/10 text-violet-400">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider bg-violet-500/10 text-violet-500">
                           {summary.ecgResult.diagnosis.urgency}
                         </span>
                       )}
@@ -961,7 +961,7 @@ export default function DiagnosticWorkspace() {
                           (a, i) => (
                             <span
                               key={i}
-                              className="text-[8px] font-bold text-blue-300/70 bg-blue-500/10 px-2 py-0.5 rounded uppercase tracking-wider"
+                              className="text-[10px] font-bold text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded uppercase tracking-wider"
                             >
                               {a}
                             </span>
@@ -987,10 +987,10 @@ export default function DiagnosticWorkspace() {
                     (l) => l.status === "Normal",
                   ).length;
                   return (
-                    <div className="rounded-2xl border border-white/5 p-4 bg-white/[0.02]">
+                    <div className="rounded-2xl border border-border/60 p-4 bg-card/75 shadow-sm">
                       <p className="text-[10px] font-bold mb-2 flex items-center gap-2 text-purple-400">
                         <Microscope className="h-3 w-3" /> LAB FINDINGS
-                        <span className="ml-auto text-muted-foreground/50">
+                        <span className="ml-auto text-muted-foreground/70">
                           {summary.labResult.labComparison.length} tests
                         </span>
                       </p>
@@ -998,7 +998,7 @@ export default function DiagnosticWorkspace() {
                         {abnormal.map((l, i) => (
                           <span
                             key={i}
-                            className={`text-[8px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
                               l.status === "High"
                                 ? "bg-rose-500/10 text-rose-400"
                                 : "bg-amber-500/10 text-amber-400"
@@ -1008,12 +1008,12 @@ export default function DiagnosticWorkspace() {
                           </span>
                         ))}
                         {normalCount > 0 && (
-                          <span className="text-[8px] font-bold text-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 rounded uppercase tracking-wider">
+                          <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded uppercase tracking-wider">
                             {normalCount} normal
                           </span>
                         )}
                         {abnormal.length === 0 && normalCount > 0 && (
-                          <span className="text-[8px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded uppercase tracking-wider">
+                          <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded uppercase tracking-wider">
                             All values normal
                           </span>
                         )}
@@ -1025,7 +1025,7 @@ export default function DiagnosticWorkspace() {
           </div>
         </div>
 
-        <div className="pt-3 border-t border-white/5">
+        <div className="pt-3 border-t border-border/60">
           <p className="text-[8px] text-muted-foreground font-bold tracking-[0.15em] uppercase text-center">
             HeartSense v2.6.0
           </p>
@@ -1034,7 +1034,7 @@ export default function DiagnosticWorkspace() {
 
       {/* DIAGNOSTIC WIZARD */}
       <main className="flex-1 flex flex-col bg-card/20 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[120px] -z-10"></div>
+        <div className="absolute top-0 right-0 w-150 h-150 bg-primary/5 rounded-full blur-[120px] -z-10"></div>
 
         {/* WIZARD STEPPER HEADER */}
         <div className="border-b border-border/30 bg-background/80 backdrop-blur-xl px-6 py-3 shrink-0">
@@ -1086,7 +1086,7 @@ export default function DiagnosticWorkspace() {
                             ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20 cursor-pointer"
                             : isAccessible
                               ? "bg-white/5 text-foreground border border-border/30 hover:bg-white/10 cursor-pointer"
-                              : "bg-white/[0.02] text-muted-foreground/40 border border-border/10 cursor-not-allowed"
+                              : "bg-muted/40 text-muted-foreground/70 border border-border/20 cursor-not-allowed"
                       }`}
                     >
                       <div
