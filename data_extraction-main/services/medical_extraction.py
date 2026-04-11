@@ -1,5 +1,6 @@
 import json
 import itertools
+import re
 import google.generativeai as genai
 from google.api_core.exceptions import ResourceExhausted
 from models.medical_entities import MedicalData
@@ -49,6 +50,28 @@ Return JSON exactly in this format:
 Only include in "missing" the critical symptoms and risk factors above that are not explicitly mentioned in the text.
 """
 
+CRITICAL_CARDIAC_ITEMS = {
+    "symptoms": ["chest pain", "shortness of breath", "palpitations"],
+    "risk_factors": ["hypertension", "diabetes", "smoking", "family history"]
+}
+
+FALLBACK_KEYWORDS = {
+    "symptoms": [
+        "chest pain", "shortness of breath", "breathlessness", "palpitations",
+        "dizziness", "fainting", "syncope", "fatigue"
+    ],
+    "medical_history": [
+        "heart attack", "mi", "angina", "stroke", "kidney disease", "asthma"
+    ],
+    "allergies": [
+        "penicillin", "aspirin", "ibuprofen", "seafood", "nuts"
+    ],
+    "risk_factors": [
+        "hypertension", "high blood pressure", "diabetes", "smoking", "family history",
+        "obesity", "high cholesterol"
+    ]
+}
+
 
 class MedicalExtractionService:
 
@@ -86,8 +109,51 @@ class MedicalExtractionService:
                 last_error = e
                 # Rate limited — try the next key
                 continue
+            except Exception as e:
+                # Any transient or response-shape issue should not crash the API.
+                last_error = e
+                continue
 
-        raise RuntimeError(
-            f"All API keys are rate-limited. Last error: {last_error}"
-        )
+        return self._fallback_extract(text, last_error)
+
+    def _fallback_extract(self, text: str, last_error: Exception | None = None) -> MedicalData:
+        """
+        Deterministic keyword fallback used when the model is unavailable/rate-limited.
+        This keeps the API responsive and lets the frontend continue the workflow.
+        """
+        normalized = text.lower()
+        extracted = {
+            "symptoms": self._find_keywords(normalized, FALLBACK_KEYWORDS["symptoms"]),
+            "medical_history": self._find_keywords(normalized, FALLBACK_KEYWORDS["medical_history"]),
+            "allergies": self._find_keywords(normalized, FALLBACK_KEYWORDS["allergies"]),
+            "risk_factors": self._find_keywords(normalized, FALLBACK_KEYWORDS["risk_factors"]),
+        }
+
+        missing = {
+            "symptoms": [
+                item for item in CRITICAL_CARDIAC_ITEMS["symptoms"]
+                if item not in normalized
+            ],
+            "risk_factors": [
+                item for item in CRITICAL_CARDIAC_ITEMS["risk_factors"]
+                if item not in normalized
+            ],
+        }
+
+        result = MedicalData(**extracted, missing=missing)
+
+        if last_error:
+            print(f"[MedicalExtractionService] Gemini unavailable; using fallback extraction. Last error: {last_error}")
+
+        return result
+
+    @staticmethod
+    def _find_keywords(text: str, keywords: list[str]) -> list[str]:
+        matched = []
+        for keyword in keywords:
+            # Match full phrase boundaries to avoid partial word noise.
+            pattern = rf"\b{re.escape(keyword)}\b"
+            if re.search(pattern, text):
+                matched.append(keyword)
+        return matched
 
