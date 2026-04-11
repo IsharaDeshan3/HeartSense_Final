@@ -202,6 +202,7 @@ export default function EcgInterpreter({
   sessionId,
   patientSymptoms,
 }: EcgInterpreterProps) {
+  const showResearchVisualizationHub = false;
   const [view, setView] = useState<"acquisition" | "interpretation">(
     "acquisition",
   );
@@ -574,13 +575,16 @@ export default function EcgInterpreter({
         patientId={patientId}
         sessionId={sessionId}
         patientContext={patientContext}
+        signalData={signalData || undefined}
         segments={segments}
         activeViewSegment={activeViewSegment}
         onActiveViewSegmentChange={setActiveViewSegment}
       />
 
-      {/* ── RESEARCH VISUALIZATION HUB ─────────────────────────────────── */}
-      {signalData && <EcgVisualizationHub data={signalData} />}
+      {/* ── RESEARCH VISUALIZATION HUB (hidden for doctor view; preserved for future admin move) ─────────────────────────────────── */}
+      {showResearchVisualizationHub && signalData && (
+        <EcgVisualizationHub data={signalData} />
+      )}
 
       {/* Download footer */}
       <div className="flex justify-center pt-4">
