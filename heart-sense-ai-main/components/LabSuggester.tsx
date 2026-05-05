@@ -568,10 +568,6 @@ export default function LabSuggester({
 
   const analyzeReportsOneClick = async () => {
     const resolvedPatientId = String(patientId || "").trim();
-    if (!resolvedPatientId || resolvedPatientId === "undefined") {
-      toast.error("Patient context is required for one-click orchestration.");
-      return;
-    }
 
     if (sessionsRef.current.some((session) => session.analyzing)) {
       toast.info("Wait for the current lab analysis to finish first.");
@@ -860,11 +856,7 @@ export default function LabSuggester({
               onClick={analyzeReportsOneClick}
               disabled={oneClickRunning}
               size="sm"
-              title={
-                patientId
-                  ? undefined
-                  : "Patient context is required for one-click orchestration"
-              }
+              title={undefined}
               className="h-9 px-4 rounded-xl font-black uppercase tracking-wider text-xs bg-primary text-primary-foreground"
             >
               {oneClickRunning ? (
